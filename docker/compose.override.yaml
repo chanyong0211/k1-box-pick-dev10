@@ -7,10 +7,10 @@ services:
     working_dir: /workspace/dev10/pelvis_pick
     volumes:
       - type: bind
-        source: ../../../dev10
+        source: ../../dev10
         target: /workspace/dev10
       - type: bind
-        source: ../../../dev12
+        source: ../../dev12
         target: /workspace/dev12
         read_only: true
     environment:
