@@ -46,5 +46,5 @@ for label, z, p, arms in (("서기", 0.765, 0.0, None), ("서기+벌림", 0.765,
     rows["up_target"].append(target(arms)[up_order])
     print(f"{label}: 골반 z {d.qpos[2]:.3f} pitch {sim._pitch():.1f} 발끝(발 중앙 기준) {rows['toe'][-1]:.3f} 골반 x {root[0]:+.3f}", flush=True)
 out = _harness.ROOT / "pick/assets/reset_snapshots.npz"
-np.savez(out, joint_names=np.array(J.JOINT_NAMES), xp=C["xp"], xg=C["xg"], **{k: np.array(v, np.float32) for k, v in rows.items()})
+np.savez(out, joint_names=np.array(J.JOINT_NAMES), up_grip=np.array(target(C["xg"])[up_order], np.float32), **{k: np.array(v, np.float32) for k, v in rows.items()})
 print("저장", out, flush=True)

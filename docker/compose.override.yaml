@@ -1,0 +1,37 @@
+name: k1-pelvis-pick-dev10
+
+# dev10 pelvis_pick: dev12 하체 위 박스 집기. dev12/docker 에서 이름과 마운트만 바꿈. dev12 는 읽기 전용.
+services:
+  cyclo_lab:
+    container_name: cyclo_lab-pelvis-pick-dev10
+    working_dir: /workspace/dev10/pelvis_pick
+    volumes:
+      - type: bind
+        source: ../../../dev10
+        target: /workspace/dev10
+      - type: bind
+        source: ../../../dev12
+        target: /workspace/dev12
+        read_only: true
+    environment:
+      - PYTHONPATH=/isaac-sim/exts/isaacsim.pip.newton/pip_prebundle:/workspace/dev10/pelvis_pick:/workspace/dev12/source:/workspace/cyclo_lab/source/cyclo_lab
+      - DISPLAY=
+      - TERM=xterm
+
+# dev12 와 같은 Isaac Sim 캐시를 쓴다.
+volumes:
+  isaac-cache-kit:
+    name: cyclo_lab_newton_isaac-cache-kit
+    external: true
+  isaac-cache-ov:
+    name: cyclo_lab_newton_isaac-cache-ov
+    external: true
+  isaac-cache-pip:
+    name: cyclo_lab_newton_isaac-cache-pip
+    external: true
+  isaac-cache-gl:
+    name: cyclo_lab_newton_isaac-cache-gl
+    external: true
+  isaac-cache-compute:
+    name: cyclo_lab_newton_isaac-cache-compute
+    external: true
