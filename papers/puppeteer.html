@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Puppeteer — 논문 상세</title>
+<link rel="stylesheet" href="paper.css">
+</head>
+<body>
+<main class="wrap">
+<a class="back" href="../index.html#catalog">← 자료 목록으로</a>
+
+<header class="ph">
+  <h1>Puppeteer: 계층 월드모델로 만든 시각 전신 휴머노이드 제어기</h1>
+  <p class="orig">Hierarchical World Models as Visual Whole-Body Humanoid Controllers</p>
+  <p class="meta">Nicklas Hansen, Jyothir S V, Vlad Sobal, Yann LeCun, Xiaolong Wang, Hao Su · UC San Diego, NYU, Meta AI · ICLR 2025 (로컬 PDF arXiv v3) · 56 자유도 CMU Humanoid (시뮬) · MuJoCo / DMControl</p>
+  <div class="chips">
+    <a class="chip loc" href="../reference/puppeteer/paper.pdf">로컬 PDF</a>
+    <a class="chip loc" href="../reference/puppeteer/code/">로컬 코드</a>
+    <a class="chip" href="https://arxiv.org/abs/2405.18418" target="_blank" rel="noopener">arXiv 2405.18418</a>
+    <a class="chip gh" href="https://github.com/nicklashansen/puppeteer" target="_blank" rel="noopener">nicklashansen/puppeteer</a>
+    <a class="chip" href="https://www.nicklashansen.com/rlpuppeteer" target="_blank" rel="noopener">프로젝트 페이지</a>
+    <span class="simv s3">유사도 3</span>
+    <span class="badge">MIT</span>
+  </div>
+</header>
+
+<div class="callout blue tldr">MoCap 836 클립으로 학습한 저수준 TD-MPC2 추적 월드모델(머리·손·발 5점 위치 추종)을 고정하고, 64×64 RGB 를 보는 상위 TD-MPC2 가 5점 위치 명령(15차원)을 같은 주기로 내 8개 이동 과제를 3M 스텝 안에 학습. 보상은 평면 TD-MPC2 와 비슷하지만 사람 평가 응답의 97.8 %가 더 자연스럽다고 판정 (그림 6, 표 6).</div>
+
+<h2 class="ps">우리와 무엇이 같고 다른가</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>이 논문</th><th>우리 (dev10 pelvis_pick)</th></tr></thead>
+  <tbody>
+    <tr><td>하위 제어기</td><td>TD-MPC2 추적 월드모델(5M 파라미터): 고유감각 212 + 명령 15 → 56 관절 행동, 매 스텝 MPPI 계획. 상위 학습 중 <b>고정</b>(가중치 갱신 없음) (p.4, p.6)</td><td>dev12 하체 RL, 골반 vx·vy·ωz·높이·pitch·roll 추종, 상체 11 외부 PD, 고정 예정</td></tr>
+    <tr><td>상위 출력</td><td>15차원 a ∈ [−1, 1]. 코드상 <b>현재 끝점 위치 + 0.3·a</b> 가 하위 레퍼런스 (델타 명령)</td><td>상체 11 관절 목표 + 골반 명령</td></tr>
+    <tr><td>상위 학습</td><td>TD-MPC2(모델 기반 RL, 계획), 과제당 3M 스텝, 처음부터</td><td>PPO teacher</td></tr>
+    <tr><td>과제·물체</td><td>달리기·장애물·틈·계단 등 이동 8개. 조작 없음 (부록 E)</td><td>바닥·받침대 0–0.3 m 박스 37×40×29 cm, 0.5–2 kg, 두 손 옆면 조이기</td></tr>
+    <tr><td>지각·증류</td><td>상위가 <b>3인칭</b> 카메라 64×64 RGB 를 직접 보고 학습. 특권 teacher·증류 없음</td><td>특권 teacher → 머리 D436 깊이 student (DAgger)</td></tr>
+    <tr><td>실기</td><td>없음</td><td>K1 실기 목표</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">1. 문제와 과제</h2>
+<ul>
+  <li><b>문제</b>: 56 자유도 휴머노이드를 시각으로 전신 제어하면서, 보상 설계·기술 프리미티브 없이 "사람 같은" 동작을 얻기 (p.1–2).</li>
+  <li><b>해법</b>: 두 개의 같은 알고리즘(TD-MPC2) 에이전트. 하위는 MoCap 추적을 한 번 학습해 재사용, 상위는 과제 보상으로 하위에 끝점 명령을 낸다 (p.3–4).</li>
+</ul>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>과제</th><th>시각</th><th>보상</th><th>비고</th></tr></thead>
+  <tbody>
+    <tr><td>stand, walk, run</td><td>없음</td><td>R = min(|v<sub>xy</sub>|, v<sub>target</sub>) + α · head<sub>z</sub> (식 4). α 값 논문에 없음</td><td>머리 높이 항이 없으면 TD-MPC2 가 매우 비현실적 동작</td></tr>
+    <tr><td>corridor, hurdles, walls, gaps, stairs</td><td>3인칭 RGB 64×64</td><td>R = clip(v<sub>x</sub>, [0, 6]) (식 3)</td><td>장애물 배치 무작위 (p.5). gaps 학습 0.1–0.4 m</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li><b>종료</b>: 500 스텝 시간 초과 또는 발 이외 관절이 바닥에 닿음 (p.6). 코드는 끝점 높이 −0.5 m 미만도 종료 (<a href="../reference/puppeteer/code/puppeteer/envs/tasks/run_through_corridor.py">run_through_corridor.py</a>).</li>
+  <li>접촉 종료가 없으면 TD-MPC2 기준선이 매우 비현실적인 동작으로 퇴화한다 (p.6).</li>
+</ul>
+
+<h2 class="ps">2. 시스템 구조</h2>
+<div class="fig">
+  <div class="flow">
+    <span class="node">3인칭 RGB 64×64 + 고유감각 212</span><span class="arr">→</span>
+    <span class="node">상위 TD-MPC2 (학습, MPPI 계획)</span><span class="arr">→</span>
+    <span class="node">a ∈ [−1, 1]<sup>15</sup> × 0.3</span><span class="arr">→</span>
+    <span class="node">+ 현재 끝점 5점 위치 = 레퍼런스</span><span class="arr">→</span>
+    <span class="node frozen">하위 TD-MPC2 추적 (고정, MPPI 계획)</span><span class="arr">→</span>
+    <span class="node">56 관절 행동 → MuJoCo (제어 0.03 s)</span>
+  </div>
+</div>
+<ul>
+  <li><b>같은 주기</b>: k = 1 — 상위 한 스텝에 하위 한 스텝 (p.6, 표 5). 상위는 이전 명령 달성 여부와 상관없이 고정 주기로 명령 (p.5).</li>
+  <li><b>두 단계 학습</b>: ① 추적 월드모델 10M 스텝(약 12일) ② 과제별 상위 3M 스텝(약 4일), 둘 다 RTX 3090 한 장 (p.6).</li>
+  <li><b>TD-MPC2 6 요소</b> (식 1): 인코더 z = h(s), 잠재 동역학 z′ = d(z, a), 보상 R(z, a), <b>종료 D(z, a)</b>(새로 추가), Q(z, a), 정책 사전 p(z). 관측을 복원하지 않는 디코더 없는 모델.</li>
+  <li><b>종료 처리</b> (식 2): L = L<sub>TD-MPC2</sub> + α·CE(δ̂, δ), α = 0.1. TD 목표는 종료에서 자르고, 계획 롤아웃은 예측 종료 확률을 누적(최대 1)해 부드럽게 자름 (p.5, 코드 <code>_estimate_value</code>).</li>
+</ul>
+
+<h2 class="ps">3. 관측과 행동</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>대상</th><th>내용</th><th>차원 · 범위</th><th>출처</th></tr></thead>
+  <tbody>
+    <tr><td>고유감각</td><td>관절 위치·속도, velocimeter, accelerometer, gyro, 관절 토크, 접촉 센서, 세계 z축 방향 (코드: actuator activation, appendages_pos, body_height 포함 11종)</td><td>212</td><td>부록 E, <a href="../reference/puppeteer/code/puppeteer/envs/tracking.py">tracking.py</a></td></tr>
+    <tr><td>하위 명령</td><td>머리·손 2·발 2 의 상대 위치 (레퍼런스)</td><td>15, [−1, 1]</td><td>부록 E. 코드는 다음 1 스텝(<code>ref_steps=[1]</code>)</td></tr>
+    <tr><td>하위 행동</td><td>56 관절 (위치 제어 walker)</td><td>56, [−1, 1]</td><td>부록 E</td></tr>
+    <tr><td>상위 관측</td><td>고유감각 + 3인칭 RGB 64×64 (전처리 없음). 코드는 <code>egocentric_camera</code> 키를 3인칭 렌더로 바꿔 넣음</td><td>212 + 3×64×64</td><td><a href="../reference/puppeteer/code/puppeteer/envs/transfer.py">transfer.py</a></td></tr>
+    <tr><td>상위 행동</td><td>reference = appendages_pos + 0.3 · a</td><td>15, [−1, 1]</td><td><a href="../reference/puppeteer/code/puppeteer/config.yaml">config.yaml</a> <code>action_scale: 0.3</code></td></tr>
+    <tr><td>정책 사전 분포</td><td>tanh 스쿼시 가우시안, log std 범위 −10–2</td><td>—</td><td>표 5, <a href="../reference/puppeteer/code/puppeteer/common/math.py">math.py</a> <code>squash</code></td></tr>
+    <tr><td>픽셀 인코더</td><td>ShiftAug → conv 7×7 s2 → 5×5 s2 → 3×3 s2 → 3×3 s1, 32 채널, ReLU</td><td>—</td><td><a href="../reference/puppeteer/code/puppeteer/common/layers.py">layers.py</a></td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">4. 보상 · 종료 · 커리큘럼</h2>
+<ul>
+  <li><b>하위 보상</b>: CoMic(Hasenclever 2020) 추적 보상으로 모든 전이에 이름표 (p.4, 부록 D). 가중치는 논문에 없음.</li>
+  <li><b>하위 데이터</b>: MoCapAct "small" — 836 클립 전문가 정책 × 잡음 롤아웃 20 = 16,720 궤적(차선). 매 배치 오프라인 50 % + 온라인 50 % (p.4, 부록 D). 온라인 에피소드마다 새 클립, 최대 1,000 스텝, 클립 끝까지 가면 성공 (<a href="../reference/puppeteer/code/puppeteer/envs/wrappers/humanoid.py">humanoid.py</a>).</li>
+  <li><b>상위 보상</b>: 1절 표의 과제 보상만. 자연스러움 항 없음.</li>
+  <li><b>커리큘럼</b>: 없음. 대신 "상위 사전학습" 실험: corridor 에서 학습한 상위로 다른 시각 과제를 미세조정 (그림 8 오른쪽).</li>
+  <li><b>도메인 무작위화</b>: 논문에 없음 (환경 배치 무작위만).</li>
+</ul>
+
+<h2 class="ps">5. 학습 설정 (알고리즘 · 망 · 무작위화)</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>묶음</th><th>값 (표 5, 상·하위 공통)</th></tr></thead>
+  <tbody>
+    <tr><td>계획 (MPPI)</td><td>지평 3, 반복 8, 표본 512, 정책 사전 표본 24, 엘리트 64, 온도 0.5, 상위 1 스텝당 하위 1 스텝. 코드: 반복 기본 6 + 행동 20차원 이상이면 2 → 하위 8, 상위 6</td></tr>
+    <tr><td>망</td><td>인코더 256, MLP 512, 잠재 512, LayerNorm + Mish, Q 앙상블 5 (코드 dropout 0.01, SimNorm 8, 가치 101 bin 이산 회귀 −10–10)</td></tr>
+    <tr><td>최적화</td><td>UTD 1, 배치 256, joint-embedding 20, 보상 0.1, 가치 0.1, 종료 0.1, 시간 가중 λ 0.5, Q 모멘텀 0.99, 정책 엔트로피 1e-4, Adam 3e-4, 인코더 1e-4 (코드 3e-4 × 0.3), grad clip 20, γ 0.97, 초기 무작위 2,500 스텝</td></tr>
+    <tr><td>버퍼</td><td>1M, 균등 표본. 1M 전이 메모리: 시각 14.1 GB, 상태 1.0 GB (GPU 저장)</td></tr>
+    <tr><td>모델 크기</td><td>상·하위 각 5M 파라미터 (p.6)</td></tr>
+  </tbody>
+</table></div>
+<h3 class="ps">시스템 요구 (표 3, RTX 3090)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>방법</th><th>시간 h / 1M 스텝</th><th>추론 ms / 스텝</th><th>GPU GB</th></tr></thead>
+  <tbody>
+    <tr class="ours"><td>Puppeteer</td><td>21.8 (시각 29.0)</td><td>88.2</td><td>0.6</td></tr>
+    <tr><td>TD-MPC2</td><td>18.6 (시각 25.2)</td><td>50.8</td><td>0.5</td></tr>
+    <tr><td>DreamerV3</td><td>50.2</td><td>18.7</td><td>3.9</td></tr>
+    <tr><td>SAC</td><td>5.9</td><td>2.2</td><td>0.4</td></tr>
+  </tbody>
+</table></div>
+<p>계층이라 두 번 계획하므로 추론 88.2 ms/스텝 — 제어 주기 30 ms 보다 길다(시뮬 시간 기준 실험이라 문제 안 됨).</p>
+
+<h2 class="ps">6. teacher → student / 증류</h2>
+<p>해당 없음 — 상위가 처음부터 RGB 를 보고 온라인 RL 로 학습한다. 특권 teacher 와 증류 단계가 없다.</p>
+
+<h2 class="ps">7. 결과</h2>
+<ul>
+  <li><b>학습 곡선</b> (그림 5, 10 시드, 3M 스텝): Puppeteer 는 TD-MPC2 와 비슷한 보상(stairs 제외). SAC·DreamerV3 는 의미 있는 성능 없음, DreamerV3 상위 + TD-MPC2 하위도 낮음.</li>
+  <li><b>stairs</b>: TD-MPC2 가 보상은 더 높지만 계단을 "굴러" 오른다 — 보상 해킹. Puppeteer 는 걷는다 (p.7).</li>
+</ul>
+<h3 class="ps">자연스러움 지표 (표 1, gaps, 10 시드)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>방법</th><th>에피소드 길이 @1M</th><th>수렴 에피소드 길이</th><th>몸통 높이 (cm)</th></tr></thead>
+  <tbody>
+    <tr><td>TD-MPC2</td><td>66.9 ± 9.8</td><td>181.6 ± 28.1</td><td>85.9 ± 4.7</td></tr>
+    <tr class="ours"><td>Puppeteer</td><td>115.9 ± 5.2</td><td>159.3 ± 5.9</td><td>96.0 ± 0.2</td></tr>
+  </tbody>
+</table></div>
+<h3 class="ps">사람 평가 (표 6, 51명 × 10 쌍 = 510 응답, "Ours" 선택 수)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>과제</th><th>쌍 1</th><th>쌍 2</th></tr></thead>
+  <tbody>
+    <tr><td>corridor</td><td>51</td><td>49 (같음 2)</td></tr>
+    <tr><td>hurdles</td><td>51</td><td>51</td></tr>
+    <tr><td>walls</td><td>48 (TD-MPC2 1, 같음 2)</td><td>51</td></tr>
+    <tr><td>gaps</td><td>51</td><td>51</td></tr>
+    <tr><td>stairs</td><td>49 (같음 2)</td><td>47 (TD-MPC2 1, 같음 3)</td></tr>
+    <tr class="ours"><td>합계</td><td colspan="2">TD-MPC2 0.4 % · 같음 1.8 % · Puppeteer 97.8 %</td></tr>
+  </tbody>
+</table></div>
+<h3 class="ps">하위 추적 품질 (표 2)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>설정</th><th>성공률 %</th><th>추적 오차</th><th>CoMic 점수</th></tr></thead>
+  <tbody>
+    <tr><td>오프라인 데이터만</td><td>6.2</td><td>0.503</td><td>42.6</td></tr>
+    <tr><td>클립 5 %</td><td>74.4</td><td>0.260</td><td>45.4</td></tr>
+    <tr><td>클립 25 %</td><td>79.6</td><td>0.225</td><td>46.3</td></tr>
+    <tr><td>클립 75 %</td><td>87.9</td><td>0.202</td><td>47.4</td></tr>
+    <tr class="ours"><td>전체 (오프라인 + 온라인)</td><td>88.3</td><td>0.187</td><td>48.7</td></tr>
+  </tbody>
+</table></div>
+<p>성공 = 클립(최대 100 스텝) 동안 오차 0.5 를 한 번도 넘지 않음 (부록 B).</p>
+<h3 class="ps">소거 (그림 8, 정규화 점수)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>소거</th><th>값</th></tr></thead>
+  <tbody>
+    <tr><td>추적 학습 클립 수 1 % / 5 % / 25 % / 100 %</td><td>21.0 / 35.1 / 48.6 / 61.7</td></tr>
+    <tr><td>계획: 없음 / 상위만 / 하위만 / 둘 다 (5 과제 평균, 3 시드)</td><td>1.6 / 2.9 / 6.4 / <b>43.0</b></td></tr>
+    <tr><td>상위 사전학습 (corridor → 다른 과제)</td><td>처음부터보다 초반 학습이 빠름 (곡선)</td></tr>
+    <tr><td>gaps 일반화 (그림 9)</td><td>0.1–0.4 m 학습 → 1.2 m (3배)까지 비자명한 성능</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">8. 실기 · sim2real</h2>
+<p>해당 없음 — 시뮬 벤치마크만. 3인칭 카메라는 실제 로봇에 없는 시점이다.</p>
+
+<h2 class="ps">9. 코드에서 확인한 것</h2>
+<ul>
+  <li><b>하위 감싸기</b>: <a href="../reference/puppeteer/code/puppeteer/envs/transfer.py">transfer.py</a> <code>TransferWrapper</code> — 하위 체크포인트를 읽어 <code>eval()</code>, 행동 공간을 15차원으로 재정의, 매 스텝 아래처럼 하위 관측을 만든다.
+<pre>action = action * self.cfg.action_scale            # 0.3
+low_level_obs['walker/reference_appendages_pos'] = \
+    low_level_obs['walker/appendages_pos'] + action
+action = self.low_level_policy.act(low_level_obs, t0=self._t==0, eval_mode=True)</pre>
+  즉 상위 명령은 <b>현재 실측 끝점 위치 기준 ±0.3 델타</b>다. 직전 명령을 누적하는 델타가 아니라서, 레퍼런스가 실제 몸에서 0.3 이상 멀어질 수 없다.</li>
+  <li><b>제어 주기</b>: <code>control_timestep=0.03</code>, 물리는 dm_control 기본 (<code>make_env</code>). 시간 제한 500 스텝.</li>
+  <li><b>하위 학습 env</b>: <a href="../reference/puppeteer/code/puppeteer/envs/tracking.py">tracking.py</a> — <code>ref_steps=[1]</code>, 행동 잡음 0.01, 최대 1,000 스텝.</li>
+  <li><b>계획 반복 휴리스틱</b>: <a href="../reference/puppeteer/code/puppeteer/tdmpc2.py">tdmpc2.py</a> <code>iterations += 2*int(action_dim &gt;= 20)</code>.</li>
+  <li><b>가중치</b>: 저장소에 없음. README 의 Google Drive 링크로 배포. Git LFS 포인터 아님.</li>
+</ul>
+<h3 class="ps">논문과 코드가 다른 곳</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>논문</th><th>코드</th></tr></thead>
+  <tbody>
+    <tr><td>하위 명령 범위</td><td>c<sub>t</sub> = 미래 t+1…t+H 레퍼런스 (p.4)</td><td>다음 1 스텝만 (<code>ref_steps=[1]</code>), 15차원</td></tr>
+    <tr><td>상위 출력</td><td>끝점 위치를 출력 (p.2)</td><td>현재 끝점 + 0.3·a 델타</td></tr>
+    <tr><td>MPPI 반복</td><td>모든 계층 8 (표 5)</td><td>하위 8, 상위 6</td></tr>
+    <tr><td>시각 과제 보상</td><td>clip(v<sub>x</sub>, [0, 6]) (식 3)</td><td><code>rewards.tolerance(v, (6, 6), margin=6, linear)</code> — 6 m/s 에서 1, 0 과 12 m/s 에서 0</td></tr>
+    <tr><td>사람 평가</td><td>본문 p.7: 같음 4 %, TD-MPC2 0 %</td><td>(표 6 자체) 같음 1.8 %, TD-MPC2 0.4 % — 논문 내부 불일치</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">10. 한계</h2>
+<ul>
+  <li>저자 언급: 과제가 주로 시각-이동, 두 계층 중 하나만 사전학습 (p.10).</li>
+  <li>조작·지속 접촉 과제가 없다. 실기 없음. 3인칭 카메라.</li>
+  <li>모델 기반 + 두 단계 MPPI 라 추론 88.2 ms/스텝, 하위 학습 12일. 우리 PPO·Isaac Lab 스택과 다르다.</li>
+  <li>"자연스러움"은 하위 추적 사전이 주는 효과이고, 과제 보상 자체는 평면 TD-MPC2 와 비슷하다.</li>
+</ul>
+
+<h2 class="ps">11. 우리에게 가져올 것</h2>
+<div class="take"><ol>
+  <li><b>실측 기준 델타 명령</b>: 골반 높이·pitch 명령 = dev12 가 실제로 만든 현재 값 + k·a (a ∈ [−1, 1]). 명령이 실제 상태에서 최대 k 만 앞서므로 v2 의 "추종기가 못 따라가는 출력"(허리)을 구조적으로 막는다. k 는 dev12 가 상위 한 스텝 동안 따라잡는 양 정도로(측정 필요). 단, 무거운 박스로 골반이 처지는 정상상태 오차 축에서는 같은 a 를 계속 내야 하므로 직전 명령 누적(VIRAL 식) 델타와 비교 실험할 것.</li>
+  <li><b>하위 고정 + 같은 주기(k = 1)로 시작</b>: 계층 효과가 계획 없이도 나는지 이 논문은 보여 주지 않지만(계획 없음 1.6), 하위 고정·같은 주기 자체는 문제없었다. 명령 묶음(temporal abstraction)은 나중 소거로.</li>
+  <li><b>하위 학습 분포가 상위 성능 상한</b>: 추적 클립 1 % → 21.0, 100 % → 61.7, 오프라인만 성공 6.2 %. dev12 명령 샘플러가 pelvis_pick 이 낼 조합(정지 쪼그림 0.335–0.42 m — 보행 범위 밖 — + pitch + 손 하중)을 덮는지 먼저 확인.</li>
+  <li><b>성공률 말고 자세 지표도 기록</b>: 같은 보상에서 몸통 높이 96.0 vs 85.9 cm, 사람 선호 97.8 %. 우리도 성공률과 함께 골반 높이·pitch 분포, 넘어짐 직전 자세를 평가셋에 남긴다.</li>
+  <li><b>상위 사전학습 → 미세조정</b>: 접근·운반 단계를 붙일 때 박스 집기 상위를 초기값으로 쓰면 초반이 빨라진다는 근거.</li>
+</ol>
+<p><b>가져오지 말 것</b></p>
+<ul>
+  <li>TD-MPC2·MPPI: 추론 88 ms/스텝, 5M 모델에 512 표본 × 6–8 반복. 우리 PPO 스택과 맞지 않고 K1 온보드 실시간도 어렵다(추정).</li>
+  <li>3인칭 RGB 직접 학습: 로봇에 없는 시점. 우리는 머리 D436 깊이 + 증류.</li>
+  <li>끝점(손·발) 명령 인터페이스로 dev12 교체: 하위 재학습이 필요하다. 지금은 골반 명령 + 상체 관절 유지.</li>
+</ul>
+</div>
+
+<p class="src">출처 표기: (p.N), (표 N), (그림 N), (식 N), 코드는 파일 경로. 논문에 없는 값은 "논문에 없음".</p>
+</main>
+</body>
+</html>

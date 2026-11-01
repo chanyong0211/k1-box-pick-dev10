@@ -1,0 +1,536 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ULTRA — 논문 상세</title>
+<link rel="stylesheet" href="paper.css">
+</head>
+<body>
+<main class="wrap">
+<a class="back" href="../index.html#catalog">← 자료 목록으로</a>
+
+<header class="ph">
+  <h1>ULTRA: 동작 추종·희소 목표·자기중심 점구름을 한 정책에 묶은 휴머노이드 전신 물체 조작</h1>
+  <p class="orig">ULTRA: Unified Multimodal Control for Autonomous Humanoid Whole-Body Loco-Manipulation</p>
+  <p class="meta">Xialin He, Sirui Xu (공동 1저자), Xinyao Li, Runpei Dong, Liuyu Bian, Yu-Xiong Wang, Liang-Yan Gui · University of Illinois Urbana-Champaign · IROS 2026 (arXiv v3 2026-10-17, README 표기 "Best Paper Award on Mobile Manipulation Finalist") · Unitree G1 29 DoF + 고무 손 · Isaac Gym Preview 4 (+ MuJoCo sim2sim)</p>
+  <div class="chips">
+    <a class="chip loc" href="../reference/ultra/paper.pdf">로컬 PDF</a>
+    <a class="chip loc" href="../reference/ultra/code/">로컬 코드</a>
+    <a class="chip" href="https://arxiv.org/abs/2603.03279" target="_blank" rel="noopener">arXiv 2603.03279</a>
+    <a class="chip gh" href="https://github.com/Sirui-Xu/ULTRA" target="_blank" rel="noopener">Sirui-Xu/ULTRA</a>
+    <a class="chip" href="https://ultrahumanoid.github.io/" target="_blank" rel="noopener">프로젝트 페이지</a>
+    <span class="simv s4">유사도 4</span>
+    <span class="badge">Apache-2.0 (InterMimic 유래 부분 MIT)</span>
+    <span class="badge wt" title="ultra/weights/teacher_ultra_inference.pth 45.9 MB, 실제 torch zip. 모델 카드: AMASS·BONES-SEED 로 추가 학습, 비상업 연구·교육용">가중치</span>
+  </div>
+</header>
+
+<div class="callout blue tldr">OMOMO 사람-상자 모캡을 RL 리타게팅으로 G1 궤적으로 바꿔 약 6배로 늘리고, 참조를 따라가는 특권 teacher(4052 차원 MLP)를 "transformer + 64 차원 잠재" student 로 증류한 뒤, env 1/4 은 증류를 유지한 채 나머지 3/4 에서 PPO 미세조정한다. 시뮬 조밀 추종 성공 teacher 97.57 % 대 통합 student 67.30 % (ID), MuJoCo 목표 위치 OOD 4/20 → 12/20 (미세조정 효과), 실기 자기중심 점구름 목표 따르기 5/10·6/10.</div>
+
+<h2 class="ps">우리와 무엇이 같고 다른가</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>이 논문</th><th>우리 (dev10 pelvis_pick)</th></tr></thead>
+  <tbody>
+    <tr><td>하위 제어기</td><td><b>없음.</b> 한 정책이 29 관절 PD 목표를 직접 낸다. 굳이 대응시키면 student 의 decoder(잠재 z + 고유감각 → 관절)가 RL 미세조정 때 동결되는 "기술 모듈"이고, prior 가 그 위의 상위 역할 <span class="src">(p.5, 코드 v3 builder)</span></td><td class="ours">dev12 하체 RL, 골반 vx·vy·ωz·높이·pitch·roll 추종, 상체 11 외부 PD</td></tr>
+    <tr><td>상위 출력</td><td>29 관절 절대 PD 목표 (행동 ±1 → ×3 rad). 미세조정 단계에선 prior 가 64 차원 잠재를 내고 동결 decoder 가 관절로 푼다</td><td class="ours">상체 11 + 골반 명령</td></tr>
+    <tr><td>과제·물체</td><td>OMOMO 상자류 4 개(largebox·plasticbox·smallbox·suitcase) 양손 들기·운반, 여행가방 끌기; 물체 밀도 25 kg/m³ × 질량 배율 0.15–1.5 <span class="src">(p.5, g1_teacher.yaml)</span></td><td class="ours">바닥·받침대 0–0.3 m 박스 37×40×29 cm, 0.5–2 kg, 두 손 옆면 조이기</td></tr>
+    <tr><td>목표 지정</td><td>조밀 참조(다음 1·16 프레임) 또는 희소 목표(1–4 s 뒤 물체·루트 위치); 실기는 키보드로 물체 목표 이동</td><td class="ours">고정 과제(집기·일어서기·버티기), 참조 동작 없음</td></tr>
+    <tr><td>지각·증류</td><td>특권 추종 teacher → 다중 모달 student(머리 기준 점구름 64 점 + 고유감각 이력 10), DAgger + 잠재 KL + PPO 미세조정</td><td class="ours">특권 teacher → D436 깊이 26×64·6 프레임 student (DAgger)</td></tr>
+    <tr><td>손·게인</td><td>G1 고무 손(0.17 kg, 손가락 없음), 팔 kp 14.25 / kd 0.91, 손목 16.78 / 1.07 <span class="src">(humanoid_g1.py, g1_29dof.urdf)</span></td><td class="ours">K1 고무 공 손, 팔 kp 22.3 / kd 1.42, 허리 76.45 / 4.87</td></tr>
+    <tr><td>카메라</td><td>D435, torso 기준 (0.058, 0.018, 0.430) m, 아래 0.831 rad (47.6°), 시뮬 시야 90°×60° <span class="src">(g1_29dof.urdf, distill_obj_v2vae.py)</span></td><td class="ours">머리 D436, 목 0° / 아래 47° 두 위치</td></tr>
+    <tr><td>주기·시뮬</td><td>정책 약 59 Hz (1 ms × 17), PD 1 kHz; Isaac Gym 학습, MuJoCo 검증</td><td class="ours">Isaac Lab + Newton, 50 Hz 기준, MuJoCo sim2sim</td></tr>
+  </tbody>
+</table></div>
+<div class="callout">핵심 차이: ULTRA 에는 <b>동결된 하위 보행 제어기가 없다</b>. dev10 v2 의 "추종기가 못 따라가는 출력(허리)" 문제를 ULTRA 는 명시 명령 대신 decoder 가 아는 잠재 공간을 출력하는 방식으로 피했을 뿐이다. 그대로 옮길 수 있는 것은 student 쪽 학습 요령(증류 유지 PPO 미세조정, 고정 σ + bounds loss, 보조 복원 헤드, 점구름 DR)과 실기 실패 분석이다.</div>
+
+<h2 class="ps">1. 문제와 과제</h2>
+<ul>
+  <li><b>정식화</b>: 목표 조건부 POMDP. 매 스텝 관측 o<sub>t</sub> 와 과제 조건 c<sub>t</sub> 를 받아 PD 관절 목표 a<sub>t</sub> 를 낸다 <span class="src">(p.3, III-A·B)</span>.</li>
+  <li><b>목표 두 종류</b>: (i) 조밀 참조 — 시간 색인된 동작 참조가 중간 동작까지 지정; (ii) 희소 목표 — 먼 미래의 루트·물체 변환만 주고 중간 동작은 정책이 정함 <span class="src">(p.3)</span>.</li>
+  <li><b>지각 두 종류</b>: (i) MoCap — 물체 자세 정확; (ii) 자기중심 깊이 — 머리 깊이 센서 점구름에서 물체 상태를 추론 <span class="src">(p.3)</span>.</li>
+  <li><b>성공 정의</b>
+    <ul>
+      <li>추종: 넘어지지 않고 매 프레임 E<sub>g-mpjpe</sub> &lt; 0.3 m 이고 E<sub>pos</sub> &lt; 0.3 m. "humanoid 만" 성공도 따로 보고 <span class="src">(p.6, V-C)</span></li>
+      <li>목표 따르기: 넘어지지 않고 마지막 상태가 목표에서 0.3 m 이내 <span class="src">(p.6, V-D)</span></li>
+    </ul>
+  </li>
+  <li><b>데이터</b>: OMOMO 사람-물체 모캡, InterMimic 이 정리한 부분집합. 고정 손으로 다룰 수 있는 상자류 4 물체만. RL 리타게팅 + 축별 궤적 배율·물체 크기 조정으로 <b>약 6배</b> 코퍼스. ID = 원래 train/test 분할, OOD = 보류 동작 + 처음 보는 물체 크기 <span class="src">(p.5, V-A)</span>.</li>
+  <li><b>코드의 증강 예</b>: <code>--xyz 1 1 1</code>, <code>--xyz 1.05 1 0.95</code>, 물체 자산 크기 <code>080_080_080</code>·<code>100_100_100</code> <span class="src">(<a href="../reference/ultra/code/README.md"><code>README.md</code></a>)</span>.</li>
+</ul>
+
+<h2 class="ps">2. 시스템 구조</h2>
+<p>학습은 네 단계, 배포는 student 하나 <span class="src">(p.4, 그림 2)</span>.</p>
+<div class="fig"><div class="flow">
+  <span class="node">Stage 0 리타게팅 정책 π<sub>Retarget</sub><br>SMPL-X 모캡 → G1, DR 없음</span>
+  <span class="arr">→</span>
+  <span class="node">G1 물리 궤적 + 증강 (약 6배)</span>
+  <span class="arr">→</span>
+  <span class="node">Stage 1 특권 teacher<br>PPO, 4052 → 29</span>
+  <span class="arr">→</span>
+  <span class="node frozen">teacher 동결</span>
+  <span class="arr">→</span>
+  <span class="node">Stage 2 student 증류<br>DAgger + 잠재 KL + 보조 복원</span>
+  <span class="arr">→</span>
+  <span class="node">RL 미세조정<br>env 1/4 증류 + 3/4 PPO</span>
+</div></div>
+<div class="fig"><div class="flow">
+  <span class="node">D435 깊이 → 점구름 64 점<br>(ROI·지면 제거·주 클러스터)</span>
+  <span class="node">OptiTrack 물체 자세 (있을 때)</span>
+  <span class="node">키보드 목표 / 참조</span>
+  <span class="arr">→</span>
+  <span class="node">모달별 토큰 256 + PointNet<br>마스크 m<sub>t</sub> 로 게이트</span>
+  <span class="arr">→</span>
+  <span class="node">transformer prior<br>z (64) = prior 평균</span>
+  <span class="arr">→</span>
+  <span class="node frozen">decoder (미세조정 때 동결)<br>고유감각+이력, FiLM(z)</span>
+  <span class="arr">→</span>
+  <span class="node">29 관절 목표 약 60 Hz</span>
+  <span class="arr">→</span>
+  <span class="node frozen">PD 1 kHz</span>
+</div></div>
+<p class="src">점선 = 해당 단계에서 동결. 배포 주기 60 Hz·PD 1 kHz 는 그림 2, 실제 학습 주기는 1 ms × 17 = 약 58.8 Hz (<a href="../reference/ultra/code/docs/deploy.md"><code>docs/deploy.md</code></a>).</p>
+
+<div class="tbl-wrap"><table>
+  <thead><tr><th>단계</th><th>학습되는 것</th><th>동결</th><th>목적 함수</th><th>규모 (코드)</th></tr></thead>
+  <tbody>
+    <tr><td>0 리타게팅</td><td>π<sub>Retarget</sub> (모든 동작에 하나)</td><td>–</td><td>끝단 위주 느슨한 추종 × 물체 × 상호작용 × 접촉 보상 (곱)</td><td>관측 1853, 위치 구동(PhysX), DR·잡음 없음, 50,000 epoch 상한</td></tr>
+    <tr><td>1 teacher</td><td>MLP 1024-1024-512</td><td>–</td><td>PPO, 전신 추종 곱 보상 + 평활 벌점</td><td>4096 env, horizon 32, 50,000 epoch 상한</td></tr>
+    <tr><td>2 증류</td><td>student 전체 (토큰화기·PointNet·transformer·prior·특권 encoder·decoder)</td><td>teacher</td><td>행동 MSE + KL + 잠재 평활 + 보조 복원 + 지역 목표 예측 + prior 단독 행동 손실 (PPO 항 × 0)</td><td>4096 env, horizon 8</td></tr>
+    <tr><td>3 RL 미세조정</td><td>prior 쪽(토큰화기·PointNet·transformer·prior 헤드), 0 초기화 새 FiLM, critic</td><td>특권 encoder, decoder(actor trunk·FiLM·μ·σ), 지역 목표 헤드, teacher</td><td>env 1/4: 증류 손실; env 3/4: PPO × 0.2</td><td>4096 env, horizon 16</td></tr>
+    <tr><td>배포</td><td>–</td><td>전부</td><td>z = prior 평균 (잡음 0)</td><td>관측 1496 → 행동 29</td></tr>
+  </tbody>
+</table></div>
+<p class="src">출처: p.4–5, 부록 C; <a href="../reference/ultra/code/ultra/data/cfg/train/rlg/g1_student_finetune.yaml"><code>g1_student_finetune.yaml</code></a> (<code>freeze_encoder_decoder: true</code>), <a href="../reference/ultra/code/ultra/learning/ultra_network_builder_obj_v3.py"><code>ultra_network_builder_obj_v3.py</code></a> <code>_freeze_encoder_decoder_weights</code>.</p>
+
+<h2 class="ps">3. 관측과 행동</h2>
+<h3 class="ps">3-1. 행동과 PD</h3>
+<ul>
+  <li>29 차원, rl_games 가 env 에 넣기 전 ±1 로 자름 (<code>clip_actions</code> 기본 True) <span class="src">(<a href="../reference/ultra/code/ultra/learning/a2c_common.py"><code>a2c_common.py</code></a>)</span>.</li>
+  <li><b>PD 목표 = 3.0 × 행동</b> (rad, 기본 자세 오프셋 없이 절대값), 토크 = 모터 세기 × kp·(목표 − q) − 모터 세기 × kd·q̇, ±0.8 × effort 로 자름 <span class="src">(<a href="../reference/ultra/code/ultra/env/tasks/humanoid.py"><code>humanoid.py</code></a> <code>_compute_torques</code>, <a href="../reference/ultra/code/ultra/env/tasks/humanoid_g1.py"><code>humanoid_g1.py</code></a>)</span>.</li>
+  <li>행동 지연: 매 스텝 0 또는 1 정책 스텝 (17 ms) 을 무작위로 (모든 env 공통). 논문 표 I 의 "buffer length 8 steps" 는 버퍼 길이일 뿐 <span class="src">(humanoid.py <code>pre_physics_step</code>)</span>.</li>
+</ul>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>관절 (G1)</th><th>kp</th><th>kd</th><th>effort (N·m)</th><th>armature</th></tr></thead>
+  <tbody>
+    <tr><td>엉덩이 pitch / yaw</td><td>40.18</td><td>2.56</td><td>88</td><td>0.0102</td></tr>
+    <tr><td>엉덩이 roll / 무릎</td><td>99.10</td><td>6.31</td><td>139</td><td>0.0251</td></tr>
+    <tr><td>발목 2 축</td><td>28.50</td><td>1.81</td><td>50</td><td>0.0072</td></tr>
+    <tr><td>허리 yaw / roll·pitch</td><td>40.18 / 28.50</td><td>2.56 / 1.81</td><td>88 / 50</td><td>0.0102 / 0.0072</td></tr>
+    <tr><td>어깨 3·팔꿈치·손목 roll</td><td>14.25</td><td>0.91</td><td>25</td><td>0.0036</td></tr>
+    <tr><td>손목 pitch·yaw</td><td>16.78</td><td>1.07</td><td>5</td><td>0.0043</td></tr>
+    <tr class="ours"><td>K1 팔 / 허리 (참고)</td><td>22.3 / 76.45</td><td>1.42 / 4.87</td><td>–</td><td>–</td></tr>
+  </tbody>
+</table></div>
+<p class="src">출처: <a href="../reference/ultra/code/ultra/env/tasks/humanoid_g1.py"><code>humanoid_g1.py</code></a> <code>_build_env</code> (yaml 의 stiffness/damping 은 쓰이지 않음, <a href="../reference/ultra/code/docs/deploy.md"><code>docs/deploy.md</code></a>). 논문에 없음.</p>
+
+<h3 class="ps">3-2. teacher 관측 (4052 = 2026 × 2 프레임)</h3>
+<p>다음 1 프레임 참조 기준 묶음과 다음 16 프레임 참조 기준 묶음을 이어 붙인다. 모든 양은 heading(yaw 제거) 좌표 <span class="src">(부록 B, 표 D)</span>. 아래는 코드로 센 한 묶음의 구성 (논문 표 D 의 항목 합은 1971 × 2 = 3942 로 총계 4052 와 맞지 않아 코드 기준으로 적음).</p>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>블록</th><th>내용</th><th>차원</th></tr></thead>
+  <tbody>
+    <tr><td rowspan="3">o<sup>sim</sup></td><td>루트 높이, 몸체 39 개 지역 위치(루트 제외 114)·회전 6D(234)·선속도(117)·각속도(117)</td><td>583</td></tr>
+    <tr><td>접촉 플래그 39 (양손 포함 6 개 몸체만 남기고 0)</td><td>39</td></tr>
+    <tr><td>직전 행동, 관절 위치·속도, 토크(0 으로 지움), 이전 관절 위치·속도 (각 29)</td><td>174</td></tr>
+    <tr><td rowspan="2">o<sup>ref</sup></td><td>참조 몸체 지역 위치 117 + 회전 234</td><td>351</td></tr>
+    <tr><td>(물체 참조는 아래 물체 잔차에 포함)</td><td>–</td></tr>
+    <tr><td rowspan="2">o<sup>Δ</sup></td><td>몸체 위치·회전·선속도·각속도·접촉 잔차 (117+234+117+117+39)</td><td>624</td></tr>
+    <tr><td>물체: 현재 선·각속도 6 + 위치·회전 6D·선·각속도 잔차 15</td><td>21</td></tr>
+    <tr><td>o<sup>ig</sup></td><td>상호작용 그래프: 몸체 39 개에서 물체 표면까지 SDF 벡터 (방향 × e<sup>−5·거리</sup>) 117 + 참조와의 차 117</td><td>234</td></tr>
+    <tr><td colspan="2"><b>한 묶음 합</b> (코드 주석 "1771" + 물체 21 + IG 234)</td><td><b>2026</b></td></tr>
+  </tbody>
+</table></div>
+<p class="src">출처: <a href="../reference/ultra/code/ultra/env/tasks/ultra_g1_retarget.py"><code>ultra_g1_retarget.py</code></a> <code>compute_humanoid_observations_max</code>, <code>_compute_observations_iter</code>, <code>compute_obj_observations</code>; 입력 정규화 후 ±5 로 자름 (distill_obj_v2vae.py <code>step</code>).</p>
+
+<h3 class="ps">3-3. student 관측 (1496)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>모달</th><th>내용</th><th>차원</th><th>비고</th></tr></thead>
+  <tbody>
+    <tr><td>o<sup>global</sup> (장기 루트 목표)</td><td>루트 xy 잔차 2 + yaw 잔차 1</td><td>3</td><td>목표 = long_term_t 프레임 뒤 참조</td></tr>
+    <tr><td>o<sup>cmd</sup> (명령)</td><td>에피소드 끝 플래그, 다가감, 멀어짐, 남은 시간(÷240)</td><td>4</td><td>손–물체 거리 0.15 m 와 변화량으로 계산</td></tr>
+    <tr><td>o<sup>local</sup> (다음 프레임 참조)</td><td>roll·pitch 잔차 2 + 관절 위치 잔차 29</td><td>31</td><td>가려지면 예측값으로 대체 (shortcut)</td></tr>
+    <tr><td>o<sup>proprio</sup></td><td>루트 각속도 3, IMU roll·pitch 2, 관절 위치 29, 관절 속도 29, 직전 행동 29</td><td>92</td><td>관절 속도 ×0.05 는 코드에선 허리 3 개만</td></tr>
+    <tr><td>o<sup>history</sup></td><td>위 92 차원 × 10 스텝</td><td>920</td><td>약 0.17 s</td></tr>
+    <tr><td rowspan="4">o<sup>task</sup> (물체)</td><td>물체 위치 잔차 (목표 대비, 지역 좌표)</td><td>3</td><td>= 물체 목표</td></tr>
+    <tr><td>물체 회전 잔차 6D</td><td>6</td><td></td></tr>
+    <tr><td>물체 위치 (루트 기준, MoCap 모드)</td><td>3</td><td></td></tr>
+    <tr><td>점구름 64 점 × 3, 머리 카메라 좌표</td><td>192</td><td>시뮬은 합성 (3-4 참조)</td></tr>
+    <tr><td>m (마스크)</td><td>전역 목표 3, 지역 목표 31, 물체 204, 명령 4</td><td>242</td><td>모달마다 같은 0/1 값 반복</td></tr>
+    <tr><td colspan="2"><b>합</b></td><td><b>1496</b></td><td></td></tr>
+  </tbody>
+</table></div>
+<p class="src">출처: 부록 C 표 H (p.10); <a href="../reference/ultra/code/ultra/env/tasks/ultra_g1_distill_obj_v2vae.py"><code>ultra_g1_distill_obj_v2vae.py</code></a> <code>compute_humanoid_observations_max</code>·<code>_finalize_student_obs</code>·<code>_update_goal_phase</code>.</p>
+<ul>
+  <li><b>희소 목표의 시간</b>: 에피소드 시작이나 목표 만료 때, 참조 물체 속력 &lt; 0.2 m/s 면 120–239 스텝(약 2.0–4.1 s) 뒤, 아니면 60–119 스텝(약 1.0–2.0 s) 뒤 참조 프레임을 목표로 <span class="src">(<code>_compute_observations_student</code>)</span>.</li>
+  <li><b>배포 모드는 마스크 조합</b>: full_track(전부 보임), sparse_track(지역 목표·물체 위치·점·회전 가림), object_obs(points | pos | none) <span class="src">(<code>configure_task_mode</code>)</span>.</li>
+  <li>마스크 값은 매 스텝 0.1 % 확률로 뒤집혀 고정 패턴을 깸 <span class="src">(<code>obs_mask_flip_prob</code> 1e-3)</span>.</li>
+</ul>
+
+<h3 class="ps">3-4. 점구름 (시뮬 합성 vs 실기 추출)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th></th><th>시뮬 (코드)</th><th>실기 (논문)</th></tr></thead>
+  <tbody>
+    <tr><td>원천</td><td>물체 꼭짓점의 PCA 상자 표면에 후보 512 점(고정 UV 격자) → 카메라 시야 90°×60° 안 + 카메라를 향한 면만(back-face culling) → 앞쪽 64 점</td><td>깊이 픽셀을 보정된 내부 파라미터로 역투영 → 앞쪽 ROI → 지면 평면 제거 → 가장 큰 클러스터를 상자로 → 고정 개수로 다운샘플</td></tr>
+    <tr><td>좌표</td><td>머리 카메라 (d435_link) 좌표</td><td>같음</td></tr>
+    <tr><td>렌더링</td><td>없음 (깊이 영상 렌더·레이캐스트 안 씀)</td><td>–</td></tr>
+  </tbody>
+</table></div>
+<p class="src">출처: <code>compute_obj_observations_pca_corners</code>, <code>_select_visible_points</code> (distill_obj_v2vae.py); 실기 p.7 "Point cloud extraction".</p>
+
+<h2 class="ps">4. 보상 · 종료 · 커리큘럼</h2>
+<h3 class="ps">4-1. teacher 추종 보상 (모든 항을 곱함)</h3>
+<p>r<sub>teacher</sub> = r<sub>track</sub> + Σ w<sub>i</sub>·r<sub>i</sub><sup>smooth</sup> <span class="src">(식 2)</span>. 리타게팅은 같은 틀에서 손·발 끝단 위치만 희소 앵커로 쓰고, teacher 는 전신 링크 추종 <span class="src">(p.4)</span>.</p>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항</th><th>식 (논문 표 B)</th><th>논문 k</th><th>코드</th></tr></thead>
+  <tbody>
+    <tr><td>몸체 위치</td><td>exp(−k<sub>p</sub>·mean‖p<sub>l</sub> − p̂<sub>l</sub>‖²)</td><td>10.0</td><td>같음, 39 몸체. 참조 발 높이에 0.1 × 발 수평 속력을 더해 발을 더 들게 함</td></tr>
+    <tr><td>관절 회전</td><td>exp(−k<sub>r</sub>·mean‖q − q̂‖²)</td><td>5.0</td><td>관절 각도 오차로 계산</td></tr>
+    <tr><td>몸체 속도</td><td>exp(−k<sub>pv</sub>·mean‖ṗ − ṗ̂‖²)</td><td>0.1</td><td>같음</td></tr>
+    <tr><td>관절 속도</td><td>exp(−k<sub>rv</sub>·mean‖q̇ − q̇̂‖²)</td><td>0.001</td><td>같음</td></tr>
+    <tr><td>물체 위치</td><td>exp(−k<sub>op</sub>·mean‖p<sub>o</sub> − p̂<sub>o</sub>‖²)</td><td>5.0</td><td>heading 좌표에서</td></tr>
+    <tr><td>물체 회전</td><td>exp(−k<sub>or</sub>·huber(∠(q<sub>o</sub>, q̂<sub>o</sub>)))</td><td>0.5</td><td>huber σ 3</td></tr>
+    <tr><td>물체 선속도</td><td>exp(−k<sub>opv</sub>·mean‖ṗ<sub>o</sub> − ṗ̂<sub>o</sub>‖²)</td><td>0.1</td><td>물체 각속도 항 k 0 (꺼짐)</td></tr>
+    <tr><td>손바닥–표면</td><td>exp(−k<sub>int</sub>·Σ w<sub>ij</sub>‖δ<sub>ij</sub> − δ̂<sub>ij</sub>‖²)</td><td>20.0</td><td><b>k = 1 고정 × 0.5</b>, w = 1/max(거리², 0.2) 정규화 (yaml 의 <code>ig: 20</code> 은 안 쓰임)</td></tr>
+    <tr><td>접촉 일치</td><td>exp(−k<sub>ct</sub>·mean|c<sub>l</sub> − ĉ<sub>l</sub>|)</td><td>5.0</td><td><b>k = 1 고정</b>; 발은 "참조엔 없는데 닿음"만 벌함</td></tr>
+    <tr><td>코드에만</td><td colspan="2">물체 가속도 exp(−1e-6·‖a<sub>o</sub>‖²), 발 외 접촉력 exp(−1e-10·max‖F‖²), 전체 × 1.6</td><td>논문에 없음</td></tr>
+  </tbody>
+</table></div>
+<p class="src">출처: 부록 B 표 B (p.9); <a href="../reference/ultra/code/ultra/env/tasks/ultra_g1_retarget.py"><code>ultra_g1_retarget.py</code></a> <code>compute_humanoid_reward</code>.</p>
+
+<h3 class="ps">4-2. 평활·정규화 벌점 (더함)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항</th><th>식</th><th>가중치</th></tr></thead>
+  <tbody>
+    <tr><td>루트 선속도</td><td>‖v<sub>base</sub>‖</td><td>−0.1</td></tr>
+    <tr><td>루트 각속도</td><td>‖ω<sub>base</sub>‖²</td><td>−0.01</td></tr>
+    <tr><td>관절 속도</td><td>‖q̇‖²</td><td>−0.0004</td></tr>
+    <tr><td>행동 변화</td><td>‖a<sub>t</sub> − a<sub>t−1</sub>‖</td><td>−0.1</td></tr>
+    <tr><td>관절 속도 변화</td><td>‖q̇<sub>t</sub> − q̇<sub>t−1</sub>‖²</td><td>−2×10⁻⁵</td></tr>
+    <tr><td>각속도 변화</td><td>‖ω<sub>t</sub> − ω<sub>t−1</sub>‖²</td><td>−5×10⁻⁴</td></tr>
+    <tr><td>토크 크기</td><td>‖τ‖</td><td>−0.001</td></tr>
+    <tr><td>에너지</td><td>Σ‖τ ⊙ q̇‖</td><td>−0.0001</td></tr>
+    <tr><td>관절 위치 한계</td><td>Σ max(0, |q| − q<sub>lim</sub>)</td><td>−5.0</td></tr>
+    <tr><td>토크 한계</td><td>Σ max(0, |τ|/τ<sub>lim</sub> − 0.95)</td><td>−1.0</td></tr>
+    <tr><td>발 방향</td><td>Σ‖g<sub>⊥</sub><sup>feet</sup>‖</td><td>−0.35</td></tr>
+    <tr><td>발 미끄럼</td><td>√‖v<sub>foot</sub>‖ · 1<sub>contact</sub></td><td>−0.1</td></tr>
+    <tr><td>발 걸림</td><td>1(‖f<sub>xy</sub>‖ &gt; 4|f<sub>z</sub>|)</td><td>−10.0</td></tr>
+    <tr><td>발 간격 / 무릎 간격</td><td>clamp(d − [0.25, 0.65])</td><td>−0.1 / −0.1</td></tr>
+    <tr><td>두 발 딛기</td><td>1(참조 두 발 지지 ∧ 시뮬 아님)</td><td>−1.0</td></tr>
+    <tr><td>스윙 여유</td><td>(w<sub>h</sub>·h<sub>term</sub> + w<sub>c</sub>·c)·g<sub>swing</sub></td><td>−0.6</td></tr>
+    <tr><td>종료</td><td>1<sub>terminated</sub></td><td>−50.0</td></tr>
+    <tr><td>코드에만</td><td>발 접촉 변화, 토크×속도 전부</td><td>−5×10⁻⁵, −2×10⁻¹⁰</td></tr>
+  </tbody>
+</table></div>
+<p class="src">출처: 부록 B 표 C (p.10); <a href="../reference/ultra/code/ultra/data/cfg/g1_teacher.yaml"><code>g1_teacher.yaml</code></a> <code>smooth_rewards.scales</code>, <a href="../reference/ultra/code/ultra/env/tasks/smooth_rewards.py"><code>smooth_rewards.py</code></a>. 미세조정 설정은 발 걸림 −20, 미끄럼 −0.2, 두 발 딛기·스윙 0 (<a href="../reference/ultra/code/ultra/data/cfg/g1_student_finetune.yaml"><code>g1_student_finetune.yaml</code></a>).</p>
+
+<h3 class="ps">4-3. 종료와 초기화</h3>
+<ul>
+  <li><b>teacher 종료</b> (시작 20 스텝 뒤부터): 루트 높이 &lt; 0.15 m; 어느 몸체든 참조에서 0.5 m 넘게 벗어남; 물체 표면점이 참조에서 0.5 m 넘게 벗어남; IG 벡터 상대 오차 &gt; 1; 참조에선 손이 닿아 있는데 시뮬 손이 <b>20 스텝 넘게 연속으로</b> 떨어짐 <span class="src">(p.4 "contact mismatch for 20 frames"; <code>compute_humanoid_reset</code>)</span>.</li>
+  <li>밀린 직후 20–60 스텝 동안 추종 종료를 끔(유예), 서 있기 에피소드는 넘어짐만 종료 <span class="src">(p.4 "short grace period"; <code>_compute_reward</code>)</span>.</li>
+  <li><b>에피소드</b>: 300 스텝 (약 5.1 s), 참조의 무작위 프레임에서 시작, 초기 잡음 루트 위치 0.05 m·회전 0.04 rad·관절 0.15 rad·물체 위치 0.04 m·회전 0.08 rad <span class="src">(<code>_DEFAULT_NOISE_STD</code>)</span>.</li>
+  <li>서 있기 에피소드: 참조 프레임을 고정. 논문 "occasional", 코드 1 % (주석은 10 %) <span class="src">(p.4; <code>stand_still_ratio</code>)</span>.</li>
+  <li>리타게팅은 참조 상태 초기화를 안 쓰고 기본 서기 자세에서 첫 프레임을 따라가다 가중치를 서서히 올려 전체 추종으로 <span class="src">(p.4)</span>.</li>
+  <li><b>증류 중 종료</b>: 넘어짐만 (IG·접촉 종료 끔) <span class="src">(distill_obj_v2vae.py <code>_compute_reset</code>)</span>.</li>
+</ul>
+
+<h3 class="ps">4-4. 커리큘럼</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>대상</th><th>설정</th><th>출처</th></tr></thead>
+  <tbody>
+    <tr><td>평활 벌점 세기</td><td>0 → 1, 5000×32 스텝에 걸쳐</td><td>ultra_g1_retarget.py</td></tr>
+    <tr><td>밀기 세기 / 유예</td><td>0 → 최대 1.0 m/s, 유예 60 → 20 스텝, 1000×32 스텝에 걸쳐</td><td>humanoid.py, ultra_g1_retarget.py</td></tr>
+    <tr><td>행동 지연</td><td>1000×32 스텝 뒤부터 0–1 스텝</td><td>humanoid.py</td></tr>
+    <tr><td colspan="3"><b>주의</b>: 스텝 카운터가 10000×32 = 320,000 에서 시작해 위 셋은 처음부터 최대값 (사실상 커리큘럼 없음) <span class="src">(<a href="../reference/ultra/code/ultra/env/tasks/humanoid.py"><code>humanoid.py</code></a> 75 행)</span></td></tr>
+    <tr><td>student 모달 마스크</td><td>보존 확률을 epoch 500–5500 에 코사인으로 낮춤 (아래 표)</td><td>p.5, g1_student_vae.yaml</td></tr>
+    <tr><td>KL·평활·prior 행동 손실 계수</td><td>epoch 500–3500 코사인 증가 (6 절)</td><td>표 F, 코드</td></tr>
+  </tbody>
+</table></div>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>모달 보존 확률</th><th>epoch 0–500</th><th>epoch 5500 이후</th></tr></thead>
+  <tbody>
+    <tr><td>물체 회전 잔차</td><td>0.8</td><td>0.1</td></tr>
+    <tr><td>물체 위치 잔차 (목표)</td><td>0.9</td><td>0.5</td></tr>
+    <tr><td>물체 위치 (MoCap)</td><td>0.8</td><td>0.3</td></tr>
+    <tr><td>점구름</td><td>0.8</td><td>0.3</td></tr>
+    <tr><td>전역 목표 (루트)</td><td>0.9</td><td>0.4</td></tr>
+    <tr><td>지역 목표 (다음 프레임 참조)</td><td>0.5</td><td>0.2</td></tr>
+    <tr><td>명령</td><td>0.9 (미세조정 0)</td><td>0.3 (미세조정 0)</td></tr>
+  </tbody>
+</table></div>
+<p class="src">출처: <a href="../reference/ultra/code/ultra/data/cfg/g1_student_vae.yaml"><code>g1_student_vae.yaml</code></a>; 논문은 "마스킹 확률을 점점 올린다"만 씀 (p.5).</p>
+
+<h3 class="ps">4-5. RL 미세조정 보상·종료 (RL env 3/4 만)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항</th><th>언제</th><th>코드 값</th></tr></thead>
+  <tbody>
+    <tr><td>목표 도달 (조밀)</td><td>목표가 보일 때</td><td>exp(−2·d<sub>obj</sub>) + exp(−2·d<sub>root</sub>), 각 가중치 1.0</td></tr>
+    <tr><td>진척</td><td>목표가 보일 때</td><td>d<sub>t−1</sub> − d<sub>t</sub>, ±0.5 로 자름, 가중치 1.0</td></tr>
+    <tr><td>성공 보너스</td><td>보이는 목표가 모두 0.15 m 이내, 마감 5 스텝 안</td><td>+10, 목표당 한 번</td></tr>
+    <tr><td>평활 벌점 + 종료</td><td>항상</td><td>표 C 에서 참조 관련 항 제외, 종료 −50</td></tr>
+    <tr><td>목표 오프셋</td><td>새 목표마다</td><td>xy ±0.4 m, z ±0.2 m (물체·루트 따로)</td></tr>
+    <tr><td>초기 잡음 (RL env)</td><td>리셋</td><td>루트 0.2 m·0.1 rad, 물체 0.2 m·0.15 rad</td></tr>
+    <tr><td>종료</td><td>–</td><td>넘어짐; 마감 시(30 스텝 유예 뒤) 보이는 목표에서 0.15 m 초과; 에피소드 200 스텝 (약 3.4 s)</td></tr>
+    <tr><td>마스크 강제</td><td>리셋</td><td>지역 목표 항상 가림, 물체·루트 목표 중 최소 하나는 보이게, 서 있기 끔</td></tr>
+  </tbody>
+</table></div>
+<p class="src">출처: 부록 C 표 G (p.10); <a href="../reference/ultra/code/ultra/env/tasks/ultra_g1_distill_obj_v3rl.py"><code>ultra_g1_distill_obj_v3rl.py</code></a> <code>_compute_reward</code>·<code>_compute_reset</code>; <a href="../reference/ultra/code/ultra/data/cfg/g1_student_finetune.yaml"><code>g1_student_finetune.yaml</code></a> <code>rl_finetune</code>. 증류 env(1/4)의 보상은 0.</p>
+
+<h2 class="ps">5. 학습 설정 (알고리즘 · 망 · 무작위화)</h2>
+<h3 class="ps">5-1. 최적화 하이퍼파라미터</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>teacher PPO (표 E)</th><th>student 증류 (코드)</th><th>RL 미세조정 (코드)</th></tr></thead>
+  <tbody>
+    <tr><td>학습률</td><td>2×10⁻⁵ 고정</td><td>2×10⁻⁴, epoch 500 까지 워밍업 → 5500 까지 5×10⁻⁵ 로 감소</td><td>같음</td></tr>
+    <tr><td>clip ε / GAE λ / γ</td><td>0.2 / 0.95 / 0.99</td><td>같음 (PPO 항 × 0)</td><td>같음</td></tr>
+    <tr><td>horizon × env</td><td>32 × 4096 = 131,072</td><td>8 × 4096 = 32,768</td><td>16 × 4096 = 65,536</td></tr>
+    <tr><td>minibatch / mini-epoch</td><td>16,384 / 6</td><td>4,096 / 2</td><td>8,192 / 4</td></tr>
+    <tr><td>entropy / critic / bounds</td><td>0 / 5 / 10</td><td>0 / 5 / 10</td><td>0 / 5 / 10</td></tr>
+    <tr><td>grad norm</td><td>1.0</td><td>1.0</td><td>1.0 (자르기 켬)</td></tr>
+    <tr><td>정규화</td><td>입력 O, 가치 X, advantage O</td><td>입력 X</td><td>입력 X, 가치 O</td></tr>
+    <tr><td>행동 σ</td><td colspan="3">학습 안 함, log σ = −2.9 고정 (σ ≈ 0.055, PD 목표로 약 0.17 rad)</td></tr>
+    <tr><td>최대 epoch</td><td>50,000</td><td>1,000,000 (사실상 수동 정지)</td><td>1,000,000</td></tr>
+  </tbody>
+</table></div>
+<p class="src">출처: 부록 B 표 E (p.10), 부록 C (p.10); <a href="../reference/ultra/code/ultra/data/cfg/train/rlg/g1_teacher.yaml"><code>rlg/g1_teacher.yaml</code></a>, <a href="../reference/ultra/code/ultra/data/cfg/train/rlg/g1_student_vae.yaml"><code>rlg/g1_student_vae.yaml</code></a>, <a href="../reference/ultra/code/ultra/data/cfg/train/rlg/g1_student_finetune.yaml"><code>rlg/g1_student_finetune.yaml</code></a>. bounds loss = Σ max(|μ| − 1, 0)² (<a href="../reference/ultra/code/ultra/learning/common_agent.py"><code>common_agent.py</code></a>). <b>벽시계 시간·GPU·실제 학습 epoch 수: 논문에 없음.</b></p>
+
+<h3 class="ps">5-2. 망</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>부분</th><th>구조</th></tr></thead>
+  <tbody>
+    <tr><td>teacher</td><td>actor·critic 분리 MLP 1024-1024-512, ReLU, 선형 μ 헤드 29, Xavier 기본 초기화</td></tr>
+    <tr><td>모달 토큰화기</td><td>모달마다 MLP (은닉 512, GELU) → 256 토큰</td></tr>
+    <tr><td>점구름 ("PointNet")</td><td>중심을 뺀 점마다 MLP 3 → 256 → 256, 전역 max·mean 풀링 (512) + 중심 3 + 축 범위 3 + 공분산 9 → MLP 256 → 256 토큰</td></tr>
+    <tr><td>융합</td><td>transformer 2 층, 4 헤드, 토큰 256, FFN 1024, GELU, 사인 위치 인코딩, dropout 0</td></tr>
+    <tr><td>prior 헤드</td><td>256 → 128 → 64 (μ, log σ²) 두 개</td></tr>
+    <tr><td>특권 encoder (학습 때만)</td><td>teacher 관측 + 추가 특권 입력 → MLP 2048-1024-512-256 → 128 → 64 (μ, log σ²); z = z<sup>prior</sup> + z<sup>res</sup></td></tr>
+    <tr><td>decoder</td><td>(고유감각 92 + 이력 920) ⊕ z 64 → 2 층 (폭 1496) → LayerNorm → FiLM(z) [γ = 1 + 0.1·tanh, β = 0.1·tanh] → MLP 1024-1024-512 → 29. 물체·목표는 decoder 에 직접 안 들어가고 z 로만 전달</td></tr>
+    <tr><td>지역 목표 shortcut</td><td>지역 목표 31 → 선형(0 초기화) × 0.1 을 decoder 은닉에 더함; 가려지면 예측 헤드(→256→31) 값 사용</td></tr>
+    <tr><td>보조 디코더</td><td>z → 64 → 256 → 16 (복원·정규화용)</td></tr>
+    <tr><td>미세조정 critic</td><td>별도 backbone MLP 3 층 × 512</td></tr>
+  </tbody>
+</table></div>
+<p class="src">출처: 부록 B·C (p.9–10); <a href="../reference/ultra/code/ultra/learning/ultra_network_builder_obj_v2.py"><code>ultra_network_builder_obj_v2.py</code></a> (증류), <a href="../reference/ultra/code/ultra/learning/ultra_network_builder_obj_v3.py"><code>ultra_network_builder_obj_v3.py</code></a> (미세조정).</p>
+
+<h3 class="ps">5-3. 도메인 무작위화·잡음</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>범주</th><th>항목</th><th>범위</th></tr></thead>
+  <tbody>
+    <tr><td rowspan="3">로봇 (표 I)</td><td>몸통 추가 질량</td><td>−3.0 – 3.0 kg</td></tr>
+    <tr><td>CoM 오프셋</td><td>−0.05 – 0.05 m</td></tr>
+    <tr><td>모터 세기 (kp·kd 각각)</td><td>× 0.8 – 1.2</td></tr>
+    <tr><td rowspan="2">환경</td><td>지면 마찰</td><td>0.5 – 2.0</td></tr>
+    <tr><td>중력 섭동</td><td>±0.1 m/s², 4 s 마다</td></tr>
+    <tr><td>밀기</td><td>최대 속도 / 간격</td><td>1.0 m/s (물체에도), 4 s</td></tr>
+    <tr><td>행동</td><td>지연</td><td>코드 0–1 스텝 (버퍼 8)</td></tr>
+    <tr><td rowspan="7">물체 (표 J)</td><td>질량</td><td>0.15 – 1.5 (논문 kg, 코드는 원래 질량 배율); 10 env 중 1 개는 0.05 – 0.15</td></tr>
+    <tr><td>CoM</td><td>−0.05 – 0.05 m</td></tr>
+    <tr><td>관성 배율</td><td>0.5 – 2.0</td></tr>
+    <tr><td>마찰</td><td>0.2 – 1.2</td></tr>
+    <tr><td>반발</td><td>0.0 – 0.3</td></tr>
+    <tr><td>구름·비틀림 마찰</td><td>0.0 – 0.05</td></tr>
+    <tr><td>코드에만</td><td>compliance 0 – 1, rest offset 0 – 0.01, contact offset 0.01 – 0.03</td></tr>
+    <tr><td rowspan="5">관측 잡음 (표 L)</td><td>관절 위치</td><td>0.01 rad</td></tr>
+    <tr><td>관절 속도</td><td>0.1 rad/s</td></tr>
+    <tr><td>각속도</td><td>0.05 rad/s</td></tr>
+    <tr><td>IMU</td><td>0.05</td></tr>
+    <tr><td>루트 위치</td><td>0.05 m (teacher 설정 0.02, 단 teacher 경로엔 잡음 미적용)</td></tr>
+  </tbody>
+</table></div>
+<p class="src">출처: 부록 D 표 I·J·L (p.10–11); <a href="../reference/ultra/code/ultra/data/cfg/g1_teacher.yaml"><code>g1_teacher.yaml</code></a>, <a href="../reference/ultra/code/ultra/data/cfg/g1_student_vae.yaml"><code>g1_student_vae.yaml</code></a>. teacher 는 관측 잡음 없음 (p.4).</p>
+
+<h3 class="ps">5-4. 점구름 무작위화 (표 K, 코드 적용 순서)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>순서</th><th>항목</th><th>값</th></tr></thead>
+  <tbody>
+    <tr><td>0</td><td>카메라 위치 / 회전 잡음 (보정 오차)</td><td>0.02 m / 0.05 rad (약 2.9°)</td></tr>
+    <tr><td>1</td><td>전체 크기 배율</td><td>0.95 – 1.05</td></tr>
+    <tr><td>2</td><td>전체 평행 이동</td><td>σ 0.02 m</td></tr>
+    <tr><td>3</td><td>거리 비례 잡음</td><td>σ = 0.01 × 거리</td></tr>
+    <tr><td>4</td><td>점별 가우시안</td><td>σ 0.02 m</td></tr>
+    <tr><td>5</td><td>클러스터 표류</td><td>σ 0.005</td></tr>
+    <tr><td>6</td><td>이상점</td><td>5 %, 카메라에서 0.5 m 이내 무작위</td></tr>
+    <tr><td>7</td><td>구형 가림</td><td>10 % 확률, 반지름 0.1 – 0.4 m</td></tr>
+    <tr><td>8</td><td>밀도 (부분 표본)</td><td>보존 0.5 – 1.0</td></tr>
+    <tr><td>9</td><td>점 드롭</td><td>15 %</td></tr>
+  </tbody>
+</table></div>
+<p class="src">출처: 부록 D 표 K (p.11); <code>_apply_point_domain_randomization</code> (distill_obj_v2vae.py). 버린 점은 0 벡터로. 깊이·점구름 지연: 논문에 없음.</p>
+
+<h3 class="ps">5-5. 시뮬 설정 (표 M)</h3>
+<p>PhysX TGS, 위치 반복 4·속도 반복 1, substep 1, 제어 역주기 17 (약 59 Hz), contact offset 0.02 m, rest offset 0, bounce 0.2 m/s, 최대 침투 해소 1.0 m/s, 지면 마찰 1.0/1.0, 반발 0 <span class="src">(p.11 표 M; g1_teacher.yaml)</span>.</p>
+
+<h2 class="ps">6. teacher → student / 증류</h2>
+<h3 class="ps">6-1. 롤아웃 혼합 (DAgger)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>논문</th><th>코드</th></tr></thead>
+  <tbody>
+    <tr><td>teacher 행동으로 굴리는 확률</td><td>epoch 500 까지 teacher 만, 1500 까지 선형으로 student 로 (p.10)</td><td><b>epoch 50 까지 1, 550 에 0</b> (선형) <span class="src">(ultra_agent_distill_vae.py 94 행)</span></td></tr>
+    <tr><td>에피소드별 고정</td><td>논문에 없음</td><td>에피소드 5 % 는 끝까지 teacher, 5 % 는 ‖μ<sub>s</sub> − μ<sub>t</sub>‖² &gt; 0.5 일 때만 teacher 로 대체</td></tr>
+    <tr><td>배포형(prior 단독) 롤아웃</td><td>논문에 없음</td><td>epoch 500–3500 에 0 → 30 % 선형</td></tr>
+    <tr><td>라벨</td><td colspan="2">방문 상태에서 teacher 를 질의해 a<sup>teacher</sup> 를 얻음 (p.5). teacher 입력은 정규화 후 ±5 로 자름</td></tr>
+  </tbody>
+</table></div>
+<p><b>teacher 입력 가리기</b>: 증류 중 물체 표면점이 참조에서 0.5 m 넘게 벗어나거나 IG 오차 &gt; 1 이거나 손 접촉 이탈이 19 스텝을 넘으면, teacher 의 물체·IG 입력을 0 으로 지워서 라벨을 만든다 <span class="src">(<code>_update_object_deviation</code>, <code>_mask_teacher_obs</code>, <code>obj_deviation_threshold: 0.5</code>; 논문에 없음)</span>.</p>
+
+<h3 class="ps">6-2. 증류 손실 (표 F)</h3>
+<p>s = clip((epoch − 500)/3000, 0, 1), g(s) = (1 − cos πs)/2 (코사인 증가).</p>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항</th><th>정의</th><th>논문 계수</th><th>코드 계수</th></tr></thead>
+  <tbody>
+    <tr><td>행동 모방 L<sub>E</sub></td><td>‖μ − a<sup>exp</sup>‖² (teacher 평균)</td><td>1.0</td><td>1.0</td></tr>
+    <tr><td>잠재 KL L<sub>KL</sub></td><td>D<sub>KL</sub>(q<sub>φ</sub>(z | o, o<sup>priv</sup>) ‖ p<sub>θ</sub>(z | o))</td><td>0.001 + (0.1 − 0.001)·g(s)</td><td><b>0.001 → 0.2</b> (증류), 0.001 → 0.1 (미세조정)</td></tr>
+    <tr><td>잠재 평활 L<sub>S</sub></td><td>‖(μ<sub>p</sub> + μ<sub>e</sub>)<sub>t</sub> − (μ<sub>p</sub> + μ<sub>e</sub>)<sub>t−1</sub>‖²</td><td>0.0001 → 0.001</td><td>같음 (내부에 × 0.0001 이 한 번 더 곱해짐)</td></tr>
+    <tr><td>보조 복원 L<sub>A</sub></td><td>마스크 가중 MSE (명령·전역 목표·물체 위치·회전)</td><td>1.0</td><td>1.0</td></tr>
+    <tr><td>지역 목표 예측 L<sub>G</sub></td><td>가려진 지역 목표만 MSE</td><td>1.0</td><td>1.0</td></tr>
+    <tr><td>prior 단독 행동 L<sub>P</sub></td><td>encoder 없이 prior 만으로 낸 μ 와 teacher 의 MSE</td><td>논문에 계수 없음</td><td>0 → 0.6 (증류), 0 (미세조정)</td></tr>
+    <tr><td>PPO 항</td><td>–</td><td>"구현에서 끔"</td><td>× 0</td></tr>
+  </tbody>
+</table></div>
+<p class="src">출처: 부록 C 표 F (p.10), 식 1 (p.5); <a href="../reference/ultra/code/ultra/learning/ultra_agent_distill_vae.py"><code>ultra_agent_distill_vae.py</code></a> <code>calc_gradients</code>, <a href="../reference/ultra/code/ultra/learning/ultra_agent_distill_vae_rl.py"><code>ultra_agent_distill_vae_rl.py</code></a>.</p>
+
+<h3 class="ps">6-3. RL 미세조정 (증류 유지 PPO)</h3>
+<ul>
+  <li><b>env 나누기</b>: 앞 1/4 (1024 env) = 증류 env (encoder 포함, teacher 라벨, 위 손실), 뒤 3/4 (3072 env) = RL env (prior 단독 = 배포형 정책으로 굴림) <span class="src">(p.10; <code>prior_mask[num_envs // 4:] = True</code>)</span>.</li>
+  <li><b>무엇을 학습</b>: prior 쪽 + 0 초기화된 새 FiLM 층(스케일 0.1) + critic. decoder·encoder 동결 → 시작 순간 정책이 증류 결과와 똑같다 <span class="src">(<code>_freeze_encoder_decoder_weights</code>)</span>.</li>
+  <li><b>워밍업</b>: 논문 "정책경사 항을 처음 100 epoch 에 걸쳐 서서히 켬, critic 은 처음부터". 코드: actor 계수 = 0 (epoch 0–100) → 0 에서 1 로 선형 (100–200) <span class="src">(ultra_agent_distill_vae_rl.py 674 행)</span>.</li>
+  <li><b>보수적 갱신</b>: RL 손실 전체 × 0.2 ("작은 상수") <span class="src">(같은 파일 688 행)</span>.</li>
+  <li><b>섭동</b>: 물체 목표·루트 목표·초기 상태에 무작위 오프셋, 점구름 잡음(jitter·dropout·occlusion) 주입 <span class="src">(p.5)</span>.</li>
+  <li>advantage 정규화는 RL env 표본만으로 <span class="src">(<code>_calc_advs</code>)</span>.</li>
+</ul>
+
+<h2 class="ps">7. 결과</h2>
+<h3 class="ps">7-1. 조밀 추종 (Isaac Gym, 표 I)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>방법</th><th>ID 성공 (몸만)</th><th>ID 성공 (+물체)</th><th>ID E<sub>g-mpjpe</sub></th><th>ID E<sub>pos</sub></th><th>OOD 성공 (몸만)</th><th>OOD 성공 (+물체)</th></tr></thead>
+  <tbody>
+    <tr><td><b>ULTRA (통합 다중 모달 student)</b></td><td>67.30 ±0.12</td><td>57.44 ±0.40</td><td>13.49</td><td>53.42</td><td>70.57 ±0.54</td><td>52.00 ±0.44</td></tr>
+    <tr><td>ULTRA teacher (특권, 상한)</td><td>97.57 ±0.05</td><td>89.79 ±0.11</td><td>12.98</td><td>17.15</td><td>97.12 ±0.43</td><td>81.33 ±0.78</td></tr>
+    <tr><td>ULTRA (RL) — student 관측으로 직접 RL, 추종 전용</td><td>54.47 ±0.43</td><td>41.78 ±0.31</td><td>49.30</td><td>47.48</td><td>53.38 ±0.98</td><td>23.54 ±0.24</td></tr>
+    <tr><td>ULTRA (Distillation) — 추종 전용 증류</td><td>85.03 ±3.00</td><td>77.15 ±0.57</td><td>15.45</td><td>25.48</td><td>86.63 ±0.50</td><td>52.74 ±0.04</td></tr>
+    <tr><td>HDMI (같은 데이터)</td><td>13.07</td><td>9.94</td><td>92.77</td><td>78.93</td><td>13.92</td><td>12.95</td></tr>
+    <tr><td>OmniRetarget (원 데이터)</td><td>41.27</td><td>21.90</td><td>62.96</td><td>77.94</td><td>33.36</td><td>20.78</td></tr>
+    <tr><td>OmniRetarget (우리 증강 데이터)</td><td>51.34</td><td>20.91</td><td>67.12</td><td>60.67</td><td>46.71</td><td>25.82</td></tr>
+  </tbody>
+</table></div>
+<p class="src">출처: 표 I (p.6). 오차 단위는 논문 미표기. ± 의 의미(시드·반복)도 논문에 없음.</p>
+<ul>
+  <li><b>격차 해석 (저자)</b>: teacher 97.57 % 대 통합 student 67.30 % 의 차이는 한 모델에 여러 모달·목표를 묶은 비용이지 덜 학습된 탓이 아니다 — 추종 전용 증류 student 는 85.03 % <span class="src">(p.6)</span>.</li>
+  <li><b>증류 대 직접 RL</b>: 부분 관측 직접 RL 은 안정화와 접촉 유지를 동시에 배워야 해 초기 실패가 지배하고 학습이 무너질 수 있음 (54.47 %) <span class="src">(p.6)</span>.</li>
+  <li>HDMI 는 이 규모에서 불안정·수렴 실패, OmniRetarget 은 몸은 따라가나 물체 추종에서 떨어짐 (명시 물체 관측 부재 + "걷기로 빠지는" 실패) <span class="src">(p.6)</span>.</li>
+  <li>증강 데이터로 다시 학습한 OmniRetarget 의 OOD 몸 성공 33.36 → 46.71 % — 증강의 효과 <span class="src">(p.6, 표 I)</span>.</li>
+</ul>
+
+<h3 class="ps">7-2. 리타게팅 품질 (표 II, Largebox)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>방법</th><th>관통 시간</th><th>관통 최대 깊이 (cm)</th><th>발 미끄럼 시간</th><th>미끄럼 최대 속도 (cm/s)</th><th>손 접촉 이탈 시간</th></tr></thead>
+  <tbody>
+    <tr><td>PHC</td><td>0.908</td><td>0.073</td><td>0.303</td><td>0.032</td><td>0.025</td></tr>
+    <tr><td>GMR</td><td>0.522</td><td>0.086</td><td>0.366</td><td>0.029</td><td>0.111</td></tr>
+    <tr><td>OmniRetarget</td><td>0.000</td><td>0.013</td><td>0.205</td><td>0.035</td><td>0.231</td></tr>
+    <tr><td><b>ULTRA</b></td><td>0.008</td><td>0.012</td><td>0.061</td><td>0.018</td><td>0.015</td></tr>
+  </tbody>
+</table></div>
+<p class="src">출처: 표 II (p.7). Suitcase 도 같은 경향 (손 접촉 이탈 0.008 대 OmniRetarget 0.404).</p>
+
+<h3 class="ps">7-3. 희소 목표 따르기 (MuJoCo sim2sim, 표 III)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>RL 미세조정</th><th>ID 목표 · 점구름</th><th>ID 목표 · 위치만</th><th>OOD 목표 · 점구름</th><th>OOD 목표 · 위치만</th></tr></thead>
+  <tbody>
+    <tr><td>없음</td><td>16/20</td><td>14/20</td><td>5/20</td><td>4/20</td></tr>
+    <tr><td>있음</td><td>19/20</td><td>16/20</td><td>9/20</td><td>12/20</td></tr>
+    <tr><td>상대 이득</td><td>+18.8 %</td><td>+14.3 %</td><td>+80.0 %</td><td>+200.0 %</td></tr>
+  </tbody>
+</table></div>
+<p class="src">출처: 표 III (p.7). Isaac Gym 학습 → MuJoCo 평가, 설정당 동작 20 개. OOD = 학습 목표에 무작위 오프셋. "위치만" = 물체 위치는 주고 모양(점)은 안 줌. 입력은 장기 물체 목표만.</p>
+<ul>
+  <li>미세조정은 ID 에선 소폭, OOD 에서 크게(점구름 약 2배, 위치만 3배) — 시연 다양체 밖 상호작용 상태를 넓히고 폐루프 회복을 강화한다는 해석 <span class="src">(p.7)</span>.</li>
+  <li>잠재 t-SNE: 추종 모드만 따로 모이고(shortcut 으로 잠재를 우회하므로) 나머지 모달은 공유 다양체에 섞임; MiniLM + K-Means 텍스트 군집과도 정렬 <span class="src">(p.7, 그림 5)</span>.</li>
+</ul>
+
+<h2 class="ps">8. 실기 · sim2real</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>설정</th><th>수직</th><th>수평</th></tr></thead>
+  <tbody>
+    <tr><td>조밀 참조 추종 (OMOMO 부분집합, 방향 무관)</td><td colspan="2">73 % (19/26)</td></tr>
+    <tr><td>희소 목표 따르기 (MoCap 물체 자세)</td><td>80 % (8/10)</td><td>90 % (9/10)</td></tr>
+    <tr><td>희소 목표 따르기 (자기중심 깊이만)</td><td>50 % (5/10)</td><td>60 % (6/10)</td></tr>
+  </tbody>
+</table></div>
+<p class="src">출처: 표 IV (p.7). 과제당 2 회. 성공 판정은 모든 설정에서 MoCap.</p>
+<ul>
+  <li><b>구성</b>: student 가 G1 탑재 컴퓨터에서 제어 주기로 실행, 고유감각 + (있으면) OptiTrack 물체 자세(루트 앞뒤 마커). 목표 따르기는 참조 없이 키보드로 미래 물체 변환 지정. 상자 양손 들기·운반, 여행가방, 상자 차기 포함 <span class="src">(p.7, 그림 A·B)</span>.</li>
+  <li><b>실기 물체</b>: 상자 여러 개, 플라스틱 통, 여행가방 (그림 B 5 개).</li>
+  <li><b>실패 원인</b> <span class="src">(p.7)</span>
+    <ol>
+      <li>마찰 차이로 가끔 쥔 물체가 미끄러짐 (촉각을 넣을 동기)</li>
+      <li>깊이 잡음·가림으로 점구름 추출 실패</li>
+      <li>DR 로 배운 회복 여유를 넘는 외란</li>
+    </ol>
+  </li>
+  <li><b>부록 한계</b>: 핵심 기하가 사라지는 심한 가림, MoCap 마커 가림 → 물체 자세 떨림·표류 → 추종 불안정, 너무 공격적이거나 불연속·현재 접촉으로 불가능한 목표 <span class="src">(p.11)</span>.</li>
+  <li>실기 스택(ROS 노드, 저수준 제어, OptiTrack, 깊이 점구름 추출, 키보드)은 저장소에 없음 <span class="src">(<a href="../reference/ultra/code/docs/deploy.md"><code>docs/deploy.md</code></a>)</span>.</li>
+</ul>
+
+<h2 class="ps">9. 코드에서 확인한 것</h2>
+<ul>
+  <li><b>가중치</b>: <a href="../reference/ultra/code/ultra/weights/teacher_ultra_inference.pth"><code>ultra/weights/teacher_ultra_inference.pth</code></a> 45,944,449 B, 실제 torch zip (LFS 포인터 아님). 입력 4052 → 출력 29. 모델 카드: 원 논문 이후 OMOMO + AMASS + BONES-SEED 로 추가 학습, <b>비상업 연구·교육용</b>, 데이터 라이선스가 Apache-2.0 코드 라이선스를 대체하지 않음 <span class="src">(<a href="../reference/ultra/code/docs/teacher-model-card.md"><code>docs/teacher-model-card.md</code></a>)</span>. student 가중치는 없음.</li>
+  <li><b>G1 은 고무 손 모델</b>: <code>left_rubber_hand</code>·<code>right_rubber_hand</code> 0.17 kg, 메시 충돌체 <span class="src">(<a href="../reference/ultra/code/ultra/data/assets/g1/g1_29dof.urdf"><code>g1_29dof.urdf</code></a>)</span>.</li>
+  <li><b>논문과 다른 값</b>
+    <ul>
+      <li>DAgger 전환: 논문 500 → 1500 epoch, 코드 50 → 550 epoch.</li>
+      <li>KL 계수 상한: 논문 0.1, 증류 코드 0.2 (미세조정 코드 0.1).</li>
+      <li>상호작용 k<sub>int</sub> 20·접촉 k<sub>ct</sub> 5 (논문) 대 코드 1·1 (yaml 값 미사용).</li>
+      <li>행동 지연: 논문 "버퍼 8 스텝", 코드 0–1 스텝.</li>
+      <li>물체 질량: 논문 kg, 코드 원래 질량(밀도 25 × 부피)에 곱하는 배율. 희귀 질량은 teacher 설정 0.001–0.01, student 설정 0.05–0.15.</li>
+      <li>관절 속도 ×0.05: 논문 전 관절, 코드 허리 3 개.</li>
+      <li>teacher 관측 표 D 항목 합 3942 대 총계 4052 (코드 2026 × 2 가 맞음).</li>
+      <li>teacher 의 물체·IG 관측 보존 확률 0.3·0.1 이 yaml 과 <a href="../reference/ultra/code/ultra/utils/obs.py"><code>utils/obs.py</code></a> 주석에 있으나, Isaac Gym 코드에서 이 마스크는 student 경로에서만 적용됨 — 공개 teacher 가중치가 어느 방식으로 학습됐는지는 코드로 확정 불가. MuJoCo teacher sim2sim 은 물체·IG 를 0 으로 넣음.</li>
+    </ul>
+  </li>
+  <li><b>커리큘럼 사실상 꺼짐</b>: 스텝 카운터가 320,000 에서 시작 → 평활 벌점 램프(160,000)·밀기 램프·지연 시작(32,000)이 모두 처음부터 최대 <span class="src">(<a href="../reference/ultra/code/ultra/env/tasks/humanoid.py"><code>humanoid.py</code></a>)</span>.</li>
+  <li><b>미세조정 env 분할 주석</b> "Second half for RL" 은 낡은 주석, 실제는 3/4 <span class="src">(<a href="../reference/ultra/code/ultra/env/tasks/ultra_g1_distill_obj_v3rl.py"><code>ultra_g1_distill_obj_v3rl.py</code></a>)</span>.</li>
+  <li><b>배포 내보내기</b>: TorchScript <code>forward(obs 1496)</code> → 29 (±1), 잠재 잡음 0 (prior 평균) <span class="src">(<a href="../reference/ultra/code/ultra/export_jit.py"><code>export_jit.py</code></a>)</span>. MuJoCo 는 1/(60×17) s 스텝 17 번 = 60 Hz <span class="src">(<a href="../reference/ultra/code/ultra/sim2sim_vae.py"><code>sim2sim_vae.py</code></a>)</span>.</li>
+  <li><b>실행 순서</b>: <a href="../reference/ultra/code/scripts/train_teacher.sh"><code>train_teacher.sh</code></a> → <a href="../reference/ultra/code/scripts/train_student.sh"><code>train_student.sh</code></a> (과제 <code>UltraDistillObjV2Point</code>) → <a href="../reference/ultra/code/scripts/train_finetune.sh"><code>train_finetune.sh</code></a> (과제 <code>UltraDistillObjV3RL</code>, 증류 체크포인트에서 이어감).</li>
+  <li>라이선스: 최상위 Apache-2.0 (<a href="../reference/ultra/code/LICENSE"><code>LICENSE</code></a>), InterMimic 유래 시뮬·학습 스택 MIT (<a href="../reference/ultra/code/LICENSE-InterMimic"><code>LICENSE-InterMimic</code></a>), base_task·vec_task 는 NVIDIA 헤더 유지.</li>
+</ul>
+
+<h2 class="ps">10. 한계</h2>
+<ul>
+  <li><b>저자 명시</b>: 상자형 물체만(정교한 손 없음), 동적 보행 제한, 지각 모델을 처음부터 학습 <span class="src">(p.7)</span>; 심한 가림·마커 가림·공격적 목표에 취약 <span class="src">(p.11)</span>.</li>
+  <li><b>평가 규모가 작다</b>: MuJoCo 설정당 20 회, 실기 과제당 2 회 (총 10·26 회). 벽시계 시간·GPU 수 없음.</li>
+  <li><b>통합 비용</b>: 통합 student 67.30 % 는 추종 전용 증류 85.03 % 보다 18 pt 낮다 — 모달을 묶을수록 손해.</li>
+  <li><b>지각 격차가 실기에 남는다</b>: 같은 정책이 MoCap 80–90 % 대 자기중심 50–60 %.</li>
+  <li><b>시뮬 점구름이 이상적</b>: 물체 PCA 상자 표면에서 바로 뽑아 실제 깊이 렌더·다중 반사·손 가림 기하는 없음(구형 가림·드롭으로만 흉내).</li>
+  <li><b>하위·상위 분리 구조 아님</b>: 동결 보행 제어기 위에 상위를 얹는 경우의 명령 인터페이스 문제는 다루지 않음.</li>
+  <li>재현 시 논문 표와 코드 값이 여러 곳에서 다름 (9 절).</li>
+</ul>
+
+<h2 class="ps">11. 우리에게 가져올 것</h2>
+<div class="take"><ol>
+  <li><b>student RL 미세조정 일정 (가장 직접적)</b>: dev10 v2 student (Isaac 69 %, MuJoCo 50 %) 같은 DAgger student 위에 env 1/4 은 DAgger 손실 유지, 3/4 는 배포형 student 로 PPO. critic 만 먼저 100 epoch (actor 계수 0) → 다음 100 epoch 에 actor 0 → 1; RL 손실 × 0.2; horizon 16, minibatch 8192, mini-epoch 4, 학습률 2e-4 → 5e-5. 보상은 teacher 과제 보상을 그대로 쓰되 ULTRA 처럼 "조밀 exp(−2·d) + 진척(±0.5 자르기) + 마감 시 한 번 주는 성공 보너스 10" 구조. ULTRA 에서 이득은 ID +14–19 %, OOD +80–200 % 라 우리 MuJoCo 격차(분포 이동) 쪽에 효과를 기대 <span class="src">(추론)</span>.</li>
+  <li><b>고정 σ + bounds loss 로 std 폭발·포화 막기</b>: ULTRA 는 σ 를 학습하지 않고 log σ = −2.9 고정, entropy 0, |μ| &gt; 1 에 10·(|μ| − 1)². dev10 v2 의 "env 안 자르기에 벌점 없음 → PPO std 폭발"과 on/off 포화 출력에 대한 직접 처방. 미세조정 단계엔 그대로, 탐색이 필요한 teacher 학습엔 σ 상한(clamp)만 가져오는 것을 권장 — ULTRA teacher 는 조밀 추종 보상이라 탐색 부담이 작다 <span class="src">(추론)</span>.</li>
+  <li><b>미세조정 때 새 층은 0 초기화</b>: decoder 를 동결하고 0 초기화 FiLM(스케일 0.1)만 더해 첫 순간 정책을 바꾸지 않는다. 우리 student 미세조정·출력 확장(예: 골반 명령 추가) 때 같은 요령으로 시작 붕괴를 막을 것.</li>
+  <li><b>한 손 밀기 대책으로 "손 접촉 이탈 종료"</b>: ULTRA 는 참조상 닿아야 할 손이 20 스텝 넘게 떨어지면 종료. 우리는 참조 대신 단계 라벨로 — 조이기 단계 진입 뒤 한쪽 손바닥이 상자에서 20 스텝 (50 Hz 에서 0.4 s) 넘게 떨어지면 종료 <span class="src">(추론)</span>.</li>
+  <li><b>보조 복원 헤드</b>: student 격차를 접촉 정보 탓으로 본다면, 깊이 + 고유감각에서 상자 상대 위치·자세, 양손 접촉, "들렸는가"를 예측하는 헤드를 계수 1.0 MSE 로 (ULTRA L<sub>A</sub>·L<sub>G</sub> 계수 1.0).</li>
+  <li><b>물체 DR (조이기 미끄럼 대비)</b>: ULTRA 실기 실패 1순위가 마찰 부족 미끄럼. 상자 마찰 0.2–1.2, CoM ±5 cm, 관성 × 0.5–2.0, 반발 0–0.3 을 출발점으로, 고무 공 손–상자 마찰 하한을 0.2 근처까지 내려 조임 여유를 학습시킬 것.</li>
+  <li><b>깊이 DR 출발값 (점구름 값을 픽셀로 옮겨)</b>: 점별 0.02 m, 거리 비례 1 %, 드롭 15 %, 이상점 5 % (0.5 m 이내), 구형 가림 10 %·반지름 0.1–0.4 m, 카메라 회전 0.05 rad·위치 0.02 m, 크기 × 0.95–1.05. G1 D435 피치 47.6° 가 K1 목 아래 47° 와 거의 같아 시야 기하가 비슷하다. 표현이 바뀌었으니 26×64 깊이 영상으로 옮긴 뒤 실기 D436 과 다시 대조할 것.</li>
+  <li><b>DAgger 혼합 값</b>: 에피소드 5 % 는 끝까지 teacher, 5 % 는 ‖μ<sub>s</sub> − μ<sub>t</sub>‖² &gt; 0.5 일 때만 teacher 로 대체 — 회복 상태를 데이터에 계속 남기는 저렴한 방법.</li>
+  <li><b>평가 형식</b>: MuJoCo sim2sim 에서 ID 와 OOD(학습 범위 밖 오프셋)를 나눠 미세조정 전후를 같은 세트로. 우리 OOD 세트 예: 앞 0.30 m 초과, 옆 ±0.15 m 초과, yaw ±40° 초과 상자.</li>
+</ol></div>
+
+<h3 class="ps">가져오지 말 것</h3>
+<ul>
+  <li><b>통합 다중 모달 student</b> (transformer + 64 차원 VAE 잠재 + 모달 마스크 + 4 개 보조 손실): ULTRA 자신의 표에서 통합 67.30 % &lt; 추종 전용 85.03 %. 우리는 과제 하나·지각 하나 → CNN + MLP student 유지.</li>
+  <li><b>모캡 리타게팅·참조 추종 teacher</b>: 고무 공 손 옆면 조이기·받침대 높이 변화는 OMOMO 에 없고, 우리 teacher 는 참조 없는 과제 RL. 4052 차원 참조 잔차 관측도 해당 없음.</li>
+  <li><b>29 관절 직접 출력·다리 동시 학습</b>: 우리 하체는 dev12 동결. ULTRA 는 dev10 v2 의 "추종기가 못 따라가는 출력(허리)" 문제를 잠재 공간 출력으로 피했을 뿐 명시 명령 인터페이스의 해법은 아니다 → 우리 쪽은 dev12 학습 명령 범위(vx ±0.8, vy ±0.4, ωz ±1.0, 높이 0.335–0.77 m, pitch ±45°, roll ±10°)로 자르기 + 잘린 양 벌점.</li>
+  <li><b>바닥 도달 한계</b>: ULTRA 는 다리를 같이 학습해 생기지 않는 문제 — dev12 높이 하한 0.335 m 아래로 가져올 해법 없음.</li>
+  <li><b>체크포인트 성공률 비단조</b>: 논문에 선택 기준 없음 (해당 없음).</li>
+  <li><b>G1 PD 게인·절대 ±3 rad 행동 목표</b>: 우리 게인은 정책 번들이 정하고, 기본 자세 오프셋 없는 넓은 절대 목표는 포화 위험 — 우리는 명목 자세 기준 잔차.</li>
+  <li><b>공개 teacher 가중치</b>: G1 전용 + AMASS·BONES-SEED 조건(비상업) → K1 에 쓸 수 없음.</li>
+  <li><b>코드의 커리큘럼 블록·논문 표의 일부 값</b>: 카운터 시작값 때문에 꺼져 있고, KL·DAgger·보상 계수가 논문과 다르다 — 옮길 땐 코드 값을 직접 확인.</li>
+</ul>
+
+<p class="src">출처 표기: (p.N), (표 N), (그림 N), (식 N), 코드는 파일 경로. 논문에 없는 값은 "논문에 없음".</p>
+</main>
+</body>
+</html>

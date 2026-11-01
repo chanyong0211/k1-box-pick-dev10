@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Now You See That — 논문 상세</title>
+<link rel="stylesheet" href="paper.css">
+</head>
+<body>
+<main class="wrap">
+<a class="back" href="../index.html#catalog">← 자료 목록으로</a>
+
+<header class="ph">
+  <h1>Now You See That: 원시 깊이 픽셀로 걷는 휴머노이드 — 스테레오 깊이 잡음 모형과 잡음 불변 증류</h1>
+  <p class="orig">Now You See That: Learning End-to-End Humanoid Locomotion from Raw Pixels</p>
+  <p class="meta">Wandong Sun, Yongbo Su, Leoric Huang, … Baoshi Cao, Yang Liu, Zongwu Xie et al. · Harbin Institute of Technology, HONOR Robotics Team · 사전 공개 (arXiv v2, 2026-05) · 자체 제작 전신 휴머노이드(Orbbec Gemini 336L) + Unitree G1(RealSense D435i) 예비 시험 · 시뮬레이터 논문에 없음</p>
+  <div class="chips">
+    <a class="chip loc" href="../reference/nowyouseethat/paper.pdf">로컬 PDF</a>
+    <a class="chip" href="https://arxiv.org/abs/2602.06382" target="_blank" rel="noopener">arXiv 2602.06382</a>
+    <a class="chip gh" href="https://github.com/Hellod035/Now_You_See_That" target="_blank" rel="noopener">Hellod035/Now_You_See_That</a>
+    <span class="simv s3">유사도 3</span>
+    <span class="badge">라이선스 표기 없음 · README 만</span>
+  </div>
+</header>
+
+<div class="callout blue tldr">높이 스캔을 보는 teacher(지형 범주별 critic 3 개 · AMP 판별기 3 개)를 머리 스테레오 깊이 24×32 student 로 DAgger 식 증류하면서, 8 단계 스테레오 깊이 잡음 모형과 "깨끗/잡음 깊이 특징 일치 + 특징 KL" 보조 손실을 더해 실기풍 깊이(CycleGAN) 평가 98.9 % (BC 만 86.0 %), 실기 88/90 (p.6–8, 표 IV · VII · VIII).</div>
+
+<h2 class="ps">우리와 무엇이 같고 다른가</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>이 논문</th><th>우리 (dev10 pelvis_pick)</th></tr></thead>
+  <tbody>
+    <tr><td>하위 제어기</td><td>없음 — 정책 하나가 관절 목표 29 개를 직접 냄 (보행이 곧 과제) (p.12, 표 IX)</td><td>dev12 하체 RL, 골반 vx·vy·ωz·높이·pitch·roll 추종, 상체 11 외부 PD</td></tr>
+    <tr><td>상위 출력</td><td>해당 없음. 속도 명령 v<sup>cmd</sup><sub>xy</sub> 는 입력 (p.14)</td><td>상체 11 + 골반 명령</td></tr>
+    <tr><td>과제·물체</td><td>계단 15 cm 오르내리기, 0.45 m 틈, 0.40 m 단, 30 단 이상 긴 계단 (p.6, p.8)</td><td>바닥·받침대 0–0.3 m 박스 37×40.5×29 cm, 0.5–2 kg, 두 손 옆면 조이기</td></tr>
+    <tr><td>지각·증류</td><td>teacher = 고유감각 96 + 높이 스캔 21×33 → student = 고유감각 96 + 깊이 24×32 한 장, CNN 3 층 + GRU 256; DAgger 식, 행동 MSE + 0.1 · 잡음 불변 + 0.1 · 특징 KL (p.5–6, p.12)</td><td>특권 RL teacher → 머리 D436 깊이 26×64 × 6 장 + 고유감각, DAgger</td></tr>
+    <tr><td>카메라</td><td>스테레오 깊이 Orbbec Gemini 336L (주), RealSense D435i (G1)</td><td>스테레오 깊이 RealSense D436, 베이스라인 49.858 mm, 무효 픽셀 = 0 (<a href="../../../dev9/docs/d436_depth_reference.md">D436 기준표</a>)</td></tr>
+    <tr><td>가장 쓸모 있는 것</td><td colspan="2">스테레오 융합 구멍 모형(빼면 가장 크게 떨어짐)과 student 증류 손실 두 개. 계층 구조·박스 과제와는 무관</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">1. 문제와 과제</h2>
+<ul>
+  <li><b>두 문제</b> (p.1–2): ① sim2real 깊이 잡음이 cm 단위 정밀 과제(계단)를 망침, ② 지형마다 학습 목표가 충돌해 정책 하나로 다 배우기 어려움 (그래서 지형별 전문가 → 증류를 하던 기존 방식은 학습 비용이 큼).</li>
+  <li><b>학습 지형</b> (p.3, 그림 2): 계단 오르기, 계단 내리기, 물결, 높은 단 오르기, 높은 단 내리기, 틈. 지형마다 난이도 20 단계 커리큘럼.</li>
+  <li><b>지형 범주 K = 3</b> (p.4): ① 계단·단(오르내리기 넷), ② 틈 건너기, ③ 거친 지형.</li>
+  <li><b>평가 지형</b> (p.6): 계단 단 높이 15 cm·폭 30 cm(오르기·내리기), 틈 0.45 m, 단 0.40 m. 설정마다 병렬 env 1,024 개 × 100 에피소드.</li>
+</ul>
+
+<h2 class="ps">2. 시스템 구조</h2>
+<div class="fig">
+  <p><b>1 단계: 특권 RL (teacher)</b></p>
+  <div class="flow">
+    <span class="node">높이 스캔 21×33 (1.6 × 1.0 m, 0.05 m 간격) → MLP 인코더 128</span><span class="arr">+</span>
+    <span class="node">고유감각 96</span><span class="arr">→</span>
+    <span class="node">GRU 256 → actor MLP → 관절 목표 29</span>
+  </div>
+  <div class="flow">
+    <span class="node">지형 표지 k(s) ∈ {1, 2, 3}</span><span class="arr">→</span>
+    <span class="node">critic 머리 k 선택 (계단·틈·일반)</span><span class="arr">+</span>
+    <span class="node">AMP 판별기 k 선택 → 스타일 보상</span>
+  </div>
+  <p><b>2 단계: 시각 인지 행동 증류 (student)</b></p>
+  <div class="flow">
+    <span class="node">시뮬 좌·우 깊이 렌더</span><span class="arr">→</span>
+    <span class="node">8 단계 잡음 생성 (표 II)</span><span class="arr">→</span>
+    <span class="node">잡음 깊이 24×32 → CNN 인코더 128</span><span class="arr">+</span>
+    <span class="node">고유감각 96</span><span class="arr">→</span>
+    <span class="node">GRU 256 → actor → 관절 29</span>
+  </div>
+  <div class="flow">
+    <span class="node frozen">고정 teacher (깨끗한 높이 스캔)</span><span class="arr">→</span>
+    <span class="node">행동 평균 μ<sub>priv</sub> = 정답 라벨</span><span class="arr">→</span>
+    <span class="node">student 가 직접 굴린 상태에서 MSE (DAgger 식)</span>
+  </div>
+  <p>점선 = 고정. 배포는 student 하나가 로봇 온보드에서 50 Hz (p.8).</p>
+</div>
+<ul>
+  <li>teacher 와 student 는 외부 지각 인코더만 다르고 GRU·actor 구조는 같음. 증류 뒤 깊이 인코더 출력이 높이 스캔 임베딩 자리를 대신함 (p.6, p.12).</li>
+  <li>부록 A 는 "student CNN 이 teacher MLP 인코더 출력과 맞도록 배운다"고 쓰지만, 식 12 손실에는 잠재 일치 항이 따로 없다. 행동 손실로 간접적으로 맞춘다는 뜻인지 불명 (p.12).</li>
+  <li>student GRU·actor 를 teacher 가중치로 초기화하는지, 고정하는지는 논문에 없음.</li>
+</ul>
+
+<h2 class="ps">3. 관측과 행동</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th></th><th>teacher</th><th>student</th></tr></thead>
+  <tbody>
+    <tr><td>고유감각</td><td>96 차원 (구성 논문에 없음)</td><td>96 차원</td></tr>
+    <tr><td>외부 지각</td><td>높이 스캔 21 × 33 = 693, 로봇 중심 1.6 m × 1.0 m 창, 0.05 m 간격, 레이캐스트 (p.4)</td><td>깊이 1 × 24 × 32 (30×40 에서 위아래 3·좌우 4 px 잘라냄), [0.3, 2.0] m 로 자르고 [0, 1] 정규화 (p.4)</td></tr>
+    <tr><td>명령</td><td colspan="2">기체 기준 평면 속도 명령 v<sup>cmd</sup><sub>xy</sub> (보상 식에서; 회전 명령 유무는 논문에 없음) (p.14)</td></tr>
+    <tr><td>행동</td><td>Linear(128 → 29), 가우시안, 초기 std 1.0</td><td>Linear(128 → 29), 가우시안, <b>고정 std 0.1</b></td></tr>
+    <tr><td>AMP 관측</td><td colspan="2">Φ<sub>amp</sub> = [q<sub>rel</sub>, q̇<sub>rel</sub>, v<sup>b</sup><sub>torso</sub>, ω<sup>b</sup><sub>torso</sub>, g<sup>b</sup>, p<sup>b</sup><sub>body</sub>, q<sup>b</sup><sub>body</sub>] (몸통 기준), 지형 범주마다 따로 모은 동작 데이터 (p.5, 식 7)</td></tr>
+  </tbody>
+</table></div>
+<p>프레임 쌓기는 없고 시간 정보는 GRU 가 담는다. 행동 29 개가 무엇(관절 위치 목표인지)인지, 제어 주기 외 다른 주기는 논문에 없음.</p>
+
+<h2 class="ps">4. 보상 · 종료 · 커리큘럼</h2>
+<p>논문은 "지형별로 다른" 보상만 적고(부록 D), 공통 보상 항·가중치·종료 조건은 적지 않았다.</p>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>보상</th><th>식</th><th>쓰는 지형 (표 XV)</th></tr></thead>
+  <tbody>
+    <tr><td>지수 속도 추종 r<sup>exp</sup><sub>vel</sub></td><td>exp(−‖v<sup>cmd</sup><sub>xy</sub> − v<sup>robot</sup><sub>xy</sub>‖² / σ²), σ 값 논문에 없음 (p.14, 식 13)</td><td>계단·단, 거친 지형</td></tr>
+    <tr><td>방향 속도 추종 r<sup>dir</sup><sub>vel</sub></td><td>min(v<sup>robot</sup><sub>xy</sub> · d̂<sub>cmd</sub>, ‖v<sup>cmd</sup><sub>xy</sub>‖) / (‖v<sup>cmd</sup><sub>xy</sub>‖ + ε) — 명령보다 빨라도 벌하지 않음(틈 건너기 도움닫기) (p.15, 식 14)</td><td>틈</td></tr>
+    <tr><td>발 접촉 높이 r<sub>contact</sub></td><td>Σ<sub>f∈{L,R}</sub> 1<sup>f</sup><sub>contact</sub> · std(clip(h<sup>scan</sup><sub>f</sub>, −h<sub>max</sub>, h<sub>max</sub>)), <b>음의 가중치</b>(값 논문에 없음) — 모서리에 발을 걸치지 않게 (p.15, 식 15)</td><td>계단·단만</td></tr>
+    <tr><td>스타일 (AMP)</td><td>지형 범주별 판별기 D<sub>k</sub> 가 주는 스타일 보상 (가중치 논문에 없음) (p.5)</td><td>범주별</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li><b>다중 critic</b>: V(s) = V<sub>k(s)</sub>(s), D(s) = D<sub>k(s)</sub>(s). actor 는 해당 지형 critic 의 기울기만 받음. critic 3 개는 몸통을 공유하고 머리만 따로 (p.5, 식 6).</li>
+  <li><b>커리큘럼</b>: 지형마다 20 단계 (p.3, 그림 2). 승급·강등 규칙은 논문에 없음.</li>
+  <li><b>종료</b>: 논문에 없음. 평가 성공 = 넘어지지 않고 지형 통과 (p.6).</li>
+</ul>
+
+<h2 class="ps">5. 학습 설정 (알고리즘 · 망 · 무작위화)</h2>
+<h3 class="ps">망 (p.12–13, 표 IX · X · XI)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>부분</th><th>teacher</th><th>student</th><th>critic (다중)</th></tr></thead>
+  <tbody>
+    <tr><td>지각 인코더</td><td>MLP 693 → 512 → 256 → 128, SiLU</td><td>Conv(1→32, k3, s2, p1) → Conv(32→64) → Conv(64→128), SiLU; 평탄화 128 × 3 × 4 = 1,536 → Linear 128</td><td>teacher 와 같은 높이 스캔 MLP (공유)</td></tr>
+    <tr><td>순환</td><td colspan="3">입력 = 고유감각 96 + 인코더 128 = 224 → GRU 1 층, 은닉 256</td></tr>
+    <tr><td>MLP</td><td colspan="2">actor 256 → 512 → 256 → 128 → 29, SiLU</td><td>256 → 512 → 256 → 128, 머리 3 개(계단·틈·일반) 각 Linear(128 → 1)</td></tr>
+  </tbody>
+</table></div>
+<p>다중 critic 은 Multi-Critic Actor Learning([33])을 인용할 뿐, teacher 의 RL 알고리즘 이름(PPO 등)·하이퍼파라미터·env 수·반복 수·학습 시간은 <b>논문에 없음</b>.</p>
+
+<h3 class="ps">동역학 무작위화 (p.5, 표 III)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>범주</th><th>항목</th><th>범위</th></tr></thead>
+  <tbody>
+    <tr><td rowspan="2">접촉</td><td>정·동 마찰</td><td>(0.4, 1.2)</td></tr>
+    <tr><td>반발 계수</td><td>(0.0, 0.4)</td></tr>
+    <tr><td rowspan="3">몸체</td><td>질량 배율</td><td>(0.8, 1.2)</td></tr>
+    <tr><td>질량 중심 오프셋</td><td>±0.03 m</td></tr>
+    <tr><td>기본 관절 오프셋</td><td>±0.03 rad</td></tr>
+    <tr><td rowspan="2">구동기</td><td>armature 배율</td><td>(0.5, 1.5)</td></tr>
+    <tr><td>강성·감쇠 배율</td><td>(0.9, 1.1)</td></tr>
+    <tr><td rowspan="2">외란</td><td>밀기 속도</td><td>±1.2 m/s</td></tr>
+    <tr><td>IMU 편향</td><td>±0.04 rad/s</td></tr>
+  </tbody>
+</table></div>
+
+<h3 class="ps">깊이 잡음 파이프라인 — 이 논문의 핵심 (p.3–4, 표 II, 식 1–5)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>순서</th><th>연산</th><th>언제</th><th>값</th><th>흉내 내는 것</th></tr></thead>
+  <tbody>
+    <tr><td>준비 1</td><td>카메라 내부 파라미터</td><td>시작 때 한 번</td><td>s<sub>h</sub>, s<sub>v</sub> ∼ U(0.90, 1.10)</td><td>초점 거리 편차</td></tr>
+    <tr><td>준비 2</td><td>카메라 외부 파라미터</td><td>시작 때 한 번</td><td>Δp ∼ U(−0.05, 0.05)³ m, Δθ ∼ U(−0.10, 0.10)³ rad</td><td>장착 위치·방향 오차</td></tr>
+    <tr><td>준비 3</td><td>관측 지연</td><td>시작 때 한 번</td><td>d<sub>frame</sub> ∼ U[2, 4] 프레임 (프레임 주기 논문에 없음)</td><td>처리 지연</td></tr>
+    <tr><td>1</td><td>스테레오 융합</td><td>매 프레임</td><td>τ ∼ U[0.05, 0.20]</td><td>가림·무늬 없는 면의 구멍</td></tr>
+    <tr><td>2</td><td>무작위 합성곱</td><td>매 프레임</td><td>3×3 W, w<sub>ij</sub> ∼ U(−0.05, 0.05), d̃ = d ∗ (W + I)</td><td>렌즈 수차</td></tr>
+    <tr><td>3</td><td>깊이 의존 가우시안</td><td>매 프레임 (본문은 env 마다 계수 추출)</td><td>σ(d) = |c<sub>0</sub> + c<sub>1</sub>d + c<sub>2</sub>d²|, c<sub>i</sub> ∼ U(−0.03, 0.03)</td><td>거리 제곱으로 커지는 잡음</td></tr>
+    <tr><td>4</td><td>Perlin 잡음</td><td>매 프레임</td><td>5 옥타브, 지속 0.5: Σ<sub>o=0..4</sub> 0.5<sup>o</sup> P(2<sup>o</sup>u, 2<sup>o</sup>v); 진폭 |c<sup>p</sup><sub>0</sub> + c<sup>p</sup><sub>1</sub>d + c<sup>p</sup><sub>2</sub>d²|, c<sup>p</sup> ∼ U(−0.02, 0.02)</td><td>공간 상관 잡음</td></tr>
+    <tr><td>5</td><td>척도</td><td>매 프레임</td><td>s ∼ U(0.90, 1.10)</td><td>공장 보정 표류</td></tr>
+    <tr><td>6</td><td>픽셀 실패</td><td>매 프레임</td><td>p<sub>zero</sub> = p<sub>max</sub> = 0.001</td><td>죽은·포화 픽셀</td></tr>
+    <tr><td>7</td><td>깊이 자르기</td><td>매 프레임</td><td>[0.3, 2.0] m</td><td>유효 범위</td></tr>
+    <tr><td>8</td><td>가장자리 크롭</td><td>매 프레임</td><td>(위, 아래, 왼, 오른) = (3, 3, 4, 4) px → 24×32</td><td>가장자리 왜곡</td></tr>
+  </tbody>
+</table></div>
+<p><b>스테레오 융합의 동작</b> (식 1–2): 시뮬에서 왼·오른 시점 깊이를 둘 다 렌더 → 왼 영상 픽셀 (u, v) 마다 대응 열 u<sub>r</sub> = u − f<sub>x</sub>b / (d<sub>left</sub>(u, v) + 10<sup>−6</sup>) → |d<sub>left</sub> − d<sub>right</sub>(u<sub>r</sub>, v)| 가 τ · d<sub>left</sub> 보다 작으면 d<sub>left</sub>, 아니면 0. 즉 한쪽 눈에만 보이는 가장자리·가림 경계가 구멍이 된다.</p>
+<p>표 II 는 가우시안 계수를 "매 프레임"으로, 본문은 "env 마다 뽑아 장치 간 차이를 흉내"로 적어 서로 다르다 (p.3–4).</p>
+
+<h2 class="ps">6. teacher → student / 증류</h2>
+<pre>L_total = L_behavior + λ_denoise · L_denoise + λ_kl · L_kl,     λ_denoise = λ_kl = 0.1      (식 12)
+L_behavior = E_s ‖ μ_deploy(s) − μ_priv(s) ‖²         (student: 잡음 깊이 + 고유감각, teacher: 깨끗한 높이 스캔)
+L_denoise  = E ‖ E(d) − E(d̃) ‖²                        (같은 장면의 깨끗한 깊이 d 와 잡음 깊이 d̃ 의 인코더 출력을 같게)
+L_kl       = KL( N(μ, diag σ²) ‖ N(0, I) ),  μ·σ² = 배치 안 인코더 출력의 경험 평균·분산   (특징 붕괴 방지)</pre>
+<ul>
+  <li><b>DAgger 식</b>: student 가 환경을 굴리고 teacher 가 그 상태에 라벨을 붙임 (p.5).</li>
+  <li><b>하이퍼파라미터</b> (p.13, 표 XII): env 당 반복 스텝 800, 총 4,000 반복, One Cycle 학습률(초기 1e-3, peak/init 10, final/init 50 — 표기 그대로), 기울기 누적 10, 최대 기울기 노름 1.0, 행동 손실 1.0, λ<sub>denoise</sub> 0.1, λ<sub>kl</sub> 0.1, EMA 0.997.</li>
+  <li>student 행동 std 는 0.1 고정 (p.12, 표 X).</li>
+</ul>
+<h3 class="ps">증류 손실 절제 (p.8, 표 VII — RDT-Bench, 5 시드)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>구성</th><th>SR (%)</th><th>평균 전력 P (×10 W) ↓</th><th>PDR (%) ↓</th></tr></thead>
+  <tbody>
+    <tr class="ours"><td>전체</td><td>98.9 ± 0.4</td><td>27.7 ± 0.3</td><td>5.8 ± 0.2</td></tr>
+    <tr><td>L<sub>denoise</sub> 없음</td><td>93.4 ± 0.5</td><td>32.3 ± 0.4</td><td>13.3 ± 0.3</td></tr>
+    <tr><td>L<sub>kl</sub> 없음</td><td>96.1 ± 0.4</td><td>29.5 ± 0.3</td><td>8.9 ± 0.3</td></tr>
+    <tr><td>BC 만</td><td>86.0 ± 0.6</td><td>32.4 ± 0.4</td><td>17.7 ± 0.4</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">7. 결과</h2>
+<h3 class="ps">평가 방법: RDT-Bench (p.6, 부록 C)</h3>
+<ul>
+  <li>실기 깊이 약 2 시간(약 200,000 장, 24×32)과 시뮬 깊이로 CycleGAN 을 학습해, <b>평가 때만</b> 시뮬 깊이를 실기풍으로 바꿔 넣음. 학습 증강은 방법마다 자기 것.</li>
+  <li>번역 품질 (p.14, 표 XIII): 번역 없는 FID 67.2 → sim→real 23.4 (real→sim 21.7), KID 8.2 / 7.6 (×10<sup>−3</sup>), 순환 SSIM 0.89 / 0.91, PSNR 28.3 / 29.1 dB, LPIPS 0.12 / 0.11. FID 는 128×128 로 키워 계산.</li>
+  <li>CycleGAN 설정 (p.14, 표 XIV): 생성기 ResNet 9 블록, 판별기 PatchGAN 70×70, 첫 층 필터 64, instance norm, 배치 64, 200 epoch, Adam 2e-4 (β 0.5, 0.999), 100 epoch 뒤 선형 감소, λ<sub>cyc</sub> 10, λ<sub>idt</sub> 0.5, 학습/검증 90/10 %.</li>
+  <li>지표: 성공률 SR, 평균 기계 전력 P = (1/T) Σ ‖τ ⊙ q̇‖ (×10 W), 전력 악화율 PDR = (P<sub>RDT</sub> − P<sub>clean</sub>) / P<sub>clean</sub>.</li>
+</ul>
+<h3 class="ps">주 결과 (p.6, 표 IV — 성공률 SR %, 5 시드 평균 ± 표준편차)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>방법</th><th>계단 오르기</th><th>계단 내리기</th><th>틈</th><th>단</th><th>평균 SR</th><th>평균 P</th><th>평균 PDR</th></tr></thead>
+  <tbody>
+    <tr><td>No Augmentation (가우시안 σ 0.01 + 드롭 0.001)</td><td>45.3</td><td>42.1</td><td>44.8</td><td>39.7</td><td>43.0 ± 1.9</td><td>51.7</td><td>70.9</td></tr>
+    <tr><td>Partial Aug. (깊이 의존 잡음 + 전처리만)</td><td>61.2</td><td>57.4</td><td>59.8</td><td>53.6</td><td>58.0 ± 1.6</td><td>43.4</td><td>45.1</td></tr>
+    <tr><td>Standard DR (Humanoid Parkour 식 구멍 메우기·마스크)</td><td>65.4</td><td>62.1</td><td>63.7</td><td>56.8</td><td>62.0 ± 1.4</td><td>41.4</td><td>40.8</td></tr>
+    <tr><td>Humanoid Parkour [60]</td><td>74.2</td><td>71.5</td><td>72.8</td><td>65.5</td><td>71.0 ± 1.2</td><td>38.2</td><td>30.9</td></tr>
+    <tr><td>Direct RL (깊이로 바로 RL, 증류 없음)</td><td>57.3</td><td>53.8</td><td>55.6</td><td>49.3</td><td>54.0 ± 2.0</td><td>48.3</td><td>58.1</td></tr>
+    <tr><td>Single Critic/Disc.</td><td>85.6</td><td>82.3</td><td>83.8</td><td>76.3</td><td>82.0 ± 0.9</td><td>34.7</td><td>20.8</td></tr>
+    <tr><td>BC Only</td><td>89.2</td><td>86.5</td><td>87.8</td><td>80.5</td><td>86.0 ± 0.8</td><td>32.4</td><td>17.7</td></tr>
+    <tr class="ours"><td><b>전체 방법</b></td><td>99.2</td><td>98.6</td><td>99.3</td><td>98.4</td><td><b>98.9 ± 0.4</b></td><td>27.7</td><td>5.8</td></tr>
+  </tbody>
+</table></div>
+<h3 class="ps">잡음 단계 절제 (p.7, 표 V — 하나씩 빼기)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>구성</th><th>SR (%)</th><th>P (×10 W)</th><th>PDR (%)</th></tr></thead>
+  <tbody>
+    <tr class="ours"><td>전체</td><td>98.9 ± 0.4</td><td>27.7</td><td>5.8</td></tr>
+    <tr><td>스테레오 융합 없음</td><td><b>90.4 ± 0.6</b></td><td>34.1</td><td>17.5</td></tr>
+    <tr><td>깊이 의존 잡음 없음</td><td>92.1 ± 0.5</td><td>32.5</td><td>14.9</td></tr>
+    <tr><td>보정 불확실성 없음</td><td>94.5 ± 0.4</td><td>31.0</td><td>11.7</td></tr>
+    <tr><td>전처리 없음</td><td>95.6 ± 0.4</td><td>30.1</td><td>9.9</td></tr>
+    <tr><td>Perlin 없음</td><td>96.2 ± 0.3</td><td>29.4</td><td>8.3</td></tr>
+    <tr><td>광학 왜곡 없음</td><td>96.9 ± 0.3</td><td>28.7</td><td>7.2</td></tr>
+  </tbody>
+</table></div>
+<h3 class="ps">다중 critic·판별기 (p.7, 표 VI)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>방법</th><th>계단 SR</th><th>계단 PDR</th><th>틈 SR</th><th>틈 PDR</th><th>단 SR</th><th>단 PDR</th></tr></thead>
+  <tbody>
+    <tr><td>단일</td><td>84.0</td><td>19.2</td><td>83.8</td><td>19.2</td><td>76.3</td><td>25.4</td></tr>
+    <tr class="ours"><td>다중</td><td>98.9</td><td>5.7</td><td>99.3</td><td>4.5</td><td>98.4</td><td>7.2</td></tr>
+    <tr><td>차이</td><td>+14.9</td><td>−13.5</td><td>+15.5</td><td>−14.7</td><td>+22.1</td><td>−18.2</td></tr>
+  </tbody>
+</table></div>
+<p>본문은 "+15.1 %–+22.5 %" 라고 적어 표 값(+14.9–+22.1)과 조금 다르다 (p.7). t-SNE 로 보면 깊이 인코더 잠재가 지형 여섯 종류로 뚜렷이 갈림 (p.8, 그림 6).</p>
+
+<h2 class="ps">8. 실기 · sim2real</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>실기 시나리오 (자체 휴머노이드, 각 15 회)</th><th>성공</th><th>%</th></tr></thead>
+  <tbody>
+    <tr><td>야외 계단 오르기 (15 cm)</td><td>15/15</td><td>100.0</td></tr>
+    <tr><td>야외 계단 내리기</td><td>13/15</td><td>86.7</td></tr>
+    <tr><td>야외 단 오르기 (약 40 cm)</td><td>15/15</td><td>100.0</td></tr>
+    <tr><td>야외 단 내리기</td><td>15/15</td><td>100.0</td></tr>
+    <tr><td>긴 계단 (30 단 이상)</td><td>15/15</td><td>100.0</td></tr>
+    <tr><td>넓은 틈 (45 cm 초과)</td><td>15/15</td><td>100.0</td></tr>
+    <tr class="ours"><td>전체</td><td>88/90</td><td>97.8</td></tr>
+  </tbody>
+</table></div>
+<p class="src">(p.8, 표 VIII)</p>
+<ul>
+  <li>실기 미세조정 없음, 온보드 50 Hz (p.8).</li>
+  <li><b>실패 분석</b>: 내리기에서만 실패. 내려갈 때는 중력이 작은 오차를 되돌릴 수 없는 앞쏠림으로 키우고, 디딜 자리가 지금 단 모서리에 가려 스테레오 인공물이 가장 심한 곳이기 때문 → 가까운 거리 고해상도 깊이나 예측 발 디딤이 필요하다고 결론 (p.8).</li>
+  <li><b>다른 로봇</b>: Unitree G1 + D435i 에서 계단 오르기 15/15, 플랫폼별 적응 없음. 오르기 한 종류만 시험 (p.15, 표 XVI).</li>
+</ul>
+
+<h2 class="ps">9. 코드에서 확인한 것</h2>
+<p>해당 없음 — 로컬 <code>reference/nowyouseethat/code/</code> 가 없고, 공개 저장소는 README 만 있다(조사 노트 기준).</p>
+
+<h2 class="ps">10. 한계</h2>
+<ul>
+  <li><b>평가가 시뮬 안</b>: 표 IV–VII 의 모든 비교는 CycleGAN 실기풍 깊이를 넣은 시뮬 결과다. 실기 비교(기준선 대비)는 없고, 실기는 전체 방법 하나 90 회뿐.</li>
+  <li><b>수치가 지나치게 매끈</b>: 5 시드 표준편차가 대부분 ±0.2–2 %p 라 시드 사이 RL 편차로는 드물게 작다. 표 VI 본문·표 수치 불일치, 표 II·본문의 계수 추출 시점 불일치도 있다.</li>
+  <li><b>빠진 정보</b>: 시뮬레이터, teacher PPO 설정, env 수, 학습 시간, 공통 보상·가중치, 종료 조건, 고유감각 96 차원 구성, 지연 프레임 주기.</li>
+  <li><b>저자 언급</b>: 계단 내리기가 오르기보다 약함 (p.8).</li>
+  <li><b>우리와의 거리</b>: 조작·접촉 과제가 아니고 계층 구조도 없다. 가져올 수 있는 것은 깊이 잡음 모형과 증류 손실뿐.</li>
+</ul>
+
+<h2 class="ps">11. 우리에게 가져올 것</h2>
+<div class="take"><ol>
+  <li><b>스테레오 융합 구멍 모형</b> (빼면 98.9 → 90.4 %, 가장 큰 단일 효과). D436 도 스테레오이고 무효 픽셀을 0 으로 내므로 식 1–2 를 그대로 쓸 수 있다: 왼·오른 IR 시점(베이스라인 49.858 mm, 깊이 원점 = 왼쪽 IR — 내부 기록)에서 레이캐스트 깊이를 둘 다 만들고, 일관성 검사 |d<sub>L</sub> − d<sub>R</sub>(u<sub>r</sub>, v)| 가 τ · d<sub>L</sub> 이상이면 0. τ ∼ U[0.05, 0.20] 로 시작. 박스 옆면 가장자리·손과 박스가 겹치는 경계에 구멍이 생기는데, 바로 손바닥을 대야 하는 자리라 student 가 실기에서 보는 모양과 가까워진다(추론). 26×64 이면 레이가 시점당 1,664 개라 비용은 작다.</li>
+  <li><b>student 증류 손실에 두 항 추가</b>: L = 행동 손실 + 0.1 · ‖E(d) − E(d̃)‖² + 0.1 · KL(배치 특징 ‖ N(0, I)). 시뮬에서 깨끗한 깊이 d 를 잡음 깊이 d̃ 와 같이 렌더하면 되므로 데이터 비용이 없다. 근거: L<sub>denoise</sub> 를 빼면 98.9 → 93.4 %, 둘 다 빼면(BC 만) 86.0 %. v2 의 student 격차(teacher 90 % 대 student 69 %)를 좁힐 후보 중 가장 싼 것.</li>
+  <li><b>student 학습 세부</b>: 행동 std 0.1 고정, 최대 기울기 노름 1.0, 가중치 EMA 0.997 을 평가·배포에 사용 — 체크포인트마다 성공률이 출렁이던 v2 에 EMA 는 바로 시험할 만하다(추론).</li>
+  <li><b>지연은 "에피소드마다 한 번 뽑아 고정"하는 꼴만</b> 가져오고, 값은 우리 실측(D436 가장 최근 프레임 나이 14–45 ms, 위상 모형 — dev9 <code>depth_obs.py</code> <code>camera_model</code>)으로. NYST 의 "2–4 프레임"은 프레임 주기가 적혀 있지 않아 옮길 수 없다.</li>
+  <li><b>외부 파라미터 DR 은 공칭값을 먼저 고친 뒤</b>: NYST ±5 cm · ±0.1 rad(5.7°) 대신, 우리는 모델 장착값이 8 cm 높다는 실측(<a href="../../perception/camera_mount.py">dev10 camera_mount.py</a> 가 단일 출처)을 반영하고, 녹화마다 실측 편차(높이 +3.1–4.6 cm, 아래각 −0.1 – −1.3°, dev9)에 맞춰 ±3 cm · ±1.5° 정도로. ±0.1 rad 는 우리가 넣을 ±1.5° 의 약 4 배라 박스 거리 단서를 불필요하게 흐린다(추론).</li>
+  <li><b>평가용 "실기풍 깊이" 묶음</b>: 학습엔 쓰지 않고 체크포인트 선택·회귀 시험용으로. CycleGAN 까지 가지 않더라도, 실기 bag 의 박스 장면 깊이와 시뮬 깊이를 같은 통계(구멍 비율, 이웃 상관, 프레임 간 깜빡임)로 나란히 재는 표를 먼저 만든다.</li>
+</ol>
+<h3 class="ps">가져오지 않을 것</h3>
+<ul>
+  <li><b>잡음 계수 범위 그대로</b>: c<sub>i</sub> ∼ U(−0.03, 0.03) 은 1.0 m 에서 σ 가 보통 약 2.4 cm, 최대 9 cm(계산). D436 스테레오 이론값 σ<sub>z</sub> = z² · 0.1 px / (f · b) 는 1.0 m 에서 약 5 mm(<a href="../../../dev9/docs/d436_depth_reference.md">D436 기준표</a> §7). Gemini 336L 용 값을 옮기면 우리 박스 거리(약 0.5–1.2 m, 추론)에서 잡음을 한 자릿수 크게 넣는다. 우리 실기 녹화로 다시 잴 것(표현이 바뀌면 다시 잰다는 내부 교훈과 같음).</li>
+  <li><b>다중 critic·다중 AMP</b>: 지형마다 보상 집합이 달라서 효과가 난 장치다. 박스 높이 묶음(바닥 대 받침)마다 보상을 달리 쓰게 될 때만 다시 볼 것.</li>
+  <li><b>높이 스캔 teacher·지형 보상</b>: 우리 teacher 는 박스 자세·크기를 본다.</li>
+  <li><b>깊이 한 장 + GRU 로 바꾸기</b>: 6 장 쌓기 대 GRU 비교 절제가 논문에 없다. 지금 구조를 유지하고, 바꾸려면 따로 A/B.</li>
+  <li><b>[0.3, 2.0] m 자르기 그대로</b>: 쪼그려 가까이 갔을 때 박스 윗면까지 거리가 0.3 m 가까이 내려갈 수 있다(추론). 우리 자르기 하한은 D436 실측 최소 거리와 쪼그림 기하로 정한다.</li>
+</ul>
+</div>
+
+<p class="src">출처 표기: (p.N), (표 N), (그림 N), (식 N), 코드는 파일 경로. 논문에 없는 값은 "논문에 없음".</p>
+</main>
+</body>
+</html>

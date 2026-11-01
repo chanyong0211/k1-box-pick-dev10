@@ -1,0 +1,416 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VBC — 논문 상세</title>
+<link rel="stylesheet" href="paper.css">
+</head>
+<body>
+<main class="wrap">
+<a class="back" href="../index.html#catalog">← 자료 목록으로</a>
+
+<header class="ph">
+  <h1>VBC: 시각 입력으로 다리와 팔을 함께 쓰는 사족 로봇 물체 집기</h1>
+  <p class="orig">Visual Whole-Body Control for Legged Loco-Manipulation</p>
+  <p class="meta">Minghuan Liu*, Zixuan Chen*, Xuxin Cheng, Yandong Ji, Rizhao Qiu, Ruihan Yang, Xiaolong Wang · UC San Diego · CoRL 2024 (목록 기준 Oral) · Unitree B1 사족 + Z1 팔 (19 DoF) · Isaac Gym (PhysX)</p>
+  <div class="chips">
+    <a class="chip loc" href="../reference/vbc/paper.pdf">로컬 PDF</a>
+    <a class="chip loc" href="../reference/vbc/code/">로컬 코드</a>
+    <a class="chip" href="https://arxiv.org/abs/2403.16967" target="_blank" rel="noopener">arXiv 2403.16967</a>
+    <a class="chip gh" href="https://github.com/Ericonaldo/visual_wholebody" target="_blank" rel="noopener">Ericonaldo/visual_wholebody</a>
+    <a class="chip" href="https://wholebody-b1.github.io/" target="_blank" rel="noopener">프로젝트 페이지</a>
+    <span class="simv s5">유사도 2–5</span>
+    <span class="badge">CC BY-NC 4.0</span>
+    <span class="badge only" title="로컬 사본에 정책 체크포인트(.pt) 없음. 하위 가중치는 README 의 Google Drive 링크뿐">정책 가중치 없음</span>
+  </div>
+</header>
+
+<div class="callout blue tldr">고정한 하위 RL(다리 12 관절, 끝점 목표·전진/yaw 속도 추종, 팔은 IK) 위에 물체 형상·자세를 보는 PPO teacher(행동 9 차원)를 학습하고, 분할 깊이 2 카메라 student 로 DAgger 증류. 시뮬 7 범주 성공률 teacher 0.76–0.93 → student 0.42–0.74, 실기 14 물체 × 3 높이에서 재시도 포함 5 회 중 평균 약 3–4 회 성공(그림 근사).</div>
+
+<h2 class="ps">우리와 무엇이 같고 다른가</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>이 논문</th><th>우리 (dev10 pelvis_pick)</th></tr></thead>
+  <tbody>
+    <tr><td>하위 제어기</td><td>다리 RL 정책(PPO + ROA), 명령 = 끝점 위치·자세 6 + 전진 vx + yaw ωz. 팔은 정책이 아니라 IK(감쇠 최소제곱) 가 구동. 하위 관측에 끝점 목표가 들어가 다리가 팔 의도를 보고 몸을 굽히거나 세움. 고정 <span class="src">(p.3–4)</span></td><td class="ours">dev12 하체 RL, 골반 vx·vy·ωz·높이·pitch·roll 추종, 상체 11 외부 PD (상체 목표의 저역 통과 값과 변화율을 하위가 관측)</td></tr>
+    <tr><td>상위 출력</td><td>9 차원: 끝점 위치 증분 3 + 자세 증분 3 + 그리퍼 개폐 1 + vx + ωz <span class="src">(p.5)</span>. 몸 높이·기울기 명령은 없음(다리가 끝점 목표로부터 스스로 정함)</td><td class="ours">상체 11 + 골반 명령</td></tr>
+    <tr><td>과제·물체</td><td>YCB 33 개(7 범주) 작은 물체를 바닥–0.5 m 탁자에서 집어 들기, 집게 1 개 <span class="src">(p.6, 부록 D)</span></td><td class="ours">바닥·받침대 0–0.3 m 박스 37×40×29 cm, 0.5–2 kg, 두 손 옆면 조이기</td></tr>
+    <tr><td>지각·증류</td><td>teacher: PointNet++ 형상 잠재 1024 + 물체 자세 6 → student: 물체 분할 마스크 + 분할 깊이(머리·손목 D435 2 대), DAgger(MSE) <span class="src">(p.4–5)</span></td><td class="ours">특권 teacher → D436 깊이 student (DAgger)</td></tr>
+    <tr><td>로봇·접촉</td><td>사족 B1 + 6 DoF Z1 팔 + 부리형 집게. 접촉은 집게 닫기 하나</td><td class="ours">K1 35.7 kg 휴머노이드 23 DoF, 손가락 없는 공 손으로 박스를 양 손바닥 사이에 조임(팔 kp 22.3 / kd 1.42)</td></tr>
+    <tr><td>상위 주기</td><td>시뮬: 하위 7–8 스텝당 1 회(코드), 실기 약 6–8 Hz <span class="src">(부록 G)</span></td><td class="ours">미정. D436 최근 프레임 나이 14–45 ms</td></tr>
+    <tr><td>시작 조건</td><td>걸어가서 집기. 시뮬 학습은 탁자 중심 뒤 2.0 ± 0.2 m 에서 출발(코드), 실기는 물체가 0.5–1.5 m 앞 <span class="src">(p.6)</span></td><td class="ours">1 단계는 발끝 앞 0.04–0.30 m(걷지 않음), 접근·운반은 나중</td></tr>
+  </tbody>
+</table></div>
+<p>유사도 2–5 는 노트마다 관점이 달라서다: 동결 인터페이스 노트는 2(사족 + 끝점 명령이라 인터페이스가 다름), 시각 teacher–student 노트는 5(학습 뼈대가 같음).</p>
+
+<h2 class="ps">1. 문제와 과제</h2>
+<ul>
+  <li>목표: 다리 달린 로봇에 팔을 얹고, 다리를 이동뿐 아니라 팔의 작업 공간을 넓히는 데 함께 써서(굽히기·일어서기) 시각만으로 자율 집기 <span class="src">(p.1–2)</span>.</li>
+  <li>고정 높이 방식(기본 보행 제어기 + 팔)은 바닥 물체를 못 집는다. 다리–팔 협조가 필요 <span class="src">(그림 2, p.3)</span>.</li>
+  <li>종단간(end-to-end) 학습은 실패했다: 다리 12 관절 + 그리퍼 자세를 한 정책이 바로 내는 "Non-Hierarchical" 기준선은 모든 범주 0.0 <span class="src">(표 1, p.7)</span>.</li>
+</ul>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>구분</th><th>시뮬</th><th>실기</th></tr></thead>
+  <tbody>
+    <tr><td>물체</td><td>YCB 33 개(부록 H 는 34 개라 적음), 7 범주: 공·긴 상자·정육면체 상자·병·컵·그릇·드릴 <span class="src">(p.6, 부록 H)</span></td><td>14 개: 불규칙 4, 일상품 6, 규칙 형상 4. 거의 모두 시뮬에 없던 물체 <span class="src">(p.6)</span></td></tr>
+    <tr><td>높이</td><td>탁자 높이 U(0, 0.5) m <span class="src">(부록 D)</span></td><td>바닥 0.0 m, 상자 약 0.3 m, 탁자 약 0.5 m <span class="src">(p.6)</span></td></tr>
+    <tr><td>거리</td><td>표 1 은 탁자에서 1.0 m 출발 <span class="src">(표 1 설명)</span></td><td>한 카메라에 보이는 0.5–1.5 m, 위치·방향 무작위 <span class="src">(p.6)</span></td></tr>
+    <tr><td>성공</td><td>150 상위 스텝(약 18–24 s) 안에 들어 올림. 탁자에서 떨어지면 실패 <span class="src">(p.6)</span>. 코드 기준은 물체가 처음 높이보다 0.35 m 넘게 올라가고 집게가 물체 0.1 m 안 <span class="src">(코드)</span></td><td>놓인 면보다 0.1 m 넘게 들어 올림. 5 번 시도 넘거나 물체가 떨어지면 실패 <span class="src">(p.7–8)</span></td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">2. 시스템 구조</h2>
+<p>세 단계로 학습하고, 앞 단계는 다음 단계에서 고정한다 <span class="src">(p.2, 그림 3)</span>.</p>
+<div class="fig">
+  <div class="flow">
+    <span class="node">① 하위 다리 정책<br>PPO + ROA, 무작위 끝점·속도 명령 추종</span>
+    <span class="arr">→ 고정 →</span>
+    <span class="node">② 특권 teacher<br>PPO, 형상 잠재 1024 + 물체 자세</span>
+    <span class="arr">→ 고정 →</span>
+    <span class="node">③ 시각 student<br>DAgger, 마스크 + 분할 깊이 2 카메라</span>
+  </div>
+</div>
+<p>실행 시 흐름(실기):</p>
+<div class="fig">
+  <div class="flow">
+    <span class="node">D435 머리 + 손목<br>깊이 + TrackingSAM 마스크</span>
+    <span class="arr">→</span>
+    <span class="node">student (Jetson Orin)<br>약 6–8 Hz</span>
+    <span class="arr">→ 9 차원 →</span>
+    <span class="node">명령 후처리<br>증분 누적·자르기·작은 값 0·닫을 때 정지</span>
+    <span class="arr">→</span>
+    <span class="node frozen">하위 다리 정책 (B1 내장 컴퓨터)<br>50 Hz, 다리 12 관절 목표</span>
+    <span class="arr">+</span>
+    <span class="node frozen">IK 팔 제어<br>800 Hz, 끝점 목표 → 팔 6 관절</span>
+  </div>
+</div>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>모듈</th><th>학습/고정</th><th>주기</th><th>입력 → 출력</th></tr></thead>
+  <tbody>
+    <tr><td>하위 다리 정책</td><td>①에서 학습, ②③에서 고정</td><td>50 Hz (시뮬 dt 0.005 s × decimation 4) <span class="src">(부록 G, 코드)</span></td><td>고유감각 + 이력 10 + 명령(끝점 목표, vx, ωz) → 다리 12 관절 목표 → PD(kp 80, kd 2) <span class="src">(코드)</span></td></tr>
+    <tr><td>IK 팔 제어</td><td>학습 없음(수식)</td><td>시뮬: 물리 스텝마다(200 Hz), 실기 800 Hz <span class="src">(그림 12)</span></td><td>끝점 목표 6D → Δθ = Jᵀ(JJᵀ + λI)⁻¹e, λ = 0.05² <span class="src">(p.4, 코드)</span></td></tr>
+    <tr><td>teacher / student</td><td>②③에서 학습</td><td>시뮬: 하위 7–8 스텝마다 1 회(0.14–0.16 s) <span class="src">(코드)</span>, 논문은 6–8 회(6.25–8.33 Hz) <span class="src">(부록 D)</span></td><td>관측 → 9 차원 행동(끝점 증분 6, 그리퍼 1, vx, ωz)</td></tr>
+    <tr><td>TrackingSAM</td><td>기성 모델(SAM + AOT-Tiny)</td><td>약 10 fps <span class="src">(p.6, 부록 J)</span></td><td>RGB → 물체 마스크(시작 시 사람이 클릭)</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">3. 관측과 행동</h2>
+<h3 class="ps">3.1 하위 정책</h3>
+<ul>
+  <li><b>명령</b> b<sub>t</sub> = [p<sup>cmd</sup> 3, o<sup>cmd</sup> 3, v<sub>lin</sub>, ω<sub>yaw</sub>]. 끝점 명령은 "높이·roll·pitch 불변" 좌표(로봇 기저 위 고정 평면 원점, yaw 만 따라감)에 둔다. 그래야 다리가 몸을 낮추거나 세워도 목표가 흔들리지 않고, 팔이 닿지 않는 목표면 다리가 굽히거나 일어서게 학습된다 <span class="src">(p.3, 부록 C.1)</span>.</li>
+  <li><b>관측</b> 90 차원 <span class="src">(p.3–4)</span>: 기저 상태 5, 팔 상태 12, 다리 상태 28(관절 위치·속도 + 발 접촉), 이전 행동 12, 환경 외재 잠재 z 20, 보행 타이밍 변수(대각 보행 trot), 명령.</li>
+  <li><b>행동</b>: 다리 12 관절 목표각 → PD. 행동 스케일 [0.4, 0.45, 0.45] × 4 다리 <span class="src">(코드 <code>b1z1_config.py</code>)</span>. 팔 관절은 정책이 내지 않음(팔 출력 칸은 0 으로 덮음) <span class="src">(코드 <code>manip_loco.py</code>)</span>.</li>
+</ul>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>명령 샘플링</th><th>논문</th><th>코드</th></tr></thead>
+  <tbody>
+    <tr><td>전진 vx</td><td>U(−0.6, 0.6) m/s <span class="src">(p.3)</span></td><td>U(−0.8, 0.8), 처음 5,000 반복은 0–0.8 만. |vx| &lt; 0.2 이고 |ωz| &lt; 0.5 면 둘 다 0 <span class="src">(<code>b1z1_config.py</code>, <code>manip_loco.py</code>)</span></td></tr>
+    <tr><td>yaw ωz</td><td>U(−1.0, 1.0) rad/s</td><td>같음, 3 s 마다 다시 뽑음</td></tr>
+    <tr><td>끝점 위치</td><td>구면 좌표 l ∈ [0.4, 0.95] m, p ∈ [−π/2.5, π/3], y ∈ [−1.2, 1.2]. 현재 점 → 새 목표를 T<sub>traj</sub> 동안 선형 보간, 자기충돌·지면 충돌이면 다시 뽑음 <span class="src">(부록 C.1)</span></td><td>구 중심 = 기저 앞 0.3 m, 지면 위 0.7 m. 보간 시간 U(1, 3) s + 유지 U(0.5, 2) s, 충돌 검사 10 점</td></tr>
+    <tr><td>끝점 자세</td><td>SO(3) 균일 <span class="src">(부록 C.1)</span></td><td>r·p·y 각 ±0.5 rad 증분</td></tr>
+  </tbody>
+</table></div>
+
+<h3 class="ps">3.2 teacher 관측 (1094 차원)</h3>
+<p>논문 정의는 [z<sub>shape</sub> 1024, s<sub>obj</sub> 6, s<sub>proprio</sub> 53, v<sub>base</sub> 3, a<sub>t−1</sub> 9] <span class="src">(p.4–5)</span>. 코드에서 실제로 이어 붙이는 순서와 차원은 아래와 같고 합이 1094 다 <span class="src">(<a href="../reference/vbc/code/high-level/envs/b1z1_pickmulti.py"><code>b1z1_pickmulti.py</code></a> <code>compute_robot_observations</code>)</span>.</p>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>차원</th><th>내용</th></tr></thead>
+  <tbody>
+    <tr><td>형상 잠재</td><td>1024</td><td>사전학습 PointNet++ 특징, 물체마다 고정(<code>features.npy</code>, 1×1024 float32 로컬 확인). 정책 안에서 1024 → 512 → 128 로 압축</td></tr>
+    <tr><td>물체 위치 + 자세</td><td>3 + 3</td><td>팔 기저(몸통 앞 0.3 m, 위 0.09 m) 기준, yaw 만 돌린 좌표. z 는 절대 높이. 자세는 roll·pitch·yaw</td></tr>
+    <tr><td>끝점 위치 + 자세</td><td>3 + 3</td><td>팔 기저 기준</td></tr>
+    <tr><td>관절 위치</td><td>19</td><td>다리 12 + 팔 6 + 그리퍼 1</td></tr>
+    <tr><td>관절 속도</td><td>18</td><td>× 0.05, 그리퍼 제외</td></tr>
+    <tr><td>현재 하위 명령</td><td>3</td><td>vx, (0), ωz</td></tr>
+    <tr><td>현재 끝점 목표</td><td>3 + 3</td><td>누적된 목표 위치·자세</td></tr>
+    <tr><td>기저 선속도</td><td>3</td><td>yaw 좌표</td></tr>
+    <tr><td>이전 행동</td><td>9</td><td></td></tr>
+  </tbody>
+</table></div>
+
+<h3 class="ps">3.3 상위 행동 (9 차원)과 후처리</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>칸</th><th>의미</th><th>후처리 (코드 <a href="../reference/vbc/code/high-level/envs/b1z1_base.py"><code>b1z1_base.py</code></a> <code>pre_physics_step</code>)</th></tr></thead>
+  <tbody>
+    <tr><td>0–2</td><td>끝점 위치 증분</td><td>스텝당 ±0.02 m 로 자름(또는 tanh × 0.02). 목표에 누적: x ∈ [0, 0.7], y ∈ [−0.7, 0.7], z ∈ [−0.6, 0.6] m (팔 기저 좌표)</td></tr>
+    <tr><td>3–5</td><td>끝점 자세 증분</td><td>스텝당 ±0.06 rad, 목표에 누적</td></tr>
+    <tr><td>6</td><td>그리퍼</td><td>부호만 씀: ≥ 0 열기, &lt; 0 닫기(관절 한계값으로 바로)</td></tr>
+    <tr><td>7</td><td>전진 vx</td><td>자르기 커리큘럼 ±0.45 → ±0.38(15,000 스텝) → ±0.30(30,000) → ±0.22(45,000 이후 또는 student)</td></tr>
+    <tr><td>8</td><td>yaw ωz</td><td>±0.6 rad/s</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li><b>작은 값 0</b>(<code>--small_value_set_zero</code>): |vx| ≤ 0.15 이고 |ωz| ≤ 0.35 면 명령 전체 0. 하위 학습의 정지 구간과 맞추려는 것 <span class="src">(코드, high-level README)</span>.</li>
+  <li><b>닫을 때 정지</b>(<code>--stop_pick</code>): 그리퍼 칸이 닫기면 속도 명령 0. 논문은 "멈춘 뒤 집기" 행동을 만들어 성능을 크게 올렸다고 씀 <span class="src">(부록 C.2, PDF p.20)</span>.</li>
+  <li><b>행동 지연</b> 1 상위 스텝: teacher 는 15,000 스텝 이후, student 는 처음부터 <span class="src">(코드; 논문 부록 C.2 는 "1 스텝 지연"만)</span>.</li>
+  <li>pitch 명령 칸(<code>--pitch_control</code>)이나 떠 있는 기저(floating base) 모드는 옵션. 기본 실행은 쓰지 않음.</li>
+</ul>
+
+<h3 class="ps">3.4 student 관측</h3>
+<ul>
+  <li>이미지: 머리·손목 카메라 각각 물체 마스크 + 분할 깊이(마스크 밖 0) = 4 채널 × 최근 3 프레임 = 12 채널, 54×96(높이×너비). 논문은 "4 스텝 쌓기" <span class="src">(부록 C.2)</span>, 코드는 <code>camera_history_len = 3</code> <span class="src">(코드)</span>.</li>
+  <li>고유감각: teacher 관측에서 형상 잠재와 물체 상태를 뺀 61 차원(관절 위치·속도, 끝점, 명령, 끝점 목표, 기저 속도, 이전 행동) <span class="src">(<a href="../reference/vbc/code/high-level/train_multi_bc_deter.py"><code>train_multi_bc_deter.py</code></a>)</span>.</li>
+  <li>출력: teacher 와 같은 9 차원(+ 선택형 "들렸는가" 1 칸, 6 절 참고).</li>
+</ul>
+
+<h2 class="ps">4. 보상 · 종료 · 커리큘럼</h2>
+<h3 class="ps">4.1 상위(teacher) 보상</h3>
+<p>단계 보상 3 개(접근 → 진행 → 완료, 한 시점엔 한 단계만) + 보조 보상 <span class="src">(부록 C.2, 표 3)</span>. 논문 식과 코드 식이 다르다. 실제 학습은 코드 쪽이다.</p>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>가중치</th><th>논문 식 (표 3)</th><th>코드 식 (<a href="../reference/vbc/code/high-level/envs/reward_vec_task.py"><code>reward_vec_task.py</code></a>, <a href="../reference/vbc/code/high-level/data/cfg/b1z1_pickmulti.yaml"><code>b1z1_pickmulti.yaml</code></a>)</th></tr></thead>
+  <tbody>
+    <tr><td>approaching</td><td>0.5</td><td>min(d<sub>closest</sub> − d, 0)</td><td>tanh(10 · clip(d<sub>best</sub> − d, 0, 10)), d = 집게–물체 거리, d<sub>best</sub> 갱신. 들린 뒤엔 0. 새로 가까워질 때만 양수</td></tr>
+    <tr><td>lifting (progress)</td><td>1.0</td><td>min(d − d<sub>highest</sub>, 0)</td><td>tanh(10 · clip(h − h<sub>best</sub>, 0, 10)), h = 물체 상승 높이. 성공 높이 넘으면 0</td></tr>
+    <tr><td>pick_up (completion)</td><td>3.5</td><td>1(완료)</td><td>들린 상태(상승 &gt; 0.35 m 이고 집게–물체 &lt; 0.1 m)면 매 스텝 1. 20,000 스텝 전엔 들면 바로 리셋, 이후엔 25 스텝 유지하면 리셋</td></tr>
+    <tr><td>acc_penalty</td><td>−0.001</td><td>1 − exp(−‖q̇<sub>t−1</sub> − q̇<sub>t</sub>‖)</td><td>같은 꼴, 팔 6 관절 속도 차 / dt</td></tr>
+    <tr><td>command (논문 r<sub>cmd</sub>)</td><td>1.0</td><td>−‖v<sub>x</sub>*‖ + 0.25 exp(−‖v<sub>x</sub>*‖)</td><td>둘로 나뉨: command_penalty −1.0 × |vx|, command_reward 0.25 × exp(−|vx|). 둘 다 팔 기저–물체 수평 거리 &lt; 0.6 m 일 때만, 30,000 스텝 이후만</td></tr>
+    <tr><td>action_rate</td><td>−0.001</td><td>1 − exp(−‖a<sub>t−1</sub> − a<sub>t</sub>‖)</td><td>‖Δ(vx, ωz)‖ (속도 칸만, exp 없음)</td></tr>
+    <tr><td>ee_orn</td><td>0.01</td><td>cos(d<sub>obj</sub>, d<sub>ee</sub>)</td><td>집게 x 축과 물체 방향의 코사인</td></tr>
+    <tr><td>base_dir</td><td>0.25</td><td>cos(d<sub>obj</sub>, d<sub>base</sub>)</td><td>코드에서 물체 방향 벡터의 x·y 를 0 으로 지워(<code>obj_dir[:,:2] = 0</code>) 수평 기저 방향과의 코사인이 늘 0. 사실상 꺼진 항(버그로 보임)</td></tr>
+    <tr><td>base_approaching</td><td>0.01</td><td>1 + tanh(−10 ‖x<sub>obj</sub> − x<sub>base</sub> − 0.6‖)</td><td>1 + tanh(−10 · |d<sub>base–obj</sub> − 0.6|)</td></tr>
+    <tr><td>standpick</td><td>0.25</td><td>논문에 없음</td><td>기저–물체 &lt; 0.6 m 이고 vx &lt; 0.15 면 1, 30,000 스텝 이후</td></tr>
+    <tr><td>grasp_base_height</td><td>0.5</td><td>논문에 없음</td><td>들린 동안만 exp(−|h<sub>base</sub> − 0.55|)</td></tr>
+  </tbody>
+</table></div>
+
+<h3 class="ps">4.2 종료 (코드)</h3>
+<ul>
+  <li>|roll| &gt; 0.8 rad, |pitch| &gt; 0.8 rad, 기저 높이 &lt; 0.1 m, 150 상위 스텝 초과 <span class="src">(<code>b1z1_base.py</code> <code>check_termination</code>)</span>.</li>
+  <li>IK 실패: 끝점 목표와 실제 끝점의 z 차이 &gt; 0.2 m.</li>
+  <li>물체가 탁자 윗면 아래로 떨어짐, 들었다가 놓침(들린 상태 → 안 들린 상태).</li>
+  <li>카메라를 켠 학습(student)에서만: 로봇 정면과 물체 방향의 내적 &lt; 0(물체가 뒤로), 머리 카메라가 탁자 중심을 지남 <span class="src">(<code>b1z1_pickmulti.py</code>)</span>.</li>
+  <li>종료 벌점은 없음(보상 표에 termination 항 없음).</li>
+</ul>
+
+<h3 class="ps">4.3 커리큘럼과 학습 요령 (부록 C.2, PDF p.19–20)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>요령</th><th>논문</th><th>코드</th></tr></thead>
+  <tbody>
+    <tr><td>명령 자르기 커리큘럼</td><td>전진 속도 상한을 점점 줄임(큰 속도는 수렴을 빠르게, 작은 속도는 실기 안전)</td><td>0.45 → 0.38 → 0.30 → 0.22 m/s (15k / 30k / 45k 스텝)</td></tr>
+    <tr><td>보상 커리큘럼</td><td>r<sub>cmd</sub> 는 집기를 익힌 뒤 추가</td><td>30,000 스텝부터</td></tr>
+    <tr><td>물체 위치 무작위 변경</td><td>매 스텝 10 % 확률로 물체 위치·자세를 바꿔 재시도 행동 유도</td><td><code>--obj_move_prob</code> 기본 0.0, README 학습 명령에 없음</td></tr>
+    <tr><td>닫을 때 정지</td><td>그리퍼 닫기면 속도 0</td><td><code>--stop_pick</code> (README 명령에 있음)</td></tr>
+    <tr><td>행동 지연</td><td>1 스텝</td><td>teacher 15,000 스텝 이후, student 항상</td></tr>
+    <tr><td>성공 판정</td><td>논문에 없음</td><td>20,000 스텝 이후엔 25 스텝 유지해야 성공 리셋</td></tr>
+  </tbody>
+</table></div>
+
+<h3 class="ps">4.4 하위 정책 보상 (논문 표 2 와 코드)</h3>
+<p>논문 표 2 와 코드 설정의 가중치가 크게 다르다. 코드에는 항이 훨씬 많다 <span class="src">(부록 표 2, PDF p.16; <a href="../reference/vbc/code/low-level/legged_gym/envs/manip_loco/b1z1_config.py"><code>b1z1_config.py</code></a>)</span>.</p>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>논문 표 2</th><th>코드</th></tr></thead>
+  <tbody>
+    <tr><td>선속도 추종</td><td>1 · ϕ(v* − v), ϕ = exp(−‖x‖²/0.25)</td><td>tracking_lin_vel_max 2.0 (min(v, v*)/v*, 정지 명령이면 exp(−|v|))</td></tr>
+    <tr><td>yaw 추종</td><td>0.5</td><td>0.5</td></tr>
+    <tr><td>xy 각속도</td><td>0.05 · (−‖ω<sub>xy</sub>‖²)</td><td>−0.2</td></tr>
+    <tr><td>토크</td><td>0.00002 · (−‖τ‖²)</td><td>−2.5e-5</td></tr>
+    <tr><td>행동 변화</td><td>0.25</td><td>−0.015</td></tr>
+    <tr><td>충돌</td><td>0.001 · (−n)</td><td>−10 (허벅지·몸통·종아리)</td></tr>
+    <tr><td>발 체공 시간</td><td>2 · Σ(t<sub>air</sub> − 0.5)</td><td>2.0</td></tr>
+    <tr><td>기본 자세 오차</td><td>1 · exp(−0.05‖q − q<sub>default</sub>‖)</td><td>stand_still 1.0 / walking_dof 1.5 (정지·보행 나눔)</td></tr>
+    <tr><td>z 속도</td><td>−1.5</td><td>−1.5</td></tr>
+    <tr><td>기저 높이</td><td>−5.0</td><td>−5.0 (목표 0.55 m)</td></tr>
+    <tr><td>보행 위상(힘·속도)</td><td>−0.2 / −0.2</td><td>−2.0 / −2.0</td></tr>
+    <tr><td>코드에만 있는 항</td><td>논문에 없음</td><td>alive 1.0, roll −2, feet_height 1.0, dof_acc −7.5e-7, dof_pos_limits −10, hip_pos −0.3, work −0.003, feet_jerk −0.0002, feet_drag −0.08, feet_contact_forces −0.001, delta_torques −1e-7</td></tr>
+    <tr><td>팔(끝점) 보상</td><td>논문에 없음</td><td>tracking_ee_world 0.8 · exp(−2 · Σ|p<sub>ee</sub> − p<sub>goal</sub>|). 다리 보상과 별도 가치 함수로 두고 advantage 를 섞음(혼합비 0 → 1.0, 3,000 반복에 걸쳐) <span class="src">(<a href="../reference/vbc/code/third_party/rsl_rl/rsl_rl/algorithms/ppo.py"><code>rsl_rl/algorithms/ppo.py</code></a>)</span></td></tr>
+  </tbody>
+</table></div>
+<p>하위 종료: |roll| 또는 |pitch| &gt; 0.8 rad, 높이 &lt; 0.1 m, 10 s 시간 초과 <span class="src">(코드)</span>.</p>
+
+<h2 class="ps">5. 학습 설정 (알고리즘 · 망 · 무작위화)</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>① 하위</th><th>② teacher</th><th>③ student</th></tr></thead>
+  <tbody>
+    <tr><td>알고리즘</td><td>PPO + ROA (rsl_rl 개조판)</td><td>PPO (skrl)</td><td>DAgger (skrl 기반 자체 구현, MSE)</td></tr>
+    <tr><td>env 수</td><td>6,144 <span class="src">(코드)</span></td><td>10,240 <span class="src">(부록 C.2)</span></td><td>240 <span class="src">(부록 C.2)</span>. 코드는 카메라 모드 full 이면 400, 깊이 증강 300, seperate 240</td></tr>
+    <tr><td>길이</td><td>최대 45,000 반복 × 24 스텝</td><td>60,000 스텝(README "최대") = 2,500 갱신</td><td>60,000 스텝, 처음 4,000 스텝(깊이 증강 시 8,000)은 teacher 행동으로 진행</td></tr>
+    <tr><td>시간</td><td>논문에 없음</td><td>RTX 4090 1 장 약 36 h</td><td>약 48 h</td></tr>
+    <tr><td>망</td><td>논문: 3 층 MLP 128 ELU, 특권 인코더 2 층 MLP(은닉 64), 적응 모듈 2 층 conv. 코드: 공통 128 + 다리 머리 128-128 + 팔 머리 128-128, 특권 18 → 64 → 20</td><td>형상 1024 → 512 → 128, 정책 MLP 512-256-128 ELU, 가치망 같은 구조. log σ 는 상태 무관 매개변수, [−20, 2] 로 자름</td><td>CNN: conv 5×5 32 → maxpool 2 → ELU → conv 3×3 64 → ELU → FC 128 → 64. 고유감각 61 + 64 → GRU 1 층 128(시퀀스 16) → 64 → 9. 논문은 "2 층 MLP 은닉 64"(코드 <code>--mlp_stu</code> 옵션)</td></tr>
+    <tr><td>학습률</td><td>2e-4 고정</td><td>5e-4, KL 적응(목표 0.008)</td><td>5e-5 (Adam), 스케줄 없음</td></tr>
+    <tr><td>배치</td><td>5 epoch × 4 미니배치</td><td>롤아웃 24, 5 epoch × 6 미니배치</td><td>롤아웃 24, 5 epoch × 3 미니배치</td></tr>
+    <tr><td>기타</td><td>γ 0.99, λ 0.95, clip 0.2, 엔트로피 0, grad 1.0. 최소 σ 하한 다리 [0.15, 0.25, 0.25]. ROA 계수 0 → 0.1 (3,000 → 10,000 반복), 적응 모듈 20 반복마다. 10,000 반복 뒤 행동 1 스텝 지연</td><td>γ 0.99, λ 0.95, clip 0.2, 가치 clip 0.2, 엔트로피 0, grad 1.0, 관측·가치 RunningStandardScaler, seed 43</td><td>grad 1.0, 엔트로피 0</td></tr>
+  </tbody>
+</table></div>
+<p>근거: <a href="../reference/vbc/code/low-level/legged_gym/envs/manip_loco/b1z1_config.py"><code>b1z1_config.py</code></a>, <a href="../reference/vbc/code/high-level/train_multistate.py"><code>train_multistate.py</code></a>, <a href="../reference/vbc/code/high-level/train_multi_bc_deter.py"><code>train_multi_bc_deter.py</code></a>, <a href="../reference/vbc/code/high-level/modules/feature_extractor.py"><code>feature_extractor.py</code></a>, 부록 C.1–C.2.</p>
+
+<h3 class="ps">5.1 ROA (하위의 sim2real 적응)</h3>
+<p>1 단계에서 특권 정보(마찰·질량 등) e 를 인코더 μ 로 잠재 z<sup>μ</sup> 로 만들어 정책에 넣고, 2 단계에서 최근 이력만 보는 적응 모듈 ϕ 가 z<sup>μ</sup> 를 흉내 낸다. 손실 L = −L<sub>PPO</sub> + λ‖z<sup>μ</sup> − sg[z<sup>ϕ</sup>]‖² + ‖sg[z<sup>μ</sup>] − z<sup>ϕ</sup>‖² (λ = 0 이면 RMA) <span class="src">(식 3, 부록 C.1, PDF p.18)</span>.</p>
+
+<h3 class="ps">5.2 도메인 무작위화</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>대상</th><th>논문 (부록 D)</th><th>코드 값</th></tr></thead>
+  <tbody>
+    <tr><td>지형</td><td>평지·거친 지형</td><td>하위: 거친 평지만(높이 0–0.1 m). 상위: 평면</td></tr>
+    <tr><td>마찰</td><td>로봇–지면</td><td>하위 0.3–3.0, 상위 0.5–3.0(128 구간). 물체 2.0, 탁자 0.5 고정</td></tr>
+    <tr><td>질량·질량중심</td><td>몸통·팔 질량, 질량중심</td><td>몸통 +0–15 kg, 질량중심 하위 ±0.15 m / 상위 ±0.1 m, 그리퍼 +0–0.1 kg</td></tr>
+    <tr><td>모터 세기</td><td>있음</td><td>다리·팔 0.7–1.3 배</td></tr>
+    <tr><td>밀기</td><td>논문에 없음</td><td>하위: 8 s 마다 최대 0.5 m/s</td></tr>
+    <tr><td>상위 주기</td><td>하위 6–8 회 호출(0.12–0.16 s)</td><td>하위 7–8 회(<code>controlFrequencyLow</code> 8 → randint(7, 8))</td></tr>
+    <tr><td>팔 Kp·Kd</td><td>무작위</td><td>팔 kp 400 / kd 40 고정(무작위 줄은 주석 처리), 그리퍼 kp U(2, 5)만 무작위</td></tr>
+    <tr><td>탁자 높이</td><td>0–0.5 m</td><td>U(0, 0.5) m, 탁자 0.6×1.0×0.25 m</td></tr>
+    <tr><td>로봇 초기</td><td>위치·자세</td><td>탁자 중심 뒤 2.0 m ±0.2 m, yaw ±0.8 rad(카메라 학습 땐 ±0.16 rad)</td></tr>
+    <tr><td>물체 초기</td><td>위치·자세</td><td>탁자 위 x ±0.15, y ±0.1 m, yaw ±3.15 rad</td></tr>
+    <tr><td>카메라 (student)</td><td>위치·회전 소폭, 지연(실측 기반)</td><td>머리 위치 ±1 cm, pitch ±0.087 rad(5°); 손목 위치 ±0.5 cm, yaw ±0.087 rad. 지연: 상위 스텝 끝보다 3–4 하위 스텝(0.06–0.08 s) 전 영상을 씀</td></tr>
+  </tbody>
+</table></div>
+
+<h3 class="ps">5.3 깊이 전처리와 증강 (코드)</h3>
+<ul>
+  <li>2 m 넘으면 2 m, 하한보다 가까우면 0, ÷2 로 정규화 후 마스크를 곱함. 하한 기본 0.15 m, <code>--rand_depth_clip</code> 이면 매 스텝 U(0.18, 0.25) m. 논문은 "최소 0.2 m 로 자름" <span class="src">(p.5)</span>.</li>
+  <li><code>--depth_random</code> 이면: RandomErasing 2 번(p 0.4, 면적 2–10 %, 값 −2 와 0), GaussianBlur(커널 5, σ 0.01–0.1), 가우시안 잡음 σ 0.005, 회전 ±5° <span class="src">(<code>b1z1_base.py</code>)</span>.</li>
+  <li>실기: 구멍 메우기 + 자르기 후 TrackingSAM 마스크 <span class="src">(p.6, 부록 G)</span>.</li>
+</ul>
+
+<h2 class="ps">6. teacher → student / 증류</h2>
+<div class="fig">
+  <div class="flow">
+    <span class="node">env 스텝<br>처음 4,000 스텝은 teacher 행동, 이후 student 행동으로 굴림</span>
+    <span class="arr">→</span>
+    <span class="node frozen">teacher(결정적)<br>특권 관측으로 행동 라벨</span>
+    <span class="arr">→</span>
+    <span class="node">버퍼 24 스텝<br>student 관측 · teacher 행동</span>
+    <span class="arr">→</span>
+    <span class="node">MSE 회귀<br>5 epoch × 3 미니배치</span>
+  </div>
+</div>
+<ul>
+  <li>DAgger: teacher 가 초기 전이를 모아 데우고, 이후 student 가 굴린 상태에서 teacher 에게 교정을 받는다. 시각 student 를 RL 로 바로 학습하는 것보다 훨씬 효율적이었다고 씀 <span class="src">(p.5)</span>.</li>
+  <li>손실은 9 차원 행동 전체 MSE <span class="src">(부록 B.3, <a href="../reference/vbc/code/high-level/learning/dagger_rnn.py"><code>dagger_rnn.py</code></a>)</span>. student RL 미세조정은 없음.</li>
+  <li>"들렸는가" 보조 출력(<code>--pred_success</code>): 행동에 1 칸을 더해 lifted_now(들림 +1, 아님 −1)를 MSE(가중 1)로 예측. MLP student(<a href="../reference/vbc/code/high-level/learning/dagger.py"><code>dagger.py</code></a>)에만 구현돼 있고, 기본 GRU student 와 README 명령에는 없음. 논문에도 없어 효과는 보고되지 않음.</li>
+  <li>비대칭 PPO(시각 actor + 특권 critic, <a href="../reference/vbc/code/high-level/train_multistate_asym.py"><code>train_multistate_asym.py</code></a>)도 시도했지만 깊이 렌더 때문에 env 를 많이 못 띄워 비효율, teacher–student 와 비교가 안 됐다 <span class="src">(high-level README)</span>.</li>
+  <li>격차의 원인(논문 설명): 첫 시도에서 건드려 물체가 쓰러지면 시각만으로 150 스텝 안에 다시 잡기 어렵다. 긴 상자는 형상 특징 없이 자세 판단이 어려워 가장 나쁨 <span class="src">(p.7)</span>.</li>
+</ul>
+
+<h2 class="ps">7. 결과</h2>
+<h3 class="ps">7.1 시뮬 범주별 성공률 (표 1, p.7)</h3>
+<p>물체마다 300 에피소드 넘게, 시드 3 개. 탁자에서 1.0 m 출발.</p>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>정책</th><th>공</th><th>긴 상자</th><th>정육면체 상자</th><th>병</th><th>컵</th><th>그릇</th><th>드릴</th></tr></thead>
+  <tbody>
+    <tr><td>teacher · 떠 있는 기저</td><td>0.63</td><td>0.20</td><td>0.73</td><td>0.36</td><td>0.71</td><td>0.71</td><td>0.07</td></tr>
+    <tr><td>teacher · 형상 특징 없음</td><td>0.96</td><td>0.74</td><td>0.96</td><td>0.82</td><td>0.84</td><td>0.55</td><td>0.74</td></tr>
+    <tr><td>teacher · VBC</td><td>0.89</td><td>0.93</td><td>81.87*</td><td>0.76</td><td>0.89</td><td>0.78</td><td>0.84</td></tr>
+    <tr><td>student · 계층 없음</td><td>0.0</td><td>0.0</td><td>0.0</td><td>0.0</td><td>0.0</td><td>0.0</td><td>0.0</td></tr>
+    <tr><td>student · 떠 있는 기저</td><td>0.39</td><td>0.06</td><td>0.42</td><td>0.15</td><td>0.38</td><td>0.44</td><td>0.03</td></tr>
+    <tr><td>student · VBC</td><td>0.67</td><td>0.42</td><td>0.74</td><td>0.55</td><td>0.74</td><td>0.52</td><td>0.47</td></tr>
+  </tbody>
+</table></div>
+<p>* 논문 표에 "81.87 ± 0.02" 로 인쇄됨(0.8187 의 오기로 보임). 표준편차는 0.00–0.12. "떠 있는 기저" = 이동은 완벽하지만 몸 높이 0.4–0.55 m 만 되고 다리–팔 협조가 없는 기준선 <span class="src">(p.6)</span>.</p>
+<ul>
+  <li>VBC teacher 는 7 범주 중 4 범주에서 최고. 형상 특징은 규칙 물체에선 오히려 약간 손해, 불규칙 물체(긴 상자·컵·그릇·드릴)에선 크게 이득 <span class="src">(p.7)</span>.</li>
+  <li>teacher → student 손실: 긴 상자 0.93 → 0.42 가 가장 크고, 정육면체 상자 약 0.82 → 0.74 가 가장 작다.</li>
+</ul>
+
+<h3 class="ps">7.2 높이별 student 성공률 (그림 6, p.6, 그림에서 읽은 근사값)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>탁자 높이 (m)</th><th>0.0</th><th>0.1</th><th>0.2</th><th>0.3</th><th>0.4</th><th>0.5</th><th>0.6</th></tr></thead>
+  <tbody>
+    <tr><td>VBC student 평균</td><td>약 0.35</td><td>약 0.52</td><td>약 0.59</td><td>약 0.60</td><td>약 0.62</td><td>약 0.56</td><td>약 0.54</td></tr>
+    <tr><td>떠 있는 기저 student</td><td>약 0.0</td><td>약 0.01</td><td>약 0.27</td><td>약 0.47</td><td>약 0.48</td><td>약 0.42</td><td>약 0.19</td></tr>
+  </tbody>
+</table></div>
+<p>바닥(0.0 m)이 VBC 에서도 가장 낮다. 다리–팔 협조가 없으면 바닥·0.1 m 는 거의 0 이다.</p>
+
+<h3 class="ps">7.3 끝점 + IK 대 관절 예측 (표 4, 부록 E, PDF p.21)</h3>
+<p>무작위 끝점 목표 도달 시험(2 cm 안이면 도달), 시드 3 × 100 에피소드. 비교 대상은 DeepWBC 식으로 하위 정책이 팔 관절을 직접 내는 방식.</p>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>방식</th><th>상태</th><th>위치 오차 평균 (최소–최대) m</th><th>자세 오차 평균 (최소–최대) rad</th></tr></thead>
+  <tbody>
+    <tr><td>관절 예측 [8]</td><td>서 있음</td><td>0.236 (0.146–0.325)</td><td>1.154 (0.616–1.686)</td></tr>
+    <tr><td>끝점 예측 + IK</td><td>서 있음</td><td>0.047 (0.027–0.067)</td><td>0.850 (0.160–2.269)</td></tr>
+    <tr><td>관절 예측 [8]</td><td>걷는 중</td><td>0.414 (0.182–0.558)</td><td>2.015 (1.165–3.198)</td></tr>
+    <tr><td>끝점 예측 + IK</td><td>걷는 중</td><td>0.029 (0.008–0.050)</td><td>0.332 (0.071–0.743)</td></tr>
+  </tbody>
+</table></div>
+
+<h3 class="ps">7.4 실기 (그림 7, p.7, 그림에서 읽은 근사값)</h3>
+<p>14 물체 × 3 높이 × 리셋 5 회. 한 리셋에서 최대 5 번 시도(재시도 4 번 허용). y 축 = 리셋 5 회 중 평균 성공 횟수.</p>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>높이</th><th>VBC 첫 시도</th><th>VBC 5 번 시도까지</th><th>기준선(원격조종 기본 보행 + 고정 다리 상위 정책) 5 번까지</th></tr></thead>
+  <tbody>
+    <tr><td>바닥 0.0 m</td><td>약 1.6 / 5</td><td>약 3.1 / 5</td><td>0</td></tr>
+    <tr><td>상자 약 0.3 m</td><td>약 1.5 / 5</td><td>약 4.2 / 5</td><td>0</td></tr>
+    <tr><td>탁자 약 0.5 m</td><td>약 1.2 / 5</td><td>약 3.1 / 5</td><td>약 2.3 / 5</td></tr>
+  </tbody>
+</table></div>
+<p>기준선은 기본 제어기가 높이를 0.47–0.55 m 로 고정해 0.0·0.3 m 에서 실패 <span class="src">(p.8)</span>. 재시도 행동이 시뮬에서 자연스럽게 생겨 성공 횟수를 올렸다.</p>
+
+<h2 class="ps">8. 실기 · sim2real</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>내용</th></tr></thead>
+  <tbody>
+    <tr><td>하드웨어</td><td>B1 + 등에 얹은 Z1(6 DoF + 집게 1), RealSense D435 2 대(머리, 집게 근처), Jetson Orin 64 GB 추가. 모두 B1 배터리, 테더 없음 <span class="src">(p.5, 부록 G)</span></td></tr>
+    <tr><td>프로세스</td><td>저수준 쪽 3 프로세스(보행 50 Hz, 팔 800 Hz, goal receiver). goal receiver 가 0.1 s 마다 HTTP 로 상위 서버에 요청, 응답 올 때까지 옛 명령 유지 <span class="src">(그림 12, 부록 G)</span></td></tr>
+    <tr><td>실행 시간 (표 5)</td><td>SAM 클릭 1.369 s, AOT 초기화 0.323 s, AOT 추적 0.083 s, 전처리 0.031 s, 상위 추론 0.003 s (Orin), 하위 추론 0.011 s (Xavier NX). 상위 주기는 6–8 Hz 로 제한됨</td></tr>
+    <tr><td>마스크</td><td>매 리셋마다 사람이 한 카메라에서 물체를 클릭 → TrackingSAM 이 두 시점으로 퍼뜨려 약 10 fps 로 추적 <span class="src">(p.6, 부록 J)</span></td></tr>
+    <tr><td>회복</td><td>몸을 돌리거나 기울여 생기는 짧은 추적 손실에서는 회복 <span class="src">(p.8)</span></td></tr>
+  </tbody>
+</table></div>
+<h3 class="ps">실패 원인 (부록 I, PDF p.22–23)</h3>
+<ol>
+  <li><b>시각 입력 불안정</b>: TrackingSAM 이 카메라 흔들림·가림으로 추적을 잃거나 비슷한 색에 헷갈림. 실기 실패의 가장 흔한 원인.</li>
+  <li><b>누적 오차</b>: 계층 구조라 모듈마다 정밀해야 함.</li>
+  <li><b>부정확한 깊이</b>: 반사 물체에서 특히.</li>
+  <li><b>나쁜 집게</b>: 부리형 집게가 물체를 밀어냄.</li>
+</ol>
+
+<h2 class="ps">9. 코드에서 확인한 것</h2>
+<ul>
+  <li><b>구성</b>: <a href="../reference/vbc/code/low-level/"><code>low-level/</code></a>(legged_gym + rsl_rl 개조), <a href="../reference/vbc/code/high-level/"><code>high-level/</code></a>(Isaac Gym 직접 + skrl). 사용법 <a href="../reference/vbc/code/high-level/README.md"><code>high-level/README.md</code></a>.</li>
+  <li><b>가중치 없음</b>: 로컬 사본에 .pt 체크포인트 없음. 하위 가중치는 <a href="../reference/vbc/code/README.md"><code>README.md</code></a> 의 Google Drive 링크뿐이고, 설정 파일의 하위 경로(<code>publiccheckrollrew_42000.pt</code>)는 저자 PC 절대 경로. LFS 포인터 파일은 없음(메시·<code>features.npy</code> 는 실제 파일). 물체 폴더 39 개 중 설정에 쓰는 것은 33 개.</li>
+  <li><b>팔은 하위 정책 밖</b>: 하위 학습 env 에서도 상위 env 에서도 정책의 팔 출력은 0 으로 덮고 팔은 IK 위치 목표(kp 400, kd 40)로 구동 <span class="src">(<a href="../reference/vbc/code/low-level/legged_gym/envs/manip_loco/manip_loco.py"><code>manip_loco.py</code></a> <code>step</code>, <code>b1z1_base.py</code> <code>_compute_torques</code>)</span>. 상위 env 의 하위 관측에는 끝점 목표 위치만 넣고 자세 칸은 0.</li>
+  <li><b>행동 자르기에 벌점 없음</b>: 끝점 증분 ±0.02 m, 자세 ±0.06 rad, vx 커리큘럼, ωz ±0.6 은 env 안에서 조용히 자르고, 잘린 양 벌점은 없다. σ 폭주는 skrl 의 log σ 상한 2(σ ≤ 7.39)로만 묶임. <code>--use_tanh</code>(TanhTransform) 옵션이 있으나 README 명령엔 없음.</li>
+  <li><b>논문과 다른 곳</b>:
+    <ul>
+      <li>보상 식(4.1 절)과 하위 가중치(4.4 절)가 논문 표와 다름. standpick 0.25, grasp_base_height 0.5 는 논문에 없음. base_dir 0.25 는 코드상 늘 0.</li>
+      <li>물체 10 % 이동: 코드 기본 0, README 명령에 없음.</li>
+      <li>팔 Kp·Kd 무작위: 코드는 kp 400 고정.</li>
+      <li>상위 주기: 논문 6–8 회, 코드 7–8 회.</li>
+      <li>student: 논문 4 프레임 + 2 층 MLP 64, 코드 기본 3 프레임 + GRU 128.</li>
+      <li>student env: 논문 240, 코드 full 모드 400.</li>
+      <li>하위 vx 범위: 논문 ±0.6, 코드 ±0.8.</li>
+    </ul>
+  </li>
+  <li><b>평가 시작 위치</b>: teacher 평가 x = −0.85 m, student 평가 −1.5 m, 학습 −2.0 m (탁자 중심 0) <span class="src">(<code>train_multistate.py</code>, <code>train_multi_bc_deter.py</code>)</span>.</li>
+  <li><b>라이선스</b>: 저장소 전체 <a href="../reference/vbc/code/LICENCE"><code>LICENCE</code></a> = CC BY-NC 4.0(비상업). 포함된 legged_gym·rsl_rl 은 BSD-3, skrl 은 MIT.</li>
+</ul>
+
+<h2 class="ps">10. 한계</h2>
+<ul>
+  <li>teacher–student 격차가 크고(범주별 0.08–0.51 하락) 이를 줄이는 장치(student RL, 보조 손실의 효과 검증)는 없다.</li>
+  <li>사람의 마스크 클릭이 필요하고, 마스크 추적 손실이 실기 실패의 1 순위.</li>
+  <li>RGB 를 안 써 색 구분 과제 불가. 물체 크기 무작위화 없음(저자도 향후 과제로 언급) <span class="src">(부록 I)</span>.</li>
+  <li>실기 결과는 그림만 있고 표 숫자가 없다. 시뮬 높이별 결과도 그림.</li>
+  <li>집기 = 작은 물체를 한 집게로 들기. 무거운 물체, 두 손, 접촉력 조절은 다루지 않음.</li>
+  <li>논문 표의 보상·DR 일부가 공개 코드와 다르다(9 절). 재현은 코드 기준으로 봐야 함.</li>
+</ul>
+
+<h2 class="ps">11. 우리에게 가져올 것</h2>
+<div class="take"><ol>
+  <li><b>상위 명령 후처리를 하위 학습 분포에 맞추기</b>: VBC 는 하위 학습의 정지 구간과 같게 작은 명령을 0 으로 만들고(|vx| ≤ 0.15 이고 |ωz| ≤ 0.35), 전진 상한을 0.45 → 0.22 m/s 로 줄여 간다. 우리도 골반 명령을 dev12 학습 범위(vx ±0.8, vy ±0.4, ωz ±1.0, 높이 0.335–0.77 m, pitch ±45°, roll ±10° 서 있을 때만) 안으로, 집기 단계에선 더 좁게 자른다. dev10 v2 의 "추종기가 못 따라가는 출력(허리)" 문제에 대한 직접 대책.</li>
+  <li><b>단, 잘린 양에는 벌점을 붙인다</b>: VBC 는 env 안에서 조용히 자르고 벌점이 없다(log σ ≤ 2 상한만). 우리는 그대로 하면 dev10 v2 처럼 PPO σ 가 폭주했으니 원 행동의 초과분 L2 벌점을 꼭 넣는다.</li>
+  <li><b>목표 누적 + 스텝당 변화 제한</b>: 행동을 "현재 목표에 더하는 증분"으로 두고 스텝당 상한(VBC 0.02 m, 0.06 rad)을 둔다. dev12 가 상체 목표의 저역 통과 값과 변화율을 관측하므로, 변화율이 학습 분포 안에 머물게 하는 효과도 있다. 값은 dev12 상체 목표 필터 대역에 맞춰 정한다(추론).</li>
+  <li><b>멈춘 뒤 집기</b>: 조이기·들기 단계에서 vx·vy·ωz 를 0 으로 강제(VBC <code>stop_pick</code>, 논문이 "크게 기여"). 1 단계(걷지 않는 집기)에선 처음부터 이동 명령을 0 으로 묶고 높이·pitch 만 쓰는 것도 같은 생각.</li>
+  <li><b>최고 기록 갱신형 진행 보상</b>: 접근 0.5 · tanh(10 · 거리 최소값 갱신분), 들기 1.0 · tanh(10 · 높이 최대값 갱신분), 들린 동안 3.5. 갱신분만 주므로 흔들어서 보상을 타먹을 수 없다. 들림 판정에 "손이 물체 0.1 m 안" 조건을 붙인 것처럼, 우리는 "두 손바닥 모두 접촉" 조건을 붙여 한 손 밀기 국소 최적을 막는다.</li>
+  <li><b>들고 25 스텝 유지해야 성공, 떨어뜨리면 리셋</b>(벌점 없이): 들자마자 끝내는 것보다 유지 구간을 학습시킨다. VBC 는 20,000 스텝 뒤에 켰다.</li>
+  <li><b>지연·주기 무작위화</b>: 상위 행동 1 스텝 지연(student 는 처음부터), 상위 호출 간격 무작위(7–8 하위 스텝), 영상은 상위 스텝 끝보다 0.06–0.08 s 전 것. 우리 값은 D436 최근 프레임 나이 14–45 ms 기준(50 Hz 면 1–3 스텝).</li>
+  <li><b>깊이 증강 출발값</b>: 2 m 넘으면 자르고 정규화, 하한 U(0.18, 0.25) m 보다 가까우면 0, RandomErasing 2 번(p 0.4, 2–10 %), 블러 커널 5, 잡음 σ 0.005(정규화 단위, 약 1 cm), 회전 ±5°, 머리 카메라 위치 ±1 cm·pitch ±5°. 박스를 가슴 앞까지 들면 카메라와 가까워지므로 근거리 하한 처리가 우리에게도 필요하다.</li>
+  <li><b>student 가 시야를 잃는 에피소드는 끊기</b>: VBC 는 카메라 학습에서만 "물체가 몸 뒤로 감" 종료를 추가했다. 우리는 박스가 26×64 잘라낸 창 밖으로 오래 나가면 종료하는 방식을 생각해 볼 만하다(추론).</li>
+  <li><b>DAgger 기본값</b>: teacher 행동으로 데우기 4,000 스텝, 학습률 5e-5, MSE, GRU 128. 다만 VBC 자체가 순수 DAgger 로 0.08–0.51 떨어졌으니(긴 상자 0.93 → 0.42), 우리 69 % 대 90 % 격차도 DAgger 만으로는 안 닫힐 가능성이 높다. student RL 미세조정(PRISM·ULTRA)과 같이 계획한다.</li>
+  <li><b>"들렸는가" 보조 출력은 값싼 시도</b>: 행동에 1 칸 추가, 들림 ±1 을 MSE 로 예측. 논문 검증은 없으니 기대치는 낮게. 우리 student 격차의 원인으로 본 접촉 정보 부족에 맞춰 "두 손 접촉"·"들림"을 함께 예측하게 할 수 있다(추론).</li>
+  <li><b>바닥이 가장 어렵다는 기준</b>: VBC 도 바닥에서 student 약 0.35 로 가장 낮고, 다리 협조가 없으면 0 이다. 우리 바닥 박스 도달 한계와 같은 모양이므로 바닥 시나리오는 따로 성공률을 재고, 높이·pitch 명령 범위(0.335 m, 45°)가 실제로 쓰이는지 확인한다.</li>
+</ol></div>
+<h3 class="ps">가져오지 말 것</h3>
+<ul>
+  <li><b>TrackingSAM 마스크 + 사람 클릭</b>: 실기 실패 1 순위였고 상위 주기를 6–8 Hz 로 묶었다. 우리는 박스 하나라 분할 없이 깊이 창으로 충분하다.</li>
+  <li><b>PointNet 형상 잠재 1024</b>: 물체가 하나(크기 고정)라 teacher 에는 박스 자세·크기를 바로 준다.</li>
+  <li><b>부호만 쓰는 그리퍼 출력</b>: 우리 조이기는 힘 조절이 필요하다. dev10 v2 의 켜짐/꺼짐 포화 출력 문제를 반복하게 된다.</li>
+  <li><b>끝점 + 6D IK 를 그대로</b>: 표 4 의 큰 정밀도 차(0.236 → 0.047 m)는 끌리지만, K1 팔은 5 DoF 라 위치 + 자세 6D 를 다 맞출 수 없고 dev12 는 관절 목표를 받는다. 쓴다면 손바닥 위치(+ 법선 일부)만 푸는 IK 를 상위와 dev12 사이에 두는 혼합형으로(추론).</li>
+  <li><b>논문 표 3 보상 식, base_dir 항</b>: 공개 코드와 다르고 base_dir 은 코드상 늘 0 이다. 쓰려면 코드 식을 기준으로.</li>
+  <li><b>코드 복사</b>: CC BY-NC 4.0(비상업). 수치·아이디어만 참고하고 구현은 Apache-2.0 쪽(VIRAL·PRISM·ULTRA)에서.</li>
+</ul>
+
+<p class="src">출처 표기: (p.N), (표 N), (그림 N), (식 N), 코드는 파일 경로. 부록은 PDF 쪽수(p.15 부터)를 함께 적음. 논문에 없는 값은 "논문에 없음".</p>
+</main>
+</body>
+</html>

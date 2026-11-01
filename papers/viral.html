@@ -1,0 +1,480 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VIRAL — 논문 상세</title>
+<link rel="stylesheet" href="paper.css">
+</head>
+<body>
+<main class="wrap">
+<a class="back" href="../index.html#catalog">← 자료 목록으로</a>
+
+<header class="ph">
+  <h1>VIRAL: 동결 HOMIE 위 특권 RL teacher → RGB student, 휴머노이드 이동 조작의 대규모 시각 sim-to-real</h1>
+  <p class="orig">VIRAL: Visual Sim-to-Real at Scale for Humanoid Loco-Manipulation</p>
+  <p class="meta">Tairan He, Zi Wang, Haoru Xue, Qingwei Ben (공동 1저자), Zhengyi Luo, … Linxi “Jim” Fan, Yuke Zhu (project leads) et al. · NVIDIA, CMU, UC Berkeley, CUHK · CVPR 2026 (arXiv v2 2025-11-27) · Unitree G1 29 DoF + 3손가락 손 7 DoF×2 · Isaac Lab (Isaac Sim 5.1)</p>
+  <div class="chips">
+    <a class="chip loc" href="../reference/viral/paper.pdf">로컬 PDF</a>
+    <a class="chip loc" href="../reference/viral/code/">로컬 코드</a>
+    <a class="chip" href="https://arxiv.org/abs/2511.15200" target="_blank" rel="noopener">arXiv 2511.15200</a>
+    <a class="chip gh" href="https://github.com/NVlabs/GR00T-VisualSim2Real" target="_blank" rel="noopener">NVlabs/GR00T-VisualSim2Real</a>
+    <a class="chip" href="https://viral-humanoid.github.io" target="_blank" rel="noopener">프로젝트 페이지</a>
+    <span class="simv s5">유사도 5</span>
+    <span class="badge">Apache-2.0</span>
+    <span class="badge lfs" title="models/ 의 HOMIE model_walk·model_stand·dec_loco onnx, 학습 체크포인트, 시연 npz 295, 로봇 메시는 Git LFS 포인터(132–134 바이트)만 있음: git lfs pull 필요">LFS</span>
+  </div>
+</header>
+
+<div class="callout blue tldr">동결된 HOMIE 하체 정책의 명령(속도 + 오른팔 관절 + 손가락)을 <b>증분 × 0.1 누적</b>으로 내는 특권 PPO teacher 를 시연 200 개 RSI 로 학습하고(시뮬 약 95 %), RGB 108×192 student 로 DAgger/BC(α 0.5) 증류해 G1 실기에서 걷기·놓기·집기·돌기 연속 <b>54/59</b>, 주기 20.2 s (전문 텔레옵 100 %, 21.4 s).</div>
+
+<h2 class="ps">우리와 무엇이 같고 다른가</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>이 논문</th><th>우리 (dev10 pelvis_pick)</th></tr></thead>
+  <tbody>
+    <tr><td>하위 제어기</td><td>HOMIE (사전학습, 학습 중 고정). 걷기·서기 두 모델을 명령 크기로 전환, 하체 12 + 허리 3 = 15 관절을 냄. 팔·손가락은 외부 목표를 PD 로 (<a href="../reference/viral/code/gr00t/rl/trl/trainer/ppo_trainer_homie_api.py"><code>ppo_trainer_homie_api.py</code></a>)</td><td>dev12 하체 RL 하나, 다리 12 만. 골반 vx·vy·ωz·높이·pitch·roll 추종, 상체 11 (허리 yaw 포함) 외부 PD, 상체 목표를 관측</td></tr>
+    <tr><td>상위 출력</td><td>11 차원 증분: 속도 3 + 오른팔 7 + 손가락 기본 동작 1. 높이 0.74 m·rpy 0·왼팔은 고정 (<a href="../reference/viral/code/gr00t/rl/config/obs/loco_manip/obs_walk_stand_place_grasp_turn_homie.yaml">obs yaml</a>)</td><td>상체 11 + 골반 명령 6 = 17. 높이·pitch 가 과제의 핵심</td></tr>
+    <tr><td>과제·물체</td><td>탁자(높이 0.65–0.68 m) 사이를 걸어 오른손 물체 놓기 → 새 물체 집기 → 돌기 반복. 가벼운 일상 물체, 질량 무작위 없음</td><td>바닥·받침대 0–0.3 m 박스 37×40.5×29 cm, 0.5–2 kg, 두 손바닥으로 옆면 조이기, 쪼그림·숙임</td></tr>
+    <tr><td>지각·증류</td><td>특권 teacher (손가락 끝 힘 포함) → RGB 108×192 + 고유감각 student, DAgger/BC 혼합 α 0.5, student RL 없음</td><td>특권 teacher → D436 깊이 26×64 × 6 프레임 + 고유감각 student, DAgger</td></tr>
+    <tr><td>주기</td><td>PD 200 Hz, teacher·student·HOMIE 50 Hz (p.2, 그림 2)</td><td>dev12 50 Hz (상위도 50 Hz 로 시작 예정)</td></tr>
+    <tr><td>규모</td><td>teacher 32,768 env, 16 GPU / student 65,535 env, 64 GPU (p.16, 표 5–6)</td><td>단일 워크스테이션 GPU</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li><b>같은 점</b>: "고정 하위 + 명령을 내는 특권 RL teacher → 시각 student" 뼈대, 하위가 50 Hz, teacher 가 접촉 힘을 봄, 상위 출력을 하위 명령 범위로 자름.</li>
+  <li><b>다른 점</b>: VIRAL 은 높이·자세 명령을 <b>쓰지 않는다</b> (서서 탁자 높이 작업). 허리도 하위가 맡는다. 손가락 손 한 손 집기라 우리 두 손바닥 조이기·바닥 도달 문제와는 접촉 꼴이 다르다.</li>
+</ul>
+
+<h2 class="ps">1. 문제와 과제</h2>
+<ul>
+  <li><b>질문</b>: 탑재 센서(RGB)만으로 쓸모 있는 휴머노이드 이동 조작을 시각 sim-to-real 로 얻을 수 있는가 (p.2).</li>
+  <li><b>목표</b>: 새 RL 알고리즘이 아니라 "실제로 되는 전체 스택 레시피"와 각 설계의 기여 (p.2).</li>
+  <li><b>과제 한 주기</b> = 다섯 단계 (p.14, 7.2절):
+    <ol>
+      <li>물체 쪽으로 걷기 (stage 0)</li>
+      <li>들고 있던 물체를 놓기 전 자세로 팔·손 옮기기 (stage 1)</li>
+      <li>쟁반에 놓기 (stage 2)</li>
+      <li>다음 물체 집어 들기 (stage 3)</li>
+      <li>돌아서기 (stage 4)</li>
+    </ol>
+    이를 반복하면 두 탁자 사이 왕복 이동 조작이 된다.</li>
+  <li><b>실기 설정</b>: G1 29 DoF + 7 DoF 3손가락 손, Intel RealSense D435i, 추론은 데스크톱 (i9-14900K + RTX 4090) (p.5).</li>
+</ul>
+
+<h2 class="ps">2. 시스템 구조</h2>
+<div class="fig">
+  <div class="flow">
+    <span class="node">특권 관측 226 (상태·물체·손가락 힘·단계·현재 명령)</span><span class="arr">→</span>
+    <span class="node">teacher MLP [512, 256, 128], 50 Hz</span><span class="arr">→</span>
+    <span class="node">증분 11 × 0.1 누적</span><span class="arr">→</span>
+    <span class="node">명령 자르기 (vx·vy ±0.5, ωz ±1.0)</span><span class="arr">→</span>
+    <span class="node frozen">HOMIE 걷기/서기 (고정), 50 Hz → 다리+허리 15</span><span class="arr">→</span>
+    <span class="node">PD 200 Hz (팔·손가락은 명령 그대로)</span>
+  </div>
+  <div class="flow" style="margin-top:10px">
+    <span class="node">RGB 108×192 (지연 프레임)</span><span class="arr">→</span>
+    <span class="node">ResNet-18 (코드) / DINOv3 (논문) → 128</span><span class="arr">→</span>
+    <span class="node">+ 고유감각 113</span><span class="arr">→</span>
+    <span class="node">student MLP [512, 256, 128]</span><span class="arr">→</span>
+    <span class="node">같은 증분 11 → 같은 누적·HOMIE</span>
+  </div>
+  <p class="src">위: Phase 1 teacher (RL). 아래: Phase 2 student (DAgger + BC). 점선 = 고정. (p.2, 그림 2; 코드 <a href="../reference/viral/code/gr00t/rl/config/exp/loco_manip/walk_stand_place_grasp_turn_homie.yaml">teacher exp</a>, <a href="../reference/viral/code/gr00t/rl/config/exp/loco_manip/wsdpt_student_for_teacher_v8q8.002_resnet_rgb_delay.yaml">student exp</a>)</p>
+</div>
+<h3 class="ps">무엇이 고정이고 무엇이 학습되나</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>부품</th><th>상태</th><th>근거</th></tr></thead>
+  <tbody>
+    <tr><td>HOMIE 걷기·서기 모델 (HIMActorCritic)</td><td>고정 (<code>opt_homie: False</code> → requires_grad 끔, eval 모드). 평균 행동 사용</td><td><a href="../reference/viral/code/gr00t/rl/trl/trainer/ppo_trainer_homie_api.py"><code>ppo_trainer_homie_api.py</code></a> 474–513행</td></tr>
+    <tr><td>걷기/서기 전환</td><td>HOMIE 관측 배율을 곱한 속도 명령 (vx×2, vy×2, ωz×0.5) 의 노름 &gt; 0.5 이면 걷기 모델. 서기 모델에는 속도 명령을 0 으로 넣음. 노름 &lt; 0.1 이면 속도 명령 0 (사각지대)</td><td>같은 파일 81–121행, <a href="../reference/viral/code/gr00t/rl/envs/base_task/homie_base.py"><code>homie_base.py</code></a> <code>_get_obs_b_homie_commands</code></td></tr>
+    <tr><td>teacher</td><td>PPO 로 학습</td><td>p.3</td></tr>
+    <tr><td>student</td><td>DAgger/BC 로 학습, 시각 인코더도 학습 (<code>trainable: true</code>)</td><td>student exp yaml</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li><b>논문의 주장</b>: WBC 명령을 API 로 쓰면 보상 설계 부담이 줄고 행동이 "안전하고 신뢰할 수 있는 영역"에 갇힌다. 특정 WBC 에 맞춘 설계가 아니라 SONIC·TWIST2 같은 다른 WBC 로도 확장 가능하다고 함 (p.3, Teacher Element #3).</li>
+  <li>HOMIE 원래 명령 공간은 속도·높이 추종 + 상체 관절 명령이고, VIRAL 은 여기에 손가락 행동을 붙였다 (p.3).</li>
+</ul>
+
+<h2 class="ps">3. 관측과 행동</h2>
+<h3 class="ps">teacher 관측 (스텝당 226, 이력 없음)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>차원</th><th>항목</th><th>차원</th></tr></thead>
+  <tbody>
+    <tr><td>기저 선속도</td><td>3</td><td>들고 있는 물체 손가락 끝 힘</td><td>12</td></tr>
+    <tr><td>기저 각속도</td><td>3</td><td>들고 있는 물체 변환 (위치 3 + 회전 6D)</td><td>9</td></tr>
+    <tr><td>투영 중력</td><td>3</td><td>들고 있는 물체–손 변환</td><td>9</td></tr>
+    <tr><td>직전 행동 (전신 31)</td><td>31</td><td>놓기 전 목표 위치</td><td>3</td></tr>
+    <tr><td>단계 (one-hot)</td><td>5</td><td>집을 물체 손가락 끝 힘</td><td>12</td></tr>
+    <tr><td>직전 증분 행동</td><td>11</td><td>집을 물체 변환</td><td>9</td></tr>
+    <tr><td>관절 위치 (손가락 포함)</td><td>43</td><td>집을 물체–손 변환</td><td>9</td></tr>
+    <tr><td>관절 속도</td><td>43</td><td>들어올림 목표 위치</td><td>3</td></tr>
+    <tr><td>놓을 위치</td><td>2</td><td><b>현재 HOMIE 명령</b></td><td>7</td></tr>
+    <tr><td>탁자–골반 변환</td><td>9</td><td><b>합계</b></td><td><b>226</b></td></tr>
+  </tbody>
+</table></div>
+<p class="src">(p.14, 표 1). critic 관측도 같은 목록 (<a href="../reference/viral/code/gr00t/rl/config/obs/loco_manip/obs_walk_stand_place_grasp_turn_homie.yaml">obs yaml</a>). 관절 속도 배율 0.05, 관측 잡음 0.</p>
+
+<h3 class="ps">student 관측 (스텝당 113 + 영상)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>차원</th></tr></thead>
+  <tbody>
+    <tr><td>기저 각속도</td><td>3</td></tr>
+    <tr><td>투영 중력</td><td>3</td></tr>
+    <tr><td>직전 행동</td><td>31</td></tr>
+    <tr><td>관절 위치 (손가락 제외)</td><td>29</td></tr>
+    <tr><td>관절 속도 (손가락 제외)</td><td>29</td></tr>
+    <tr><td>직전 증분 행동</td><td>11</td></tr>
+    <tr><td>현재 HOMIE 명령</td><td>7</td></tr>
+    <tr><td>RGB 108×192 → 시각 특징</td><td>128</td></tr>
+  </tbody>
+</table></div>
+<p class="src">(p.14, 표 2). 기저 선속도·물체 상태·손가락 힘·단계는 student 에 없다.</p>
+
+<h3 class="ps">행동: 증분(델타) 누적</h3>
+<ul>
+  <li>teacher 출력 a<sub>t</sub> = (Δv<sub>t</sub>, Δω<sup>yaw</sup><sub>t</sub>, Δq<sup>arm</sup><sub>t</sub>, Δq<sup>finger</sup><sub>t</sub>). 증분을 WBC 명령에 누적한다 (p.3).</li>
+  <li>코드: 증분 인덱스 11 개 = HOMIE 속도 3 + 오른팔 7 + 손가락 기본 동작 1, <code>delta_action_scale: 0.1</code> (<a href="../reference/viral/code/gr00t/rl/config/env/walk_stand_place_grasp_turn_homie.yaml">env yaml</a>).</li>
+  <li>누적: <code>_delta_actions += a × 0.1</code>, 누적값 자르기는 ±100 (사실상 없음) (<a href="../reference/viral/code/gr00t/rl/envs/base_task/delta_action_base.py"><code>delta_action_base.py</code></a>).</li>
+  <li>팔 목표 = 누적값 × 0.25 (action_scale) + 기본 자세 → 원 행동 1 이 스텝당 0.025 rad (50 Hz 에서 1.25 rad/s) (<a href="../reference/viral/code/gr00t/rl/config/robot/g1/g1_43dof.yaml"><code>g1_43dof.yaml</code></a> <code>action_scale: 0.25</code>; 속도 환산은 계산).</li>
+  <li>손가락: 열림·닫힘 두 자세 사이 기본 동작 1 차원 (<code>finger_primitive</code>, <code>mode: discrete</code>).</li>
+  <li><code>no_delta_vel: True</code> 설정이 있지만 처리 코드가 주석이라 <b>속도도 증분으로 누적</b>된다. 대신 <code>zero_vel: True</code> 로 teacher 학습 중 stage 1–3 (놓기 준비·놓기·집기) 의 속도 명령을 0 으로 덮는다.</li>
+  <li><code>reset_delta_actions_with_backmap: True</code> 는 환경 쪽 구현이 <code>pass</code> ("BUG BUG BUG" 주석) 이고, 실제 복원은 시연 리셋 코드에서 한다 (5절).</li>
+</ul>
+
+<h3 class="ps">명령 자르기와 범위 벌점</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>명령</th><th>환경 자르기</th><th>보상 벌점 시작점 (코드)</th><th>논문 표 3 의 문턱</th></tr></thead>
+  <tbody>
+    <tr><td>vx</td><td>±0.5</td><td>|v<sub>x</sub>| &gt; 0.4</td><td>0.5</td></tr>
+    <tr><td>vy</td><td>±0.5</td><td>|v<sub>y</sub>| &gt; 0.4</td><td>0.5</td></tr>
+    <tr><td>ωz</td><td>±1.0</td><td>|ω| &gt; 0.8</td><td>0.5</td></tr>
+    <tr><td>높이</td><td>0.3–0.75 m (기본 0.74 m 에 더함)</td><td>(이 과제에선 고정)</td><td>–</td></tr>
+    <tr><td>roll·pitch·yaw</td><td>±0.5 rad</td><td>(이 과제에선 고정)</td><td>–</td></tr>
+    <tr><td>상체 행동</td><td><code>clip_upper_actions: False</code></td><td>|u| &gt; 2π</td><td>2π</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>벌점은 <b>자르기 전</b> 명령으로 계산한 경첩 꼴 max(0, |cmd| − 문턱), 가중치 −20 (<a href="../reference/viral/code/gr00t/rl/envs/loco_manip/walk_stand_place_grasp_turn_homie.py"><code>walk_stand_place_grasp_turn_homie.py</code></a> 2101–2139행, <a href="../reference/viral/code/gr00t/rl/config/rewards/loco_manip/reward_wsdpt_butterflyV8_q_2_teacher.yaml">reward yaml</a>).</li>
+  <li><code>homie_base.py</code> 에 "잘린 양 제곱" 벌점 <code>penalty_homie_action_limit</code> 과 명령 변화 벌점 <code>penalty_homie_action_rate</code> 가 정의돼 있지만 <b>보상 설정에는 들어 있지 않다</b> (쓰이지 않음).</li>
+  <li>원 행동 자체는 자르지 않는다 (<code>clip_actions: 100</code>). 누적 명령만 잘리고, 잘림 밖으로 나간 양은 경첩 벌점이 되돌린다.</li>
+</ul>
+
+<h2 class="ps">4. 보상 · 종료 · 커리큘럼</h2>
+<p>총 보상 r<sub>t</sub> = Σ<sub>i</sub> w<sub>i</sub> · 1[s<sub>t</sub> = i] · r<sub>t</sub><sup>(i)</sup>: 현재 단계에 해당하는 항만 더한다 (p.14, 7.2절). 본문의 네 핵심 보상 (p.3):</p>
+<ul>
+  <li>걷기: r<sub>walk</sub> = exp(−4 (‖p<sub>robot</sub> − p<sub>GraspObj</sub>‖ − 0.45)²) — 물체에서 0.45 m 떨어진 곳이 최대.</li>
+  <li>놓기: r<sub>place</sub> = −‖f<sub>PlaceObj</sub>‖ · 1(‖p<sub>PlaceObj</sub> − p<sub>tray</sub>‖ &lt; 0.3) — 쟁반 근처에서 손가락–물체 힘을 빼라.</li>
+  <li>집기: r<sub>grasp-z</sub> = min(h<sub>GraspObj</sub> − h<sub>table</sub>, 0.15), r<sub>grasp-goal</sub> = exp(−10 ‖p<sub>GraspObj</sub> − p<sub>goal</sub>‖²).</li>
+  <li>돌기: r<sub>turn</sub> = −|y<sub>robot</sub> − y<sub>desired</sub>| (y = 기저 yaw).</li>
+</ul>
+
+<details class="more" open>
+  <summary>전체 보상 표 (논문 표 3, 단계 0–4) <span class="cnt">30 항</span></summary>
+  <div class="body">
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>항</th><th>식</th><th>가중치</th><th>단계</th></tr></thead>
+    <tbody>
+      <tr><td colspan="4"><b>종료·일반 벌점</b></td></tr>
+      <tr><td>종료</td><td>1{termination}</td><td>−2000.0</td><td>0–4</td></tr>
+      <tr><td>증분 행동 크기</td><td>‖Δa<sub>t</sub>‖²</td><td>−0.01</td><td>0–4</td></tr>
+      <tr><td>관절 속도</td><td>‖q̇‖²</td><td>−0.5</td><td>0–4</td></tr>
+      <tr><td>관절 가속도</td><td>‖q̈‖²</td><td>−3.0×10<sup>−6</sup></td><td>0–4</td></tr>
+      <tr><td>토크</td><td>‖τ‖²</td><td>−0.001</td><td>0–4</td></tr>
+      <tr><td>출력 부드러움</td><td>‖π<sub>t</sub> − π<sub>t−1</sub>‖²</td><td>−9.0</td><td>0–4</td></tr>
+      <tr><td>손가락 기본 동작 한계</td><td>clip(u<sub>finger</sub>, [l, u]) − u<sub>finger</sub></td><td>−20.0</td><td>0–4</td></tr>
+      <tr><td>오른팔 빠른 속도</td><td>‖q̇<sub>right arm</sub>‖²</td><td>−80.0</td><td>0–4</td></tr>
+      <tr><td>한 발 지지 중 손가락 속도</td><td>‖q̇<sub>finger</sub>‖² · 1<sub>single-foot</sub></td><td>−3000.0</td><td>1–3</td></tr>
+      <tr><td>한 발 지지 중 팔 속도</td><td>‖q̇<sub>right arm</sub>‖² · 1<sub>single-foot</sub></td><td>−1300.0</td><td>1–3</td></tr>
+      <tr><td colspan="4"><b>방향·명령 형성</b></td></tr>
+      <tr><td>물체 쪽 바라보기</td><td>((ψ<sub>GraspObj</sub> − ψ<sub>robot</sub>)/π)²</td><td>−10000.0</td><td>0</td></tr>
+      <tr><td>물체가 두 손 사이 시야에</td><td>1[y<sub>right hand</sub> &gt; y<sub>GraspObj</sub> − 0.1] + 1[y<sub>left hand</sub> &lt; y<sub>GraspObj</sub> + 0.1]</td><td>−1.0</td><td>0</td></tr>
+      <tr><td>큰 vx 명령</td><td>Σ max(0, |v<sub>x</sub><sup>cmd</sup>| − 0.5)</td><td>−20.0</td><td>0–4</td></tr>
+      <tr><td>큰 vy 명령</td><td>Σ max(0, |v<sub>y</sub><sup>cmd</sup>| − 0.5)</td><td>−20.0</td><td>0–4</td></tr>
+      <tr><td>큰 ω 명령</td><td>Σ max(0, |ω<sup>cmd</sup>| − 0.5)</td><td>−20.0</td><td>0–4</td></tr>
+      <tr><td>큰 상체 행동</td><td>Σ max(0, |u<sub>upper</sub>| − 2π)</td><td>−20.0</td><td>0–4</td></tr>
+      <tr><td>속도 명령 0 (놓기·집기)</td><td>|v<sub>x</sub><sup>cmd</sup>| + |v<sub>y</sub><sup>cmd</sup>| + |ω<sup>cmd</sup>|</td><td>−12.0</td><td>1–3</td></tr>
+      <tr><td>선속도 명령 0 (돌기)</td><td>|v<sub>x</sub><sup>cmd</sup>| + |v<sub>y</sub><sup>cmd</sup>|</td><td>−4.0</td><td>4</td></tr>
+      <tr><td colspan="4"><b>과제·물체</b></td></tr>
+      <tr><td>로봇–물체 거리</td><td>exp(−4 (‖p<sub>robot</sub> − p<sub>GraspObj</sub>‖ − 0.45)²)</td><td>2.0</td><td>0–4</td></tr>
+      <tr><td>오른팔 자세</td><td>‖q<sub>right arm</sub>‖²</td><td>−1.0</td><td>0</td></tr>
+      <tr><td>손 닫고 있기</td><td>exp(−4 (u<sub>finger</sub> − u<sub>close</sub>)²)</td><td>9.0</td><td>0–1, 3–4</td></tr>
+      <tr><td>쟁반 근처에서 놓기</td><td>−‖f<sub>PlaceObj</sub>‖ · 1(‖p<sub>PlaceObj</sub> − p<sub>tray</sub>‖ &lt; 0.3)</td><td>10.0</td><td>0–1</td></tr>
+      <tr><td>물체 들고 있기</td><td>exp(−4 ‖p<sub>PlaceObj</sub> − p<sub>hand</sub>‖²)</td><td>1.0</td><td>0–4</td></tr>
+      <tr><td>손–물체 거리</td><td>exp(−10 max<sub>k</sub> ‖p<sub>finger</sub><sup>(k)</sup> − p<sub>GraspObj</sub>‖²)</td><td>20.0</td><td>3–4</td></tr>
+      <tr><td>물체–손가락 방향 집기</td><td>−d̂<sub>thumb</sub><sup>⊤</sup> d̂<sub>index</sub></td><td>5.0</td><td>3–4</td></tr>
+      <tr><td>집기 힘</td><td>Σ ‖f<sub>GraspObj-hand</sub>‖</td><td>1.0</td><td>3–4</td></tr>
+      <tr><td>들어올림 목표 거리</td><td>exp(−10 ‖p<sub>GraspObj</sub> − p<sub>goal</sub>‖²)</td><td>10.0</td><td>3–4</td></tr>
+      <tr><td>들어올림 높이</td><td>min(h<sub>GraspObj</sub> − h<sub>table</sub>, 0.15)</td><td>200.0</td><td>3–4</td></tr>
+      <tr><td>돌기</td><td>−|y<sub>robot</sub> − y<sub>desired</sub>|</td><td>15.0</td><td>4</td></tr>
+      <tr><td>오른팔 자세 추종 (들고 있을 때)</td><td>exp(−4 ‖q<sub>right arm</sub> − q*<sub>Place</sub>‖²)</td><td>5.0</td><td>0–2</td></tr>
+      <tr><td>오른팔 자세 추종 (앞 물체)</td><td>exp(−4 ‖q<sub>right arm</sub> − q*<sub>Grasp</sub>‖²)</td><td>25.0</td><td>3–4</td></tr>
+      <tr><td>팔 움직일 때 손가락 정지</td><td>exp(−6 ‖q̇<sub>arm</sub>‖² ‖q̇<sub>finger</sub>‖²)</td><td>15.0</td><td>1–4</td></tr>
+      <tr><td>탁자 접촉 중 물체 수평 이동</td><td>‖v<sub>GraspObj,xy</sub>‖ · 1<sub>table-contact</sub></td><td>−1000.0</td><td>1–4</td></tr>
+      <tr><td>손–물체 상대 수직 이동</td><td>|v<sup>z</sup><sub>GraspObj</sub> − v<sup>z</sup><sub>hand</sub>| · 1<sub>in-grasp</sub></td><td>−3000.0</td><td>1–3</td></tr>
+      <tr><td>집는 중 물체 기울어짐</td><td>|φ<sub>GraspObj</sub>| + |θ<sub>GraspObj</sub>|</td><td>−500.0</td><td>0–3</td></tr>
+      <tr><td>집는 중 물체 수평 속도</td><td>‖v<sub>GraspObj,xy</sub>‖²</td><td>−500.0</td><td>0–3</td></tr>
+    </tbody>
+  </table></div>
+  <p class="src">(p.15, 표 3). 오른팔 목표 자세 q*<sub>Place</sub> = [−1.0, −0.25, 0, 0.75, 0, 0, 0], q*<sub>Grasp</sub> = [−0.4, −0.4, 0, −0.6, 0, 0, 0] rad (<a href="../reference/viral/code/gr00t/rl/config/rewards/loco_manip/reward_wsdpt_butterflyV8_q_2_teacher.yaml">reward yaml</a>).</p>
+  </div>
+</details>
+
+<details class="more">
+  <summary>공개 코드 보상 설정과 논문 표 3 의 차이 <span class="cnt">reward_wsdpt_butterflyV8_q_2_teacher</span></summary>
+  <div class="body">
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>항</th><th>논문</th><th>코드</th></tr></thead>
+    <tbody>
+      <tr><td>큰 상체 행동</td><td>−20</td><td>−10</td></tr>
+      <tr><td>한 발 지지 중 손가락 속도</td><td>−3000</td><td>−315</td></tr>
+      <tr><td>큰 vx·vy 명령 문턱</td><td>0.5</td><td>0.4</td></tr>
+      <tr><td>큰 ω 명령 문턱</td><td>0.5</td><td>0.8</td></tr>
+      <tr><td>속도 명령 0 항</td><td>−12 (1–3), −4 (4)</td><td>−12, −4, 그리고 돌기 뒤 ω 0 항 −4</td></tr>
+      <tr><td>논문에 없는 항</td><td>–</td><td>손 놓기 전 위치 거리 −10000, 돌기 뒤 xy 추종 +15, 물체 놓기 −1, 선속도 0 (stage 2–4) −10</td></tr>
+      <tr><td>소프트 한계</td><td>논문에 없음</td><td>관절 위치 0.9, 속도 0.9, 토크 0.825</td></tr>
+    </tbody>
+  </table></div>
+  <p>로그 폴더 이름에도 같은 항의 다른 값 (물체 기울어짐 −1000·−3500, 손가락 속도 −3000) 이 보인다. 논문 표는 여러 판 중 하나로 보인다 (추론).</p>
+  </div>
+</details>
+
+<h3 class="ps">단계 전환·제한 시간 (코드)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>전환</th><th>조건</th><th>단계 제한 (스텝, 50 Hz)</th></tr></thead>
+  <tbody>
+    <tr><td>0 → 1 (걷기 끝)</td><td>로봇–물체 거리 &lt; 0.45 m</td><td>300 (6 s)</td></tr>
+    <tr><td>1 → 2</td><td>들고 있는 물체–쟁반 거리 &lt; 0.3 m</td><td>50 (1 s)</td></tr>
+    <tr><td>2 → 3 (놓기 끝)</td><td>들고 있는 물체–손 거리 &gt; 0.2 m</td><td>50 (1 s)</td></tr>
+    <tr><td>3 → 4 (집기 끝)</td><td>오른팔 관절이 집기 자세에서 최대 0.28 rad 이내 그리고 손가락·손바닥–물체 최대 거리 &lt; 0.18 m</td><td>100 (2 s)</td></tr>
+    <tr><td>4 완료</td><td>몸 앞 방향 · (−x) &gt; 0.7</td><td>100 (2 s)</td></tr>
+  </tbody>
+</table></div>
+<p class="src"><a href="../reference/viral/code/gr00t/rl/envs/loco_manip/walk_stand_place_grasp_turn_homie.py"><code>walk_stand_place_grasp_turn_homie.py</code></a> 1991–2075행, <code>max_stage_time: [300, 50, 50, 100, 100]</code>. 단계 제한을 넘기면 에피소드를 끝내고 (<code>reset_on_overtime</code> 기본 True), 제한 안에서만 그 단계 보상을 주며, 일찍 끝내면 남은 시간을 다음 단계로 넘긴다 (<code>award_remaining_time_on_advance</code>, <a href="../reference/viral/code/gr00t/rl/envs/base_task/staged_task_base.py"><code>staged_task_base.py</code></a>). 에피소드 12 s.</p>
+
+<h3 class="ps">종료 (코드에서 켜진 것)</h3>
+<ul>
+  <li>단계 제한 시간 초과 (위 표).</li>
+  <li>무릎 접촉 (<code>terminate_after_contacts_on: ["knee"]</code>).</li>
+  <li>집을 물체·들고 있는 물체 높이 &lt; 0.6 m (떨어뜨림).</li>
+  <li>물체 던짐: 쟁반에서 0.3 m 넘게 떨어진 곳에서 손에서 0.1 m 넘게 멀어짐.</li>
+  <li>stage ≥ 2 에서 들고 있던 물체가 쟁반에서 x 또는 y 로 0.16 m 넘게 벗어남.</li>
+  <li>오른팔 관절 속도가 3.14 rad/s 초과.</li>
+  <li>마지막 단계 완료 뒤 방향이 다시 0.7 아래로 (돌기 넘침).</li>
+  <li>중력·기저 높이·전신 접촉 종료는 꺼져 있음 (HOMIE 가 넘어짐을 막는다는 전제, 추론).</li>
+</ul>
+<p class="src">(<a href="../reference/viral/code/gr00t/rl/config/env/walk_stand_place_grasp_turn_homie.yaml">env yaml</a> <code>termination</code>, 종료 함수 795–910행)</p>
+
+<h3 class="ps">커리큘럼과 탐색 초기화</h3>
+<ul>
+  <li><b>RSI (Reference State Initialization)</b>: 시뮬 텔레옵 시연 200 개를 리셋 버퍼로 쓴다. 매 리셋마다 시연의 한 순간을 뽑아 로봇·물체·탁자를 그 상태로 놓는다 (p.4, 그림 4). 없으면 성공 10 % 미만에서 정체 (p.6).</li>
+  <li>코드 시연 폴더 <code>33demos_675_775</code> 에 npz 295 개 (모두 LFS 포인터). 시연당 10 개씩 0.1 s 간격으로 뽑고 1000 리셋마다 다시 뽑는다 (<code>num_per_sample: 10</code>, <code>sample_interval_s: 0.1</code>, <code>resample_every: 1000</code>).</li>
+  <li><b>리셋 때 명령 누적값 복원</b>: 속도 누적값 = 시연 순간의 기저 속도 (몸 좌표), 팔 누적값 = 시연 목표 관절 × 4 (action_scale 0.25 의 역), 손가락 = 시연 기본 동작 값 (<a href="../reference/viral/code/gr00t/rl/envs/loco_manip/reset_from_dataset_wsppt.py"><code>reset_from_dataset_wsppt.py</code></a> 168–212행). 리셋 직후 명령이 튀지 않게 하는 장치.</li>
+  <li>그 밖의 커리큘럼 (종료 커리큘럼, 소프트 한계 커리큘럼, 단계별 리셋 비율) 은 설정에 있으나 모두 꺼져 있다.</li>
+  <li>초기 상태 잡음: 관절 0.1, 관절 속도 0.15, 루트 위치 0.05, 루트 회전 10° (<code>init_noise_scale</code>).</li>
+</ul>
+
+<h2 class="ps">5. 학습 설정 (알고리즘 · 망 · 무작위화)</h2>
+<h3 class="ps">teacher PPO</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>값</th><th>논문 (표 5)</th><th>코드 (teacher exp)</th></tr></thead>
+  <tbody>
+    <tr><td>env 수</td><td>32,768 (2048 × 8 GPU × 2 노드)</td><td>GPU 당 2048</td></tr>
+    <tr><td>γ / λ</td><td>0.998 / 논문에 없음</td><td>0.998 / 0.97</td></tr>
+    <tr><td>학습률</td><td>0.00002</td><td>actor·critic 2e-5</td></tr>
+    <tr><td>엔트로피 계수</td><td>0.01</td><td>0.01</td></tr>
+    <tr><td>가치 손실 계수</td><td>1</td><td>1.0</td></tr>
+    <tr><td>초기 행동 std</td><td>0.5</td><td>0.5, 상한 1.0 으로 고정 (<code>max_noise_std: 1.0</code>, <code>clamp_noise_std: True</code>)</td></tr>
+    <tr><td>MLP</td><td>[512, 256, 128]</td><td>actor·critic [512, 256, 128], SiLU, 관측 정규화</td></tr>
+    <tr><td>롤아웃·미니배치</td><td>논문에 없음</td><td>env 당 24 스텝, 미니배치 4, 에폭 5, clip 0.2, adaptive KL 0.01, grad norm 1.0</td></tr>
+    <tr><td>분산 학습</td><td>TRL 맞춤 구현 + Accelerate</td><td><code>accelerate launch</code>, 이점 정규화 GPU 동기화</td></tr>
+  </tbody>
+</table></div>
+<p class="src">(p.16, 표 5; <a href="../reference/viral/code/gr00t/rl/config/exp/loco_manip/walk_stand_place_grasp_turn_homie.yaml">teacher exp</a>, <a href="../reference/viral/code/gr00t/rl/config/algo/ppo.yaml">algo/ppo.yaml</a>)</p>
+<ul>
+  <li>teacher 학습 시간: 16 GPU 기준 그림 14 의 가로축 10 시간 안에 성공 0.9 이상 (p.7, 그림 14). 반복 수는 그림 9 가로축 30k (p.6).</li>
+  <li>공개 체크포인트 이름 <code>model_step_043900</code>·<code>044500</code> (LFS 포인터만).</li>
+</ul>
+
+<h3 class="ps">PD 이득 (G1, 논문 표 4)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>관절</th><th>Kp [N·m/rad]</th><th>Kd [N·m·s/rad]</th></tr></thead>
+  <tbody>
+    <tr><td>hip yaw·roll·pitch</td><td>150</td><td>2.0</td></tr>
+    <tr><td>knee</td><td>200</td><td>4.0</td></tr>
+    <tr><td>ankle pitch·roll</td><td>40</td><td>2.0</td></tr>
+    <tr><td>waist yaw·roll·pitch</td><td>250</td><td>5.0</td></tr>
+    <tr><td>shoulder pitch·roll</td><td>100</td><td>5.0</td></tr>
+    <tr><td>shoulder yaw, elbow</td><td>40</td><td>2.0</td></tr>
+    <tr><td>wrist roll·pitch·yaw</td><td>20</td><td>2.0</td></tr>
+    <tr><td>손가락 index·middle·thumb 1·2</td><td>0.5</td><td>0.1</td></tr>
+    <tr><td>thumb 0</td><td>2.0</td><td>0.1</td></tr>
+  </tbody>
+</table></div>
+<p class="src">(p.16, 표 4). 참고: K1 팔 kp 22.3 / kd 1.42 는 G1 팔꿈치·손목 급이다.</p>
+
+<h3 class="ps">무작위화</h3>
+<ul>
+  <li><b>teacher 에는 물리 무작위화가 없다</b>: 공개 설정에서 마찰·질량·밀기·PD·지연 무작위화가 모두 꺼져 있다 (<a href="../reference/viral/code/gr00t/rl/config/domain_rand/wsdpt.yaml"><code>wsdpt.yaml</code></a>). 물체 질량 무작위도 논문에 없다.</li>
+  <li>student 에서 켜는 것은 시각·카메라 무작위화다 (아래 표, p.17, 표 7).</li>
+</ul>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>분류</th><th>항목</th><th>확률</th><th>분포</th></tr></thead>
+  <tbody>
+    <tr><td rowspan="7">영상</td><td>밝기</td><td>0.25</td><td>U(0.7, 2)</td></tr>
+    <tr><td>대비</td><td>0.25</td><td>U(0.5, 1.5)</td></tr>
+    <tr><td>색조</td><td>0.5</td><td>U(−0.1, 0.1)</td></tr>
+    <tr><td>채도</td><td>0.25</td><td>U(0.5, 2)</td></tr>
+    <tr><td>가우시안 잡음 std</td><td>0.25</td><td>U(0.0, 0.15)</td></tr>
+    <tr><td>가우시안 블러 커널</td><td>0.25</td><td>U(3, 5)</td></tr>
+    <tr><td>가우시안 블러 σ</td><td>0.25</td><td>U(0.1, 1.5)</td></tr>
+    <tr><td rowspan="3">조명</td><td>돔 라이트 세기</td><td>1.0</td><td>U(800, 2000)</td></tr>
+    <tr><td>돔 라이트 yaw</td><td>1.0</td><td>U(−π, π)</td></tr>
+    <tr><td>돔 라이트 텍스처</td><td>1.0</td><td>Indoor·Clear·Cloudy·Night·Studio</td></tr>
+    <tr><td rowspan="4">재질</td><td>로봇 거칠기·금속성·반사</td><td>1.0</td><td>각 U(0.0, 0.8)</td></tr>
+    <tr><td>바닥 텍스처</td><td>1.0</td><td>Wood·Carpet·Masonry·Metals·Natural·Plastics·Stone·Wall Board</td></tr>
+    <tr><td>탁자 텍스처</td><td>1.0</td><td>Wood</td></tr>
+    <tr><td>물체 텍스처</td><td>1.0</td><td>All Base Materials</td></tr>
+    <tr><td rowspan="4">탁자</td><td>높이</td><td>1.0</td><td>U(0.65, 0.6775) m</td></tr>
+    <tr><td>깊이</td><td>1.0</td><td>U(0.7, 0.75) m</td></tr>
+    <tr><td>폭</td><td>1.0</td><td>U(1.4, 1.6) m</td></tr>
+    <tr><td>두께</td><td>1.0</td><td>U(0.035, 0.04) m</td></tr>
+    <tr><td rowspan="6">카메라 외부 파라미터</td><td>위치 X</td><td>1.0</td><td>U(−0.02, 0.02) m (코드 ±0.01)</td></tr>
+    <tr><td>위치 Y</td><td>1.0</td><td>U(−0.05, 0.05) m</td></tr>
+    <tr><td>위치 Z</td><td>1.0</td><td>U(−0.02, 0.02) m (코드 ±0.01)</td></tr>
+    <tr><td>roll</td><td>1.0</td><td>U(−0.05, 0.05) rad</td></tr>
+    <tr><td>pitch</td><td>1.0</td><td>U(−0.1, 0.1) rad</td></tr>
+    <tr><td>yaw</td><td>1.0</td><td>U(−0.05, 0.05) rad</td></tr>
+  </tbody>
+</table></div>
+<p class="src">(p.17, 표 7; 코드 값 <a href="../reference/viral/code/gr00t/rl/config/exp/loco_manip/wsdpt_student_for_teacher_v8q8.002_resnet_rgb_delay.yaml">student exp</a> <code>extrinsics_randomization</code>)</p>
+<ul>
+  <li><b>카메라 지연</b>: 논문은 지연을 무작위화한다고만 하고 수치가 없다 (p.5). 코드는 최근 5 프레임 버퍼에서 고정 지연 1 프레임 (기본) 또는 무작위 1–5 프레임 중 하나를 고른다. 공개된 student 로그 이름은 고정 지연 3 스텝 (<a href="../reference/viral/code/gr00t/rl/config/obs/loco_manip/obs_walk_stand_place_grasp_turn_homie_distill_rgb_delay.yaml">student obs yaml</a>).</li>
+  <li><b>카메라 내부·외부 맞춤</b>: 초점 거리 (focal length)·초점 맞춤 거리 (focus distance)·센서 조리개를 제조사 사양에 맞추고 (p.5), 실제·렌더 영상을 겹쳐 외부 파라미터를 손으로 맞춘 뒤 그 주변을 무작위화 (p.5, 그림 6). 코드: <code>camera_rot_offset: [0.99955, 0, 0.0299955, 0]</code> ("real2sim alignment"), 초점 1.88, 수평 조리개 2.6035 (<a href="../reference/viral/code/gr00t/rl/config/simulator/isaacsim.yaml"><code>isaacsim.yaml</code></a>).</li>
+  <li><b>손가락 SysID</b>: G1 3손가락 손은 감속비가 커서 sim–real 차이가 크다. 실기 쥐기–놓기 동작을 시뮬에서 똑같이 재생하고 손가락 armature·강성·감쇠를 맞춤 (p.5, 그림 5).</li>
+</ul>
+
+<h2 class="ps">6. teacher → student / 증류</h2>
+<ul>
+  <li><b>손실</b>: 섞인 관측 분포 ρ<sub>o</sub> = α ρ<sub>o</sub><sup>teacher</sup> + (1 − α) ρ<sub>o</sub><sup>student</sup> 위에서 L<sub>distill</sub> = E ‖π<sub>teacher</sub>(o<sup>teacher</sup>) − π<sub>student</sub>(o<sup>student</sup>)‖² (p.4).</li>
+  <li><b>α 의 뜻</b>: 데이터 수집 때 teacher 행동을 실행하는 env 의 비율. α = 0 은 순수 DAgger, α = 1 은 순수 BC. 기본 α = 0.5 (p.7). 코드는 앞쪽 int(N·α) 개 env 가 teacher 행동을 실행 (<a href="../reference/viral/code/gr00t/rl/trl/trainer/distill_trainer_obj_pred_homie_api.py"><code>distill_trainer_obj_pred_homie_api.py</code></a> 473–499행).</li>
+  <li><b>라벨</b>: teacher 의 결정적 행동 (<code>act_inference</code>) = 증분 11. student 행동 평균과 L2 (<code>dagger_bc_loss_type: l2</code>).</li>
+  <li><b>student 설정</b> (p.16, 표 6; 코드):
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>값</th><th>논문</th><th>코드</th></tr></thead>
+      <tbody>
+        <tr><td>env 수</td><td>65,535 (1024 × 8 GPU × 8 노드)</td><td>GPU 당 1024</td></tr>
+        <tr><td>env 당 스텝</td><td>1</td><td>1, 에폭 1, 미니배치 4</td></tr>
+        <tr><td>학습률</td><td>0.0002</td><td>2e-4</td></tr>
+        <tr><td>시각 인코더</td><td>DINOv3 (본문 4.3절)</td><td><b>ResNet-18</b> ImageNet 사전학습, 학습 가능, 출력 128</td></tr>
+        <tr><td>정책 머리</td><td>단일 스텝 MLP 또는 이력 모델 비교</td><td>MLP [512, 256, 128] SiLU, 이력 없음</td></tr>
+        <tr><td>행동 std</td><td>–</td><td>0.001 고정</td></tr>
+        <tr><td>에피소드</td><td>–</td><td>8 s, 돌기 끝 (방향 &gt; 0.9) 에서 종료</td></tr>
+        <tr><td>물체 위치 보조 헤드</td><td>논문에 없음</td><td>MLP [256, 128, 64] → 3, 손실 계수 0.0 (꺼짐)</td></tr>
+      </tbody>
+    </table></div>
+  </li>
+  <li><b>student RL 미세조정은 없다</b>. 시뮬 teacher 대 student 성공률 격차도 수치로 보고하지 않는다.</li>
+  <li>코드 <a href="../reference/viral/code/gr00t/rl/utils/inference_helpers.py"><code>inference_helpers.py</code></a> 에 긴 고유감각 이력으로 좌우 손 힘을 추정해 actor 입력에 붙이는 ONNX 내보내기 래퍼 (<code>PPOForceEstimatorWrapper</code>) 가 있으나, 이를 부르는 학습 코드는 저장소에 없고 논문에도 설명이 없다.</li>
+</ul>
+
+<h2 class="ps">7. 결과</h2>
+<h3 class="ps">실기 연속 이동 조작 (그림 7)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>조건</th><th>성공률</th><th>한 주기 시간</th></tr></thead>
+  <tbody>
+    <tr class="ours"><td>VIRAL (RGB student, 자율)</td><td>92 % (54/59)</td><td>20.2 s</td></tr>
+    <tr><td>전문 텔레옵 (G1 1000 시간 이상)</td><td>100 %</td><td>21.4 s</td></tr>
+    <tr><td>비전문 텔레옵 (약 1 시간)</td><td>73 %</td><td>47.0 s</td></tr>
+  </tbody>
+</table></div>
+<p class="src">(p.5–6, 그림 7). 세 조건 모두 같은 HOMIE 하위 위에서 비교.</p>
+
+<h3 class="ps">절제 실험</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>실험</th><th>결과</th><th>출처</th></tr></thead>
+  <tbody>
+    <tr><td>RSI 없음</td><td>teacher 성공 10 % 미만 정체; RSI + 델타는 약 95 % (그림 가로축 30k 반복)</td><td>p.6, 그림 9</td></tr>
+    <tr><td>절대 행동 (델타 없음)</td><td>성공 거의 0 — "fails to reach high success"</td><td>p.6, 그림 9</td></tr>
+    <tr><td>시각 백본: CNN / ResNet-18 / DINOv3-ViTs / DINOv3-ViTsplus</td><td>DINOv3 가 손실 더 낮고 성공 더 높음 (150k 반복). 차이 수치는 그림만</td><td>p.6–7, 그림 10</td></tr>
+    <tr><td>teacher 롤아웃 비율 α</td><td>0.0 → 0.80, 0.25 → 1.00, 0.5 → 1.00, 0.75 → 0.30, 1.0 → 0.00 (막대 값). BC 만 하면 손실은 빨리 줄지만 자기 실수를 못 고쳐 Isaac→MuJoCo·실기에서 나쁨</td><td>p.7, 그림 11</td></tr>
+    <tr><td>이력 구조: 없음 / MLP 이력 8·32 / LSTM 8·32</td><td>이력 모델이 단일 스텝보다 일관되게 좋고 긴 창이 더 좋음</td><td>p.7, 그림 12</td></tr>
+    <tr><td>시각 무작위화 (정규화 성공, 200 에피소드)</td><td>전부 1.000 / 재질 빼기 0.947 / 돔 라이트 빼기 0.947 / 외부 파라미터 빼기 0.893 / 전부 끄기 0.649 (−35.1 %)</td><td>p.7, 그림 13</td></tr>
+    <tr><td>teacher 계산량 1–16 GPU</td><td>1–2 GPU 는 낮게 정체, 8–16 GPU 는 90 % 이상. 성공 0.2 도달은 4 GPU 가 2 GPU 의 절반 미만 시간</td><td>p.7, 그림 14</td></tr>
+    <tr><td>student 계산량 1–64 GPU</td><td>GPU 가 많을수록 손실 수렴 빠르고 매끄러우며 최종 성공도 약간 높음 (가로축 50 시간)</td><td>p.7–8, 그림 15</td></tr>
+    <tr><td>물체 일반화 (teacher 집기 하위 과제)</td><td>물체 10 종 학습이 원기둥 하나 학습보다 모든 종류에서 높음 (원기둥 약 1.0 대 0.85, 컵 약 0.98 대 0.05, 알람시계 약 0.17 대 0.08, 그림에서 읽은 값)</td><td>p.8, 그림 16</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>저장소에 남은 평가 기록: teacher 100 에피소드 <code>goal_reached_rate</code> 0.70, student 1 에피소드 0.0 (<code>logs_rl/*/metrics_eval.json</code>). 어떤 조건의 평가인지 불명이라 참고만.</li>
+</ul>
+
+<h2 class="ps">8. 실기 · sim2real</h2>
+<ul>
+  <li><b>무조정 배포</b>: 실기 미세조정 없이 RGB student 를 그대로 (p.3).</li>
+  <li><b>견고성</b>: 연속 59 회 중 54 회 성공 (p.5).</li>
+  <li><b>일반화</b> (그림 8): 쟁반·물체 위치 (x, y), 로봇 출발 위치 (그림 표기 1 m·2 m), 탁자 높이 (0.66 m·0.8 m 표기), 조명, 탁자보 색 (빨강·초록·파랑), 탁자 종류, 물체 종류 (캔·병·컵·과일 등) 를 바꿔도 추가 조정 없이 완료 (p.6). 각 조건의 시도 횟수·성공률은 논문에 없음.</li>
+  <li><b>sim2real 요소</b> 세 가지 (p.5):
+    <ol>
+      <li>손가락 SysID (armature·강성·감쇠).</li>
+      <li>카메라 내부 파라미터를 사양에 맞추고 외부 파라미터를 실영상으로 보정 + 무작위화. G1 은 개체마다, 같은 개체도 시간에 따라 카메라 자세가 달라진다고 명시.</li>
+      <li>시각·물리 무작위화 (표 7).</li>
+    </ol>
+  </li>
+  <li><b>실패 양상</b>: 실패 5 회의 원인은 논문에 없음. 한계 절에서 손가락 손의 마찰·백래시·열 제한·센서 잡음이 정밀 손가락 위치·힘에 의존하는 정책의 이전을 막는다고 씀 (p.9).</li>
+</ul>
+
+<h2 class="ps">9. 코드에서 확인한 것</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>주제</th><th>확인 내용</th><th>파일</th></tr></thead>
+  <tbody>
+    <tr><td>저장소</td><td>Isaac Lab (Isaac Sim 5.1) + TRL + Hydra. teacher PPO·student DAgger·평가·ONNX 내보내기. VIRAL = main, DoorMan = doorman 브랜치</td><td><a href="../reference/viral/code/README.md">README.md</a></td></tr>
+    <tr><td>하위 감싸기</td><td>HOMIE 를 환경이 아니라 <b>trainer 안</b>에서 돌림: 정책 출력 뒤에 HOMIE 하체 15 행동을 붙여 전신 31 행동으로 env 에 넘김. 환경은 행동 끝 15 개를 하체 목표로 씀</td><td><a href="../reference/viral/code/gr00t/rl/trl/trainer/ppo_trainer_homie_api.py"><code>ppo_trainer_homie_api.py</code></a>, <a href="../reference/viral/code/gr00t/rl/envs/base_task/homie_base.py"><code>homie_base.py</code></a> <code>step</code></td></tr>
+    <tr><td>HOMIE 관측</td><td>명령 7 (vx·vy ×2, ωz ×0.5) + 각속도 ×0.5 + 중력 + 관절 29 (위치·속도 ×0.05) + 하체 행동 15, 이력 5 스텝</td><td>obs yaml <code>homie_obs</code>, <code>a_history_homie</code></td></tr>
+    <tr><td>명령 기본값</td><td>높이 기본 0.74 m 에 명령 높이를 더함. 이 과제에서 움직이는 키는 <code>loco_vel</code>, <code>right_arm</code>, <code>right_hand</code> 뿐</td><td>obs yaml <code>homie_command_keys</code></td></tr>
+    <tr><td>델타</td><td>11 개 모두 누적 (속도 포함), 배율 0.1, stage 1–3 속도 0 덮어쓰기 (teacher 학습 때만)</td><td><a href="../reference/viral/code/gr00t/rl/envs/base_task/delta_action_base.py"><code>delta_action_base.py</code></a></td></tr>
+    <tr><td>명령 자르기·벌점</td><td>자르기는 <code>torch.clamp</code>, 벌점은 자르기 전 값의 경첩 꼴. 제곱 잘림 벌점은 정의만 있고 미사용</td><td><code>homie_base.py</code>, env 2101–2139행</td></tr>
+    <tr><td>RSI</td><td>시연 npz 에서 상태 + 명령 누적값 복원</td><td><a href="../reference/viral/code/gr00t/rl/envs/loco_manip/reset_from_dataset_wsppt.py"><code>reset_from_dataset_wsppt.py</code></a></td></tr>
+    <tr><td>student</td><td>ResNet-18 (DINOv3 아님), RGB 108×192, 영상 지연 버퍼 5</td><td>student exp·obs yaml</td></tr>
+    <tr><td>LFS</td><td><code>models/</code> 6 개 (model_walk.pt, model_stand.pt, dec_loco_model.onnx 등), 학습 체크포인트·ONNX, 시연 npz 295, G1 메시 등 모두 132–134 바이트 포인터. 실행하려면 <code>git lfs pull</code></td><td><a href="../reference/viral/code/models/">models/</a></td></tr>
+    <tr><td>빠진 것</td><td>HOMIE 학습 코드, 손 힘 추정기 학습 코드, student RL</td><td>–</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">10. 한계</h2>
+<ul>
+  <li>저자들 스스로 네 가지 "커버리지 격차"를 든다 (p.8–9): 물리 다양성 (변형체·유체를 실제에 맞추는 공학 비용), 과제 생성의 긴 꼬리, 보상 설계 병목 (과제마다 수작업), 손가락 손 하드웨어 차이. 결론은 "범용 이동 조작을 sim-to-real 만으로 푸는 건 가까운 미래엔 어렵다".</li>
+  <li>과제가 하나 (탁자 높이 고정 범위의 놓기·집기 반복) 이고 한 손. 높이·몸통 자세 명령을 쓰지 않는다.</li>
+  <li>물체 질량·마찰·로봇 동역학 무작위화가 없다 (코드 기준). 무거운 물체로 확장된 근거 없음.</li>
+  <li>보상 30 여 항, 가중치 크기 10<sup>−6</sup>–10<sup>4</sup>: 과제 맞춤 손질이 매우 많다.</li>
+  <li>계산량 의존: 1–2 GPU 에선 teacher 가 수렴하지 못했다 (p.7).</li>
+  <li>논문 (DINOv3) 과 공개 코드 (ResNet-18) 가 달라 실기 결과가 어느 판인지 불명.</li>
+</ul>
+
+<h2 class="ps">11. 우리에게 가져올 것</h2>
+<div class="take"><ol>
+  <li><b>행동 = 증분 누적</b>: 상위 17 출력 (골반 6 + 상체 11) 을 a × 배율로 누적. VIRAL 배율 0.1 × 팔 action_scale 0.25 = 원 행동 1 당 스텝 0.025 rad. 우리 배율은 채널별로 "dev12 학습 때 명령·목표 변화율의 상위 분위수 × 0.02 s" 로 정하면 포화 = 최대 변화율이 된다 (추론). v2 의 켜짐/꺼짐 포화를 직접 겨냥.</li>
+  <li><b>누적 명령 자르기 + 자르기 전 값 경첩 벌점</b>: dev12 범위 (vx ±0.8, vy ±0.4, ωz ±1.0, 높이 0.335–0.77 m, pitch ±45°, roll ±10°) 로 자르고, 범위의 약 80 % 를 넘으면 max(0, |cmd| − 문턱) × 20 벌점 (VIRAL: 자르기 0.5, 문턱 0.4, 가중치 −20). 원 행동은 자르지 않는다 — v2 의 "env 안 자르기 → std 발산" 과 반대 설계. 단 VIRAL 처럼 누적값이 경계 밖으로 계속 쌓이지 않게 누적값 자체에도 여유 있는 상한 (예: 범위 + 10 %) 을 두는 편이 낫다 (추론).</li>
+  <li><b>std 상한</b>: init std 0.5, <code>max_noise_std 1.0</code> + clamp. 우리 rsl_rl 에서 같은 상한을 건다.</li>
+  <li><b>현재 누적 명령과 직전 증분을 teacher·student 둘 다 관측</b> (<code>b_homie_commands</code> 7, <code>delta_actions</code> 11). 우리: 누적 골반 명령 6 + 상체 목표 11 + 직전 증분 17.</li>
+  <li><b>RSI + 누적값 복원</b>: 쪼그림·손 접근 순간 스냅숏에서 리셋하되, 명령 누적값을 그 순간의 골반 높이·pitch·상체 목표로 맞춰 놓는다 (VIRAL: 속도 = 기저 속도, 팔 = 목표 × 4). 시연이 없으니 스크립트 쪼그림이나 teacher 자기 롤아웃 스냅숏으로 대체. RSI 없이 10 % 미만이었다는 결과가 근거.</li>
+  <li><b>단계 게이트 보상 + 단계 중 속도 0 덮어쓰기</b>: 조이기·들기 단계에서 vx·vy·ωz 를 0 으로 강제 (<code>zero_vel</code>) 하면 탐색 공간이 줄고, dev12 의 서기 높이 범위 (0.335 m 부터) 를 쓸 수 있다 (걷기는 0.42 m 부터).</li>
+  <li><b>벌점 꼴</b>: 종료 −2000 (상대 크기 참고), 원 출력 변화 ‖π<sub>t</sub> − π<sub>t−1</sub>‖² −9.0, 증분 크기 −0.01, 손–물체 상대 수직 속도 벌점 (−3000, 미끄럼 감지) 과 물체 기울기 벌점 (−500) 은 박스 조이기에도 그대로 의미가 있다.</li>
+  <li><b>DAgger 혼합 α 0.5</b>, 라벨 = teacher 결정적 증분, L2, lr 2e-4, env 당 1 스텝·1 에폭. α 0.75 이상은 크게 나빴다 (0.30, 0.00).</li>
+  <li><b>student 이력</b>: 단일 스텝보다 이력 모델 (LSTM 32) 이 낫다는 결과 → 우리 6 프레임 깊이 + 고유감각 이력 유지.</li>
+  <li><b>카메라 외부 파라미터 무작위화</b>: pitch ±0.1 rad, y ±0.05 m, x·z ±0.02 m. 외부 파라미터 하나만 빼도 0.893 으로 가장 큰 손해. K1 목 0°/47° 수동 고정 오차·D436 장착 실측 오차가 이보다 크면 그만큼 넓힌다.</li>
+</ol></div>
+<h3 class="ps">가져오지 말 것</h3>
+<ul>
+  <li><b>보상 가중치 수치 그대로</b>: −10000 (방향), −3000 (한 발 지지 손가락) 같은 값은 그 과제·단계 길이에 맞춘 것이고 논문·코드 사이에도 다르다. 꼴만 쓰고 크기는 우리 보상 규모로 다시 정한다.</li>
+  <li><b>물리 무작위화 없는 teacher</b>: 우리는 박스 0.5–2 kg, 마찰, 두 손 조이기 힘이 성패를 가르므로 질량·마찰·크기 무작위가 필수.</li>
+  <li><b>한 손 + 손가락 기본 동작</b>: 우리 손은 공 모양 고무 손. 대신 두 손 옆면 조이기 항 (min(왼, 오른) 힘 등) 이 필요하다.</li>
+  <li><b>RGB 시각 무작위화 (재질·돔 라이트)</b>: 깊이 student 에는 깊이 잡음·구멍·스테레오 오차 모형이 대신 필요.</li>
+  <li><b>허리를 하위에 맡기는 분할</b>: VIRAL 은 HOMIE 가 허리 3 을 낸다. 우리는 허리 yaw 가 상위 11 안에 있고, v2 에서 추종기가 허리를 못 따라간 문제가 있었다 → 처음엔 허리 yaw 를 0 근처 좁은 범위로 묶거나 고정 (추론).</li>
+  <li><b>걷기/서기 두 모델 전환</b>: dev12 는 정책 하나. 전환 문턱 (0.5) 같은 장치는 필요 없다.</li>
+  <li><b>64 GPU 규모 전제</b>: 우리 계산량으로는 RSI·단계 리셋·작은 관측으로 탐색을 줄이는 쪽이 현실적.</li>
+</ul>
+
+<p class="src">출처 표기: (p.N) 은 PDF 쪽 (부록 표 1–2 = p.14, 표 3 = p.15, 표 4–6 = p.16, 표 7 = p.17), (표 N), (그림 N), 코드는 파일 경로. 논문에 없는 값은 "논문에 없음". "추론" 은 이 페이지 작성자의 판단.</p>
+</main>
+</body>
+</html>

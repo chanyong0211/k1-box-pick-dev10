@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HULK — 논문 상세</title>
+<link rel="stylesheet" href="paper.css">
+</head>
+<body>
+<main class="wrap">
+<a class="back" href="../index.html#catalog">← 자료 목록으로</a>
+
+<header class="ph">
+  <h1>HULK: MPC 가 이끈 RL 로 무거운 하중을 버티는 전신 제어기 — 손목 힘 teacher 와 전신 파지 teacher 를 DAgger 로 하나로</h1>
+  <p class="orig">HULK: Learning Whole-Body Forceful Loco-Manipulation for Humanoids</p>
+  <p class="meta">An Dang, Arturo Flores Alvarez (공동 1저자), Yu-Ming Chen, Conor Mc Gartoll, Helen Sun, Aaron Ames, Nima Fazeli, Manikantan Nambi · Amazon, University of Michigan, UCLA, Caltech · 사전 공개 (arXiv v1 2026-10-06) · Unitree G1 29 DoF · 시뮬레이터 이름은 논문에 없음</p>
+  <div class="chips">
+    <a class="chip loc" href="../reference/hulk/paper.pdf">로컬 PDF</a>
+    <a class="chip" href="https://arxiv.org/abs/2610.08970" target="_blank" rel="noopener">arXiv 2610.08970</a>
+    <a class="chip" href="https://www.hulk-forceful-wbc.com" target="_blank" rel="noopener">프로젝트 페이지</a>
+    <span class="simv s3">유사도 2–3</span>
+    <span class="badge only">논문만 (코드 없음)</span>
+  </div>
+</header>
+
+<div class="callout blue tldr">상위 정책이 아니라 우리 dev12 에 해당하는 <strong>하위 전신 제어기</strong> 논문. 명령(평면 속도·yaw rate·높이·몸통 roll/pitch·팔 14 관절)을 따르면서 손목 힘(±40 N 수평, −50–+5 N 수직)이나 몸통에 안은 물체(0.5–5 kg 커리큘럼)를 버티게, 중심 동역학 MPC 계획을 보상 안내로 쓰고 capture-point CBF 를 학습 중에만 건다. 두 teacher 를 DAgger 로 한 student 에 합쳐 실기 G1: 수레 5/6(최대 300 kg), 짐 들고 걷기 4/4(최대 12.25 kg), 냉장고 4/4(7.0 kg), 통 4/4(6.1 kg) (p.6–8 표 III).</div>
+
+<h2 class="ps">우리와 무엇이 같고 다른가</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>이 논문</th><th>우리 (dev10 pelvis_pick)</th></tr></thead>
+  <tbody>
+    <tr><td>하위 제어기</td><td>HULK 자체가 하위. 명령 → 29 관절(하체 15 + 팔 14) 목표. 상위 정책은 없음(원격조종·계획기가 명령을 낸다고 가정) (p.1, p.13–14)</td><td class="ours">dev12 하체 RL(동결 예정), 다리 12 만, 골반 vx·vy·ωz·높이·pitch·roll 추종, 상체 11 은 외부 PD(하위가 목표를 관측), 손 하중 0–5 kg 학습</td></tr>
+    <tr><td>명령 인터페이스</td><td>vx·vy, ωz, 몸통 높이, 몸통 roll·pitch(허리 roll·pitch 관절로 냄), 팔 14 관절 목표. 시뮬 비교 범위: vx·vy ±0.5 m/s, ωz ±0.5 rad/s, 높이 0.5–0.8 m, roll ±0.2 rad, pitch ±0.25 rad (p.6)</td><td class="ours">vx ±0.8, vy ±0.4 m/s, ωz ±1.0 rad/s, 골반 높이 0.335–0.77 m, pitch ±45°(엉덩이로), roll ±10°, 상체 11</td></tr>
+    <tr><td>과제·물체</td><td>잡기 동작은 다루지 않음. 손목 힘 교란 또는 <strong>이미 잡은</strong> 전신 파지(몸통·팔로 안기)를 유지하며 걷기 (p.5, p.7)</td><td class="ours">바닥·받침대 0–0.3 m 상자 37×40.5×29 cm, 0.5–2 kg 을 쪼그려 두 손바닥으로 조여 들기</td></tr>
+    <tr><td>지각·증류</td><td>시각 없음. teacher 두 개 → DAgger student, 관측은 teacher actor 와 같음(고유감각 + 명령), 특권은 critic 만 (p.5, p.13)</td><td class="ours">특권 teacher → D436 깊이 student (DAgger)</td></tr>
+    <tr><td>상위와의 관계</td><td>우리 dev12 설계 참고(하중 커리큘럼, 힘 교란, 지연, 이중 actor-critic). 상위 보상 몇 개(조임 상한, 미끄럼, 떨어뜨림)도 참고</td><td class="ours">dev12 는 고정, 상위만 새로 학습</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">1. 문제와 과제</h2>
+<ul>
+  <li>문제: 무거운 짐은 무게중심을 옮기고 상체에 지속 하중을 건다. 짧은 교란처럼 "거부"할 것이 아니라 과제 내내 "버텨야" 하는 하중이다 (p.1).</li>
+  <li>기존 한계: FALCON 은 손목 힘만, Thor 는 수평 밀고 당기기만, AMO 는 두 발 지지를 가정. 전신 물체 상호작용(몸통 접촉)을 학습에서 다룬 것은 없다 (p.2–3).</li>
+  <li>실기 과제 4 개, 전부 걸으면서 (p.6 그림 5):
+    <ul>
+      <li>수레 밀고 당기기(손목, 뒤로 걷기) — 공통 하중 150 kg</li>
+      <li>짐 들고 걷기(손목) — 11 kg</li>
+      <li>냉장고 앞에 안고 걷기(몸통 접촉) — 6 kg</li>
+      <li>통 옆에 끼고 걷기(몸통 접촉) — 5 kg</li>
+    </ul>
+  </li>
+</ul>
+
+<h2 class="ps">2. 시스템 구조</h2>
+<div class="fig">
+  <p><strong>학습 3 단계 (그림 2)</strong></p>
+  <div class="flow">
+    <span class="node">① 손목 힘 teacher π<sup>wf</sup>: 팔 자세 표본 + 손목 3D 힘 + MPC 안내 + CP-CBF</span><span class="arr">→ 가중치로 출발 →</span>
+    <span class="node">② 전신 파지 teacher π<sup>wbg</sup>: 130,000 파지 중 하나로 시작, 질량 커리큘럼</span><span class="arr">→</span>
+    <span class="node frozen">두 teacher 고정</span><span class="arr">→</span>
+    <span class="node">③ student π<sup>distill</sup>: DAgger, 모드 m<sub>t</sub> ∈ {0, 1}</span>
+  </div>
+  <p style="margin-top:12px"><strong>teacher 한 스텝 (50 Hz)</strong></p>
+  <div class="flow">
+    <span class="node">관측 115 × 5 스텝(80 ms)</span><span class="arr">→</span>
+    <span class="node">하체 actor → 15 관절 오프셋</span><span class="arr">+</span>
+    <span class="node">상체 actor → 팔 14 관절 오프셋</span><span class="arr">→</span>
+    <span class="node">(학습 중만) CBF-QP 가 하체 목표를 보정</span><span class="arr">→</span>
+    <span class="node">시뮬</span>
+  </div>
+  <div class="flow" style="margin-top:8px">
+    <span class="node">측정 상태 → 중심 동역학 MPC (학습 중만)</span><span class="arr">→</span>
+    <span class="node">계획 CoM·속도·각운동량·GRF·디딤 위치·기울기·손목 저항력</span><span class="arr">→</span>
+    <span class="node">보상 안내: exp(−α‖계획 − 측정‖²)</span>
+  </div>
+  <p style="margin-top:8px;font-size:13px">점선 = 고정. 하체·상체 actor-critic 쌍은 같은 궤적을 공유하되 보상·Adam 옵티마이저가 따로(FALCON 식 이중 정책) (p.13–14). MPC 와 CBF 는 학습 때만 쓰고 배치된 정책은 망 하나로 돈다 (p.2, p.5 그림 4).</p>
+</div>
+
+<h3 class="ps">MPC 보상 안내 (p.3–4, 식 1–8)</h3>
+<ul>
+  <li>MPC 상태 = 중심 상태 x ∈ R<sup>12</sup>(CoM 위치, 몸통 roll·pitch·yaw, 선·각운동량). 입력 = 상호작용 점의 렌치: 발 6 차원 × 2 + 손목 3 차원 × 2 = R<sup>18</sup>(손목 teacher) (p.4, 식 13).</li>
+  <li>오일러 이산화 → 선형 시변 모델, 쿨롱 마찰을 반평면으로 근사해 QP 유지. 짐은 결정 변수가 아니라 상수항 e<sub>k</sub> 로 들어가 "짐 쪽으로 기대는" 계획이 나온다 (p.4).</li>
+  <li>디딤 위치: Raibert 식에 외력 보정 k<sub>f</sub>/(mg) Σ z<sub>j</sub>f<sub>j,xy</sub><sup>e</sup> 와 되먹임 항을 더함 (식 7–8).</li>
+  <li>계획을 실행하지 않고, 정책이 측정 상태를 계획에 가깝게 유지하도록 보상 r<sup>mpc</sup> = Σ exp(−α<sub>i</sub>‖Λ<sub>i</sub>(계획) − Λ<sub>i</sub>(측정)‖²) 를 준다 (식 5).</li>
+</ul>
+
+<h3 class="ps">Capture-point CBF (p.5, p.10–11)</h3>
+<ul>
+  <li>capture point ξ = c<sub>xy</sub> + ċ<sub>xy</sub>/ω<sub>0</sub>, ω<sub>0</sub> = √(g/z<sub>cmd</sub>). 외력을 반영해 ξ<sup>f</sup> = ξ + Δp<sub>CoP</sub>. 장벽 h<sub>cp</sub> = 1 − dist(ξ<sup>f</sup>, S<sub>tol</sub>)/d<sub>max</sub> (식 9).</li>
+  <li>학습 중 하체 목표를 h 조건을 만족하는 가장 가까운 목표로 닫힌 꼴 투영(보정 크기 상한 0.30·max(‖q<sub>π</sub> − q‖, 10<sup>−3</sup> rad)), 정책은 원래 행동으로 최적화하고 보정량을 보상으로 벌함: r<sub>CBF</sub> = Δt·w<sub>CBF</sub>[min(ρ̄<sub>cp</sub>, 0) + exp(−‖q̃ − q<sub>π</sub>‖²/σ²) − 1], w<sub>CBF</sub> = 150, σ = 0.5 rad, h<sub>min</sub> = −1 (식 10–12).</li>
+  <li>손목 힘 teacher 에만 적용 (p.5).</li>
+</ul>
+
+<h2 class="ps">3. 관측과 행동</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>actor 관측 (두 teacher 공통, p.13 표 IV)</th><th>차원</th></tr></thead>
+  <tbody>
+    <tr><td>몸통 각속도</td><td>3</td></tr>
+    <tr><td>투영 중력</td><td>3</td></tr>
+    <tr><td>관절 위치 / 속도</td><td>29 / 29</td></tr>
+    <tr><td>직전 행동</td><td>29</td></tr>
+    <tr><td>명령 평면 속도 / yaw rate</td><td>3</td></tr>
+    <tr><td>걸음 위상 (sin, cos)</td><td>2</td></tr>
+    <tr><td>몸통 높이 명령</td><td>1</td></tr>
+    <tr><td>몸통 roll·pitch 오차</td><td>2</td></tr>
+    <tr><td>팔 관절 목표</td><td>14</td></tr>
+    <tr><td><strong>한 스텝 합 / 5 스텝 쌓음(80 ms)</strong></td><td><strong>115 / 575</strong></td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>actor 관측 잡음(균일): 각속도 ±0.2 rad/s, 중력 성분 ±0.05, 관절 위치 ±0.01 rad, 관절 속도 ±1.5 rad/s. actor 는 물체 자세·접촉력을 직접 보지 않는다 (p.13 표 IV·V).</li>
+  <li>critic(잡음 없음, 현재 한 스텝 140): actor 채널 115 + 몸통 선속도 3, 발 높이·공중 시간·접촉 2 + 2 + 2, 발 접촉력 벡터 6, MPC CoM·각운동량·기울기 기준 3 + 3 + 3, 걸러진 yaw rate 1, 그 밖 특권 25 (p.13 표 V). 합은 표 V 의 "Total per critic 140".</li>
+  <li>행동: 가우시안, 하체 15(다리 12 + 허리 3) + 팔 14 관절 오프셋. 행동 표준편차 범위 [0.01, 5], <strong>행동 자르기 없음</strong> (p.14 표 VI). 파지 teacher 의 오프셋 배율: 상체 0.05 rad(파지 자세 주위 잔차), 하체 0.5 rad (p.12).</li>
+  <li>팔 명령 표본: BONES-RP1 을 29 DoF 로 리타게팅한 252 동작 48,233 프레임에서 팔 14 관절을 <strong>정지 목표로</strong> 뽑음(궤적 재생 아님), 3–8 s 마다 다시 뽑고 1 s 선형 혼합 후 유지 (p.5, p.11–12).</li>
+  <li>학습 명령 범위 자체(속도·높이·기울기)는 논문에 없다. 위 ±0.5 m/s 등은 다른 제어기와 공평 비교한 시뮬 평가 범위다 (p.6).</li>
+</ul>
+
+<h2 class="ps">4. 보상 · 종료 · 커리큘럼</h2>
+<p>몸 부분 g ∈ {하체, 상체} 마다 r<sub>g</sub> = Δt Σ w<sub>i</sub> f<sub>i</sub>, Δt = 0.02 s. † = 상체 보상, 나머지는 하체 보상 (p.13 I 절, p.15–16 표 VII·VIII). 아래는 상위 정책 설계와 관련 큰 항만 먼저 적고, 나머지는 펼침 표에 둔다.</p>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항</th><th>식</th><th>손목 힘</th><th>파지</th></tr></thead>
+  <tbody>
+    <tr><td colspan="4"><em>MPC 안내</em></td></tr>
+    <tr><td>CoM 위치</td><td>exp[−Σ<sub>ℓ=1..5</sub> α<sup>c</sup><sub>ℓ</sub>‖e<sub>c,ℓ</sub>‖²]</td><td>2</td><td>2</td></tr>
+    <tr><td>CoM 속도</td><td>exp[−8 Σ<sub>ℓ=1..3</sub> α<sup>v</sup><sub>ℓ</sub>‖e<sub>v,ℓ</sub>‖²]</td><td>4</td><td>4</td></tr>
+    <tr><td>각운동량</td><td>−Σ α<sup>c</sup><sub>ℓ</sub>(‖e<sub>κ,ℓ</sub>‖² + 0.01 e<sub>κ̇</sub><sup>⊤</sup>Q e<sub>κ̇</sub>)</td><td>0.01</td><td>0.01</td></tr>
+    <tr><td>지면 반력</td><td>exp[−(1/|V|) Σ‖e<sub>F,i</sub>‖²/(150 N)²]</td><td>0.002</td><td>0.002</td></tr>
+    <tr><td>흔드는 발 디딤 위치</td><td>평균 exp[−‖e<sub>p,i,xy</sub>‖²/(0.08 m)²]</td><td>2</td><td>2</td></tr>
+    <tr><td>몸통 기울기</td><td>exp[−4 Σ α<sup>θ</sup><sub>ℓ</sub>‖e<sub>θ,ℓ</sub>‖²]</td><td>2</td><td>2</td></tr>
+    <tr><td>외력 저항†</td><td>½ Σ exp[−‖F<sup>applied</sup> − F<sup>MPC</sup>‖²/(30 N)²]</td><td>1</td><td>—</td></tr>
+    <tr><td colspan="4"><em>명령 추종</em></td></tr>
+    <tr><td>선속도</td><td>exp[−(‖v<sub>xy</sub> − v<sup>cmd</sup>‖² + v<sub>z</sub>²)/0.5²]</td><td>0.5</td><td>0.5</td></tr>
+    <tr><td>yaw rate</td><td>exp[−(ω̄<sub>z</sub> − ω<sup>cmd</sup>)²/0.2²], 0.4 s 필터</td><td>3</td><td>3</td></tr>
+    <tr><td>몸통 높이</td><td>exp(−|z − z<sup>cmd</sup>|/0.1)</td><td>3</td><td>3</td></tr>
+    <tr><td>몸통 roll·pitch</td><td>exp(−‖θ − θ<sup>cmd</sup>‖₂/0.15)</td><td>3</td><td>3</td></tr>
+    <tr><td>팔 관절 목표†</td><td>exp[−Σ(q<sub>j</sub> − q<sup>cmd</sup>)²/0.5²]</td><td>4</td><td>4</td></tr>
+    <tr><td colspan="4"><em>물체 지지·유지 (파지 teacher 만)</em></td></tr>
+    <tr><td>파지 렌치 추종†</td><td>[1 + E<sub>g</sub>/(25 N)²]<sup>−1</sup>, 유효한 할당일 때만</td><td>—</td><td>8</td></tr>
+    <tr><td><strong>파지 힘 정규화†</strong></td><td><strong>e/(e + 50 N), e = max(F − 30 N, 0)</strong>, F = 측정 접촉 영역 힘 크기 합</td><td>—</td><td><strong>−0.5</strong></td></tr>
+    <tr><td>물체 떨어뜨림 (하체·상체 각각)</td><td>1[떨어뜨림 종료]</td><td>—</td><td>−250</td></tr>
+    <tr><td>물체 미끄럼 (하체·상체 각각)</td><td>‖v<sub>obj/T</sub>‖₂, 몸통 기준 물체 속도</td><td>—</td><td>−2</td></tr>
+    <tr><td>토크 한계 초과 (하체·상체)</td><td>Σ max(|τ| − 0.9 τ<sup>max</sup>, 0)</td><td>—</td><td>−0.1</td></tr>
+  </tbody>
+</table></div>
+
+<details class="more panel" style="padding:0;margin:10px 0">
+  <summary>걸음·자세·관절 정규화 항 전체 <span class="cnt">표 VII·VIII 나머지</span></summary>
+  <div class="body">
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>항</th><th>식</th><th>손목 힘</th><th>파지</th></tr></thead>
+    <tbody>
+      <tr><td>걸음 위상 접촉 일치</td><td>½ Σ 1[c<sub>i</sub> = c<sub>i</sub><sup>gait</sup>], s &gt; 0.2</td><td>4</td><td>4</td></tr>
+      <tr><td>공중 시간</td><td>Σ 1[0.02 &lt; t<sup>air</sup> &lt; 0.45], s &gt; 0.5</td><td>4</td><td>4</td></tr>
+      <tr><td>평평한 발바닥</td><td>½ Σ exp[−2(Q<sub>x</sub>² + Q<sub>y</sub>²)/0.15]</td><td>1</td><td>1</td></tr>
+      <tr><td>압력 중심</td><td>½ Σ exp[−ẽ²/0.25²], ẽ = (ρ − 0.5)(1 + 1[ρ &lt; 0.5]), ρ = 발끝 하중 비율</td><td>1</td><td>1</td></tr>
+      <tr><td>발 여유</td><td>Σ [|h − 0.12| − 0.02]<sub>+</sub>, s &gt; 0.2</td><td>−5</td><td>−5</td></tr>
+      <tr><td>흔드는 발 높이</td><td>Σ d<sub>i</sub>(h<sup>peak</sup>/0.12 − 1)², s &gt; 0.2</td><td>−20</td><td>−20</td></tr>
+      <tr><td>발 미끄럼</td><td>Σ c<sub>i</sub>‖v<sub>i,xy</sub>‖², s &gt; 0.05</td><td>−0.1</td><td>−0.1</td></tr>
+      <tr><td>부드러운 착지</td><td>Σ d<sub>i</sub>‖F<sub>i</sub>‖, s &gt; 0.05</td><td>−10<sup>−5</sup></td><td>−10<sup>−5</sup></td></tr>
+      <tr><td>지지 방식 불일치</td><td>s &gt; 0.2 면 1[n<sub>c</sub> ≠ 1], 아니면 1[n<sub>c</sub> &lt; 2]</td><td>−2</td><td>−2</td></tr>
+      <tr><td>발 간격</td><td>max(0.12 − ‖p<sub>L</sub> − p<sub>R</sub>‖, 0)</td><td>−0.5</td><td>−0.5</td></tr>
+      <tr><td>발바닥 방향 · 발목 roll · 발 방향</td><td>Σ‖g<sup>sole</sup><sub>xy</sub>‖ · Σ|q<sub>ankle roll</sub>| · Σ|wrap(ψ<sub>i</sub> − ψ<sub>base</sub> − 0.4 ω<sup>cmd</sup>)|</td><td>−2 · −2 · −1</td><td>−2 · −2 · −1</td></tr>
+      <tr><td>골반 · 몸통 똑바로</td><td>exp[−5‖g<sup>pelvis</sup><sub>xy</sub>‖²] · exp[−5‖g<sup>torso</sup><sub>xy</sub>‖²]</td><td>1 · 0</td><td>1 · 1</td></tr>
+      <tr><td>기본 자세</td><td>exp[−mean((q − q<sup>0</sup>)²/σ²)], 다리·허리, 속도 의존 허용폭</td><td>1</td><td>1</td></tr>
+      <tr><td>몸통 높이 오차</td><td>(1 + 4·1[s ≤ 0.2])(z − z<sup>cmd</sup>)²</td><td>−10</td><td>−10</td></tr>
+      <tr><td>다리 벌림</td><td>Σ<sub>hip roll/yaw</sub> q²</td><td>−4</td><td>−4</td></tr>
+      <tr><td>허리 고정점</td><td>(q<sub>waist,roll</sub> − θ<sup>cmd</sup><sub>roll</sub>)² + (q<sub>waist,pitch</sub> − θ<sup>cmd</sup><sub>pitch</sub>)²</td><td>−1</td><td>−1</td></tr>
+      <tr><td>허리 yaw · 가슴 방향</td><td>q<sub>waist,yaw</sub>² · |wrap(ψ<sub>torso</sub> − ψ<sub>base</sub>)|</td><td>−6 · −6</td><td>−2 · −2</td></tr>
+      <tr><td>허리 힘</td><td>Σ[max(|τ|/τ<sup>max</sup> − 0.7, 0)]²</td><td>−10</td><td>−10</td></tr>
+      <tr><td>몸통 각속도</td><td>ω<sub>x</sub>² + ω<sub>y</sub>² (골반, 세계 좌표)</td><td>−0.05</td><td>−0.05</td></tr>
+      <tr><td>서 있을 때 관절 이탈 · 몸통 표류</td><td>Σ(q − q<sup>0</sup>)² · ‖v<sub>base,xy</sub>‖² (모든 명령이 정지일 때)</td><td>−1 · −6</td><td>−1 · −6</td></tr>
+      <tr><td>전체 행동 변화율 · 상체 행동 변화율†</td><td>‖a<sub>t</sub> − a<sub>t−1</sub>‖² · ‖a<sup>U</sup><sub>t</sub> − a<sup>U</sup><sub>t−1</sub>‖²</td><td>−0.25 · −0.1</td><td>−0.25 · −0.1</td></tr>
+      <tr><td>관절 한계 (전체 · 상체†)</td><td>Σ([q<sup>min</sup> − q]<sub>+</sub> + [q − q<sup>max</sup>]<sub>+</sub>)</td><td>−1 · −1</td><td>−1 · −1</td></tr>
+      <tr><td>관절 속도 (하체 · 상체†)</td><td>Σ q̇²</td><td>−2.5×10<sup>−3</sup> · −10<sup>−3</sup></td><td>같음</td></tr>
+      <tr><td>관절 가속 (하체 · 상체†)</td><td>Σ q̈²</td><td>−7.5×10<sup>−7</sup> · −1.2×10<sup>−8</sup></td><td>같음</td></tr>
+      <tr><td>관절 토크 (하체 · 상체†)</td><td>Σ τ²</td><td>−8.75×10<sup>−5</sup> · −3.5×10<sup>−5</sup></td><td>같음</td></tr>
+    </tbody>
+  </table></div>
+  <p>s = ‖v<sup>cmd</sup><sub>xy</sub>‖ + |ω<sup>cmd</sup><sub>z</sub>| (움직임 문턱). 출처 p.15 표 VII, p.16 표 VIII.</p>
+  </div>
+</details>
+
+<h3 class="ps">종료 (p.13)</h3>
+<ul>
+  <li>두 teacher: 몸통 기울기 70° 초과, 발 아닌 부위의 지면 접촉.</li>
+  <li>파지 teacher 추가: 잘못된 시뮬 상태, <strong>물체 떨어뜨림 = 몸통 기준 물체 이동 0.15 m 초과 또는 물체 높이 0.30 m 미만</strong>(리셋부터 감시).</li>
+</ul>
+
+<h3 class="ps">커리큘럼 (p.11–13)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>대상</th><th>규칙</th></tr></thead>
+  <tbody>
+    <tr><td>팔 자세 범위 c<sub>e</sub></td><td>q<sup>ref</sup> = q<sup>0</sup> + c<sub>e</sub>(q<sup>sample</sup> − q<sup>0</sup>), c<sub>e</sub> 0.3 에서 시작, 리셋마다 에피소드 길이 &gt; 200 스텝(4 s)이면 +0.01, &lt; 40 스텝(0.8 s)이면 −0.01, [0.3, 1] (식 24–25)</td></tr>
+    <tr><td>손목 힘 크기 f<sub>e</sub></td><td>0 에서 시작, &gt; 200 스텝이면 +0.02, &lt; 200 이면 −0.02, [0, 1]. env 의 20 % 는 힘 없음 고정. 손마다 수평 ±40 N·±40 N, 수직 −50–+5 N 을 f<sub>e</sub> 배, 축마다 확률 0.25 로 0, 3–5 s 유지. 걸을 때 수평 힘은 명령 속도 반대 방향으로 (식 26–27)</td></tr>
+    <tr><td><strong>파지 질량 상한 b<sub>e</sub></strong></td><td>m<sub>e</sub> ∼ U(0.5, b<sub>e</sub>), 0.5 ≤ b<sub>e</sub> ≤ 5 kg, 처음 0.5. 20 s 를 실패 없이 끝내면 b<sub>e</sub> ← min(5, 1.1 b<sub>e</sub>), 실패 종료면 max(0.5, b<sub>e</sub>/1.1). 시간 단축·관리용 리셋은 올리지 않음 (식 28–29)</td></tr>
+    <tr><td>행동 지연</td><td>1,500 갱신 대기 뒤 2,500 갱신에 걸쳐 20 ms 까지 늘림 (p.12)</td></tr>
+    <tr><td>밀기 (손목 teacher)</td><td>4–6 s 마다 확률 0.5, 0.5–1.2 s 지속, 300 갱신 대기 뒤 4,000 갱신에 걸쳐 150 N 까지. 몸통 속도 교란: vx·vy ±2, vz ±0.4 m/s, roll·pitch rate ±0.52, yaw rate ±0.78 rad/s (p.13)</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">5. 학습 설정 (알고리즘 · 망 · 무작위화)</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>값</th></tr></thead>
+  <tbody>
+    <tr><td>env 당 rollout</td><td>24 스텝 (0.48 s)</td></tr>
+    <tr><td>GPU 당 env · 표본</td><td>4,096 · 98,304</td></tr>
+    <tr><td>epoch / minibatch</td><td>5 / 4 (minibatch 당 24,576)</td></tr>
+    <tr><td>γ · GAE λ · clip</td><td>0.99 · 0.95 · 0.2</td></tr>
+    <tr><td>엔트로피 · value 계수</td><td>0.01 · 1.0, value 손실 자르기 켬</td></tr>
+    <tr><td>학습률</td><td>초기 10<sup>−3</sup>, 몸 부분별 적응형(목표 KL 0.01)</td></tr>
+    <tr><td>기울기 최대 노름</td><td>1.0</td></tr>
+    <tr><td>옵티마이저</td><td>teacher 당 Adam 2 개(하체·상체)</td></tr>
+    <tr><td>행동 표준편차 범위 · 행동 자르기</td><td>[0.01, 5] · 없음</td></tr>
+    <tr><td>손목 teacher 학습량</td><td>15,000 갱신 × GPU 8 개(= 32,768 env, 계산)</td></tr>
+    <tr><td>파지 teacher 학습량</td><td>손목 teacher 에서 출발 후 새로 501 갱신 × GPU 32 개(= 131,072 env, 계산). "수렴이 아니라 초기 적응"</td></tr>
+    <tr><td>망 크기 · 시뮬레이터 · 벽시계 시간</td><td>논문에 없음</td></tr>
+  </tbody>
+</table></div>
+<p style="font-size:13px">출처: p.14 표 VI, p.12 G 절.</p>
+
+<h3 class="ps">도메인 무작위화 (p.12 H 절)</h3>
+<ul>
+  <li>발 마찰 0.3–1.2, P·D 이득 ×0.8–1.2, 회전자 관성 ×0.5–1.5, 몸통 질량 −1–+3 kg.</li>
+  <li>몸통 CoM 수평 ±0.025 m·수직 ±0.030 m, 의사 관성 α ∈ [−0.112, 0.091], 엔코더 편향 ±0.015 rad.</li>
+  <li>행동 지연: 위 커리큘럼(최대 20 ms). 파지 teacher 는 지연을 시뮬 스텝 단위로 균일 표본.</li>
+  <li>파지 teacher: 높이·몸통 명령 5 s 마다 재표본, 밀기·속도 교란은 끔, 물체 질량은 위 커리큘럼(관성은 비례 조정).</li>
+</ul>
+
+<h2 class="ps">6. teacher → student / 증류</h2>
+<ul>
+  <li>두 teacher 를 고정하고 <strong>모드 조건 student</strong> 를 DAgger 로 학습. 모드 m<sub>t</sub> ∈ {0, 1} 가 어느 teacher 가 정답 행동을 줄지 고른다 (p.5 G 절, 그림 2).</li>
+  <li>student 는 teacher actor 와 <strong>같은 관측 공간</strong>(고유감각·명령 이력)을 쓰고 자기 롤아웃 상태에서 teacher 행동을 회귀한다. 즉 정보 격차를 메우는 증류가 아니라 두 전문가를 한 망에 합치는 증류 (p.5).</li>
+  <li>student 망 크기, 손실, 반복 수, 모드를 실기에서 어떻게 주는지는 논문에 없음. 실기 결과는 모두 student (p.6, p.8 표 III).</li>
+</ul>
+
+<h2 class="ps">7. 결과</h2>
+<h3 class="ps">시뮬: 팔당 10 kg 운반 추종과 밀기 회복 (p.7 표 I)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>방식</th><th>E<sub>vx</sub> (m/s)</th><th>E<sub>vy</sub> (m/s)</th><th>E<sub>ωz</sub> (rad/s)</th><th>최악 DCM 여유 (m) ↑</th><th>최대 기울기 (°)</th><th>최대 밀기 (N)</th></tr></thead>
+  <tbody>
+    <tr><td>Thor</td><td>0.263</td><td>0.265</td><td>0.450</td><td>−0.275</td><td>23.17</td><td>80</td></tr>
+    <tr><td>AMO</td><td>0.276</td><td>0.350</td><td>0.196</td><td>−0.705</td><td>9.94</td><td>50</td></tr>
+    <tr><td>FALCON</td><td>0.367</td><td>0.369</td><td>0.392</td><td>−0.329</td><td>7.91</td><td>80</td></tr>
+    <tr><td>Ours (손목 teacher)</td><td>0.242</td><td>0.257</td><td>0.234</td><td>−0.251</td><td>5.90</td><td>110</td></tr>
+    <tr><td><strong>Ours + CP-CBF</strong></td><td><strong>0.210</strong></td><td><strong>0.142</strong></td><td>0.197</td><td><strong>−0.162</strong></td><td><strong>5.59</strong></td><td><strong>130</strong></td></tr>
+  </tbody>
+</table></div>
+<p>하중은 팔 중간(손목 아님)에 2 s 동안 올리고 2 s 안정 후 한 축씩 명령. 밀기는 몸통에 1 s, 50–130 N 6 단계, 앞·뒤·옆, teacher 당 90 회. 기울기는 50 N 에서. 학습한 손목이 아니라 아래팔에 실은 하중에서도 버텨 "적용 지점 전이"를 보였다 (p.6–7).</p>
+
+<h3 class="ps">시뮬: 걸으면서 손목 힘 버티기 (p.7 표 II)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>방식</th><th>E<sub>upper</sub> 0 / 20 / 40 N (rad)</th><th>E<sub>root</sub> 0 / 20 / 40 N (복합)</th></tr></thead>
+  <tbody>
+    <tr><td>Thor</td><td>0.337 / 0.329 / 0.337</td><td>0.762 / 0.849 / 0.913</td></tr>
+    <tr><td>AMO</td><td>0.402 / 0.416 / 0.445</td><td>0.680 / 1.228 / 2.111</td></tr>
+    <tr><td>FALCON</td><td><strong>0.144 / 0.148 / 0.159</strong></td><td><strong>0.444 / 0.525</strong> / 0.868</td></tr>
+    <tr><td>Ours</td><td>0.161 / 0.160 / 0.162</td><td>0.620 / 0.543 / <strong>0.839</strong></td></tr>
+    <tr><td>Ours + CP-CBF</td><td>0.172 / 0.172 / 0.176</td><td>0.620 / 0.752 / 0.948</td></tr>
+  </tbody>
+</table></div>
+<p>팔 추종은 FALCON 이 가장 좋고 HULK 는 힘이 커져도 거의 일정. CP-CBF 판은 균형 여유를 얻는 대신 몸통 속도 추종 오차가 커진다 — "운반에선 균형을 위해 동작 오차를 허용하는 편이 나을 수 있다" (p.7).</p>
+
+<h2 class="ps">8. 실기 · sim2real</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>방식</th><th>수레 성공 · 최대 (kg)</th><th>짐 운반 성공 · 최대 (kg)</th><th>냉장고 성공 · 최대 (kg)</th><th>통 성공 · 최대 (kg)</th></tr></thead>
+  <tbody>
+    <tr><td>Thor</td><td>2/6 · 130</td><td>2/4 · 7.25</td><td>0/4 · 2.0</td><td>0/4 · 0.6</td></tr>
+    <tr><td>AMO</td><td>0/6 · 75</td><td>4/4 · 12.25</td><td>2/4 · 6.0</td><td>0/4 · 2.6</td></tr>
+    <tr><td>FALCON</td><td>3/6 · 200</td><td>0/4 · 3.62</td><td>0/4 · 2.5</td><td>0/4 · 0.0</td></tr>
+    <tr><td><strong>HULK (student)</strong></td><td><strong>5/6 · 300</strong></td><td><strong>4/4 · 12.25</strong></td><td><strong>4/4 · 7.0</strong></td><td><strong>4/4 · 6.1</strong></td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>성공 = 넘어짐·관절 토크 보호 정지·떨어뜨림 없이 명령 과제 완료. 짐 운반은 모두 들 수는 있어서 OptiTrack 으로 경로 이탈 문턱도 요구 (p.6).</li>
+  <li>성공률은 과제별 공통 하중(수레 150 kg, 짐 11 kg, 냉장고 6 kg, 통 5 kg)에서, 최대값은 별도 하중 올리기 시험 (p.6, p.8 표 III).</li>
+  <li>가장 큰 차이는 몸통에 붙여 드는 과제(냉장고·통)에서 났다 (p.7).</li>
+  <li>모든 실기는 0 샷 student (p.6).</li>
+</ul>
+
+<h2 class="ps">9. 코드에서 확인한 것</h2>
+<p>해당 없음 — 공개 코드 없음(프로젝트 웹사이트만, 조사 노트 확인). 받은 것은 논문 PDF 뿐.</p>
+
+<h2 class="ps">10. 한계</h2>
+<ul>
+  <li><strong>잡기 동작 자체(파지 획득·재파지·빠른 접촉 변화)는 범위 밖</strong>. 파지 teacher 는 이미 만들어진 파지에서 시작한다 (p.7).</li>
+  <li>중심 동역학 예측기는 관절 수준 구동 가능성을 보지 않는다. CBF 는 학습 중 근사·상한이 걸린 필터라 배치 때 안전 보장은 없다 (p.7, p.11).</li>
+  <li>손목 teacher 는 정지 팔 자세만 표본 — 자세 사이 전환 능력은 보장하지 않음 (p.7).</li>
+  <li>시뮬레이터 이름, 망 크기, student 세부, 학습 시간이 논문에 없다. 파지 teacher 는 501 갱신의 "초기 적응" 곡선만 보고 (p.12).</li>
+  <li>실기 시행이 과제당 4–6 회.</li>
+</ul>
+
+<h2 class="ps">11. 우리에게 가져올 것</h2>
+<div class="take"><ol>
+  <li><strong>가져올 것(상위 보상) — 상한이 있는 과한 조임 벌점</strong>: e = max(F − F<sub>0</sub>, 0), 벌점 e/(e + 50 N), 가중 −0.5(× Δt). 포화되므로 큰 힘에서도 발산하지 않는다. 우리 F = 두 손바닥 법선력 합, F<sub>0</sub> 는 필요한 조임보다 조금 위(2 kg·μ 0.6 이면 합 약 33 N — 계산)로 예: 40 N. 두 손 min-힘 보상(20 N 포화)과 짝지으면 "충분히, 그러나 과하지 않게" 조이는 띠가 생겨 v2 의 켜짐/꺼짐 포화 출력을 줄이는 데 쓸 수 있다.</li>
+  <li><strong>가져올 것(상위 보상·종료) — 몸통 기준 미끄럼·떨어뜨림</strong>: 든 뒤 몸통 기준 상자 속도 벌점(−2), 떨어뜨림 큰 벌점(−250, 우리 보상 규모에 맞춰 조정)과 종료(몸통 기준 상자 이동 0.15 m 초과). 바닥 상자가 있으므로 "물체 높이 0.30 m 미만" 종료는 들기 판정 뒤에만 건다.</li>
+  <li><strong>가져올 것 — 환경별 질량 커리큘럼</strong>: m ∼ U(0.5, b<sub>e</sub>), 성공 ×1.1·실패 ÷1.1. 우리는 b<sub>e</sub> ∈ [0.5, 2] kg. 2 kg 근처에서 미끄러짐이 잦을 때 켜고, 시간 단축 리셋은 올림에서 뺀다.</li>
+  <li><strong>가져올 것 — 행동은 자르지 말고 표준편차를 묶기</strong>: 행동 자르기 없음 + 표준편차 [0.01, 5] 범위 + 행동 변화율 벌점. dev10 v2 의 "환경 안 자르기 → std 0.5 에서 240 발산" 재발 방지책과 같은 방향이다. 상위 출력이 dev12 명령 범위를 넘으면 자르는 대신 범위 밖 L2 벌점을 쓴다.</li>
+  <li><strong>가져올 것(dev12 쪽) — 하중·지연 학습 요령</strong>: 손목 힘을 env 마다 0 에서 키우는 f<sub>e</sub>(±0.02/에피소드, 20 % 는 힘 없음), 걷는 방향 반대로 미는 수평 힘, 1,500 갱신 대기 뒤 20 ms 까지 늘리는 행동 지연, 300 갱신 뒤 150 N 까지 늘리는 밀기. dev12 를 다시 학습할 때(데이터 집계 등) 손 하중 0–5 kg 무작위에 더해 시험할 후보.</li>
+  <li><strong>가져올 것(선택) — 몸 부분별 actor-critic</strong>: 하체·상체 보상과 옵티마이저를 나눈 이중 정책. 우리 teacher 를 "골반 명령 머리"와 "상체 11 머리"로 나누고 보상 흐름을 따로 주면, 팔 보상이 골반 명령 학습을 흔드는 것을 줄일 수 있다. 근거는 FALCON 계열 관행이고 이 논문에서 절제되진 않았다.</li>
+  <li><strong>참고 — 기울기는 허리, 우리는 골반</strong>: HULK 의 몸통 roll·pitch 명령은 G1 허리 roll·pitch 관절로 낸다(허리 고정점 항). K1 은 허리 yaw 뿐이라 숙임 ±45° 를 엉덩이·무릎·발목이 감당한다. HULK 의 pitch ±0.25 rad 범위·결과를 우리 숙임 범위에 그대로 견주면 안 된다.</li>
+  <li><strong>가져오지 말 것 — MPC 보상 안내와 CP-CBF</strong>: dev12 는 이미 설계·스모크 단계이고 상위 정책에는 해당 없다. 중심 동역학 MPC 를 학습 루프에 넣는 비용이 크다. 무거운 하중(우리 2 kg)에서 dev12 균형이 문제로 드러날 때만 다시 본다.</li>
+  <li><strong>가져오지 말 것 — 파지 teacher 의 "이미 잡은 상태 시작"을 과제 해법으로 보기</strong>: HULK 는 잡기를 풀지 않았다. 우리 핵심 난제(쪼그려 두 손바닥 조임 획득)는 이 논문 범위 밖이다. 다만 유지 단계 학습에서 "잡은 상태 스냅숏 시작" 일부 비율은 쓸 만하다.</li>
+</ol></div>
+
+<p class="src">출처 표기: (p.N), (표 N), (그림 N), (식 N), 코드는 파일 경로. 논문에 없는 값은 "논문에 없음".</p>
+</main>
+</body>
+</html>

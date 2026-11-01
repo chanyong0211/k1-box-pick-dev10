@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HDMI — 논문 상세</title>
+<link rel="stylesheet" href="paper.css">
+</head>
+<body>
+<main class="wrap">
+<a class="back" href="../index.html#catalog">← 자료 목록으로</a>
+
+<header class="ph">
+  <h1>HDMI: 사람 영상 한 편에서 뽑은 로봇·물체 궤적을 함께 추종해 전신 상호작용을 배우는 G1 정책</h1>
+  <p class="orig">HDMI: Learning Interactive Humanoid Whole-Body Control from Human Videos</p>
+  <p class="meta">Haoyang Weng, Yitang Li, Nikhil Sobanbabu, Zihan Wang, Zhengyi Luo, Tairan He, Deva Ramanan, Guanya Shi · Carnegie Mellon University (LeCAR Lab) · 사전 공개 (arXiv 2025-09, v3) · Unitree G1 29 DoF, 고무 손 · IsaacSim 4.5 / Isaac Lab 2.2</p>
+  <div class="chips">
+    <a class="chip loc" href="../reference/hdmi/paper.pdf">로컬 PDF</a>
+    <a class="chip loc" href="../reference/hdmi/code/">로컬 코드</a>
+    <a class="chip" href="https://arxiv.org/abs/2509.16757" target="_blank" rel="noopener">arXiv 2509.16757</a>
+    <a class="chip gh" href="https://github.com/LeCAR-Lab/HDMI" target="_blank" rel="noopener">LeCAR-Lab/HDMI</a>
+    <a class="chip" href="https://hdmi-humanoid.github.io" target="_blank" rel="noopener">프로젝트 페이지</a>
+    <span class="simv s3">유사도 1–3</span>
+    <span class="badge">LICENSE 없음</span>
+  </div>
+</header>
+
+<div class="callout blue tldr">단안 RGB 영상에서 사람·물체 궤적을 뽑아 G1 참조 동작을 만들고, 정책이 "참조 관절 + 잔차"를 내며 로봇과 물체 궤적을 함께 추종. 손별 접촉 보상(위치 × 힘, 10 N 포화)이 불완전한 참조에서도 잡기를 만든다. 실기 문 통과 67 회 연속, 여행가방 7 회 연속, 빵 상자 2 회 완주 (p.1, p.5).</div>
+
+<div class="callout">유사도가 1–3 인 이유: 박스 집기 메모는 3(손별 접촉 보상·접촉 상실 종료·옆면 접촉 목표가 그대로 참고됨), 시각 증류 메모는 1(실기 물체 자세를 MoCap 으로 받고 논문에 시각 입력이 없음).</div>
+
+<h2 class="ps">우리와 무엇이 같고 다른가</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>이 논문</th><th>우리 (dev10 pelvis_pick)</th></tr></thead>
+  <tbody>
+    <tr><td>하위 제어기</td><td><strong>없음</strong>. 과제마다 정책 하나가 다리·허리·팔 23 관절 PD 목표를 직접 냄(손목 6 은 기본 자세 유지) (코드 <code>hdmi-base.yaml</code>)</td><td class="ours">dev12 하체 RL(동결), 골반 vx·vy·ωz·높이·pitch·roll 추종, 상체 11 외부 PD</td></tr>
+    <tr><td>상위 출력</td><td>관절 목표 = 참조 관절 θ<sup>ref</sup> + 잔차 a (p.4)</td><td class="ours">상체 11 + 골반 명령</td></tr>
+    <tr><td>과제·물체</td><td>영상 한 편(과제당 참조 1 개)을 따라 하기: 빵 상자 들어 옮기기(1.2–1.8 kg), 여행가방 무릎 꿇고 들기, 어깨 위로 상자 들기, 상자 밀기(6–12 kg), 문·의자·공 등 14 과제</td><td class="ours">바닥·받침대 0–0.3 m 박스 37×40.5×29 cm, 0.5–2 kg, 위치·yaw 무작위, 두 손 옆면 조이기</td></tr>
+    <tr><td>지각·증류</td><td>논문: 실기 물체 자세 = MoCap. 코드: ROA 식 teacher(특권 잠재) → student(적응 모듈) + 선택적 깊이 추정기 단계</td><td class="ours">특권 teacher → D436 깊이 student (DAgger)</td></tr>
+    <tr><td>로봇·손</td><td>G1, 고무 손(손끝 상자 충돌체), 손목 3 관절 kp 4 로 부드럽게</td><td class="ours">K1 23 DoF, 고무 공 손, 손목 roll 1</td></tr>
+    <tr><td>시뮬레이터·물리</td><td>IsaacSim(PhysX), 물리 5 ms, 정책 20 ms</td><td class="ours">Isaac Lab + Newton</td></tr>
+    <tr><td>학습 방식</td><td>DeepMimic 식 추종 PPO + RSI + 위상 관측 + 추종 오차 종료</td><td class="ours">과제 보상 PPO, 참조 동작 없음</td></tr>
+    <tr><td>성공 정의</td><td>참조 시작부터 끝까지 어떤 종료도 안 걸리고 완주 (p.6)</td><td class="ours">집어 들고 서서 유지</td></tr>
+    <tr><td>실기</td><td>G1 + MoCap 마커(골반·물체), 6 과제 배치 (p.5, FAQ)</td><td class="ours">아직 없음</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">1. 문제와 과제</h2>
+<ul>
+  <li>문제 (p.1): 전신 사람–물체 상호작용(HOI)은 (1) 3D 사람·물체 동작 데이터가 드물고, (2) 참조가 불완전해 원하는 접촉을 유도하기 어렵고 어려운 자세에서 균형 잡기가 힘들다.</li>
+  <li>기존: 과제별 참조 생성 파이프라인이나 수작업 보상, 또는 VLM·모델 기반 상위 계획기가 필요 (p.1).</li>
+  <li>HDMI 의 답: 과제 보상 설계 대신 영상에서 얻은 <strong>로봇 + 물체 궤적을 함께 추종</strong>. 세 장치: 통일된 물체 표현, 잔차 행동 공간, 통일된 상호작용(접촉) 보상 (p.1–4).</li>
+  <li>과제: 시뮬 14 개, 실기 6 개(문 열고 지나가기, 여행가방, 빵 상자, 폼 매트, Truman 인사 등) (p.1, p.5, FAQ).</li>
+</ul>
+
+<h2 class="ps">2. 시스템 구조</h2>
+<div class="fig">
+  <p><strong>데이터 (과제당 영상 1 편)</strong></p>
+  <div class="flow">
+    <span class="node">단안 RGB 영상</span><span class="arr">→</span>
+    <span class="node">GVHMR 로 SMPL 자세 추정</span><span class="arr">→</span>
+    <span class="node">LocoMujoco(GMR) 로 G1 리타게팅</span><span class="arr">→</span>
+    <span class="node">물체 궤적·접촉 구간 c<sub>t</sub>·접촉점 p<sup>contact</sup> 수동 주석 + 평활</span><span class="arr">→</span>
+    <span class="node frozen">참조 motion.npz (고정)</span>
+  </div>
+  <p style="margin-top:12px"><strong>학습 (IsaacSim, 4096 env)</strong></p>
+  <div class="flow">
+    <span class="node">관측: 고유감각 + 위상 φ + 미래 참조(1, 2, 8, 16, 32 스텝) + 물체 xy·yaw + 참조 접촉점</span><span class="arr">→</span>
+    <span class="node">teacher actor (학습, 특권 잠재 256 추가)</span><span class="arr">→</span>
+    <span class="node">θ<sup>ref</sup> + a (23 관절)</span><span class="arr">→</span>
+    <span class="node">지연 10–30 ms + 저역 통과 α 0.8–1.0</span><span class="arr">→</span>
+    <span class="node">PD 200 Hz 물리</span>
+  </div>
+  <div class="flow" style="margin-top:8px">
+    <span class="node">적응 모듈 (학습, 특권 잠재 예측)</span><span class="arr">→</span>
+    <span class="node">student actor (teacher 평균에 맞춰 증류 → 이어서 PPO 미세조정)</span>
+  </div>
+  <p style="margin-top:12px"><strong>실기</strong></p>
+  <div class="flow">
+    <span class="node">MoCap 마커: 골반·물체 전역 자세</span><span class="arr">→</span>
+    <span class="node">로봇 몸통 기준으로 변환</span><span class="arr">→</span>
+    <span class="node">정책 50 Hz</span><span class="arr">→</span>
+    <span class="node">G1 PD</span>
+  </div>
+  <p style="margin-top:8px;font-size:13px">주기: 정책 20 ms(<code>step_dt 0.02</code>), Isaac 물리 5 ms. 학습되는 것: actor·critic·특권 인코더·적응 모듈. 고정: 참조 궤적. 논문은 teacher·student 를 언급하지 않고 코드에만 있다.</p>
+</div>
+
+<h2 class="ps">3. 관측과 행동</h2>
+<p>논문은 구성만 말하고 차원은 밝히지 않는다(논문에 없음). 아래 차원은 공개 코드 <a href="../reference/hdmi/code/cfg/task/base/hdmi-base.yaml"><code>cfg/task/base/hdmi-base.yaml</code></a> 기준.</p>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>그룹</th><th>항목</th><th>잡음</th></tr></thead>
+  <tbody>
+    <tr><td>command (참조)</td><td>미래 참조 몸체 위치(참조 몸통 yaw 기준, 5 시점 × 16 몸체 × 3), 미래 참조 관절 위치(5 시점), 위상 φ = t / 길이</td><td>–</td></tr>
+    <tr><td>policy (고유감각)</td><td>몸통 각속도 3, 투영 중력 3, 관절 위치 이력 [0, 1, 2, 3, 4, 8] 스텝, 직전 행동 3 스텝</td><td>가우시안 σ 0.05, 0.05, 0.015</td></tr>
+    <tr><td>object</td><td>물체 xy(로봇 yaw 기준) 2, 물체 yaw 의 cos·sin 2, 참조 접촉점 2 손 × 3 (로봇 기준)</td><td>σ 0.01 (접촉점은 에피소드 고정 ±0.02 추가)</td></tr>
+    <tr><td>priv (teacher 인코더·critic 전용)</td><td>각속도·중력·관절 9 스텝 이력, 미래 참조 루트 위치·자세, 미래 몸체 위치·자세·속도 차, 루트 선속도, 발목 위치·속도, 발목·골반·torso 높이, 실제 적용 행동·토크, 물체 위치·자세, 미래 물체 차, 미래 접촉 신호, 접촉점 차</td><td>없음</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>논문 설명 (p.4): 물체 자세를 로봇 몸통 기준으로, 원하는 접촉점 p<sup>contact</sup> 도 몸통 기준으로 준다(그림 3). "깊이·RGB 로 증류하기 쉬운 표현"이라고 적었지만 실제 시각 실험은 없다.</li>
+  <li>주의: 코드의 정책 물체 관측은 <strong>xy 와 yaw 뿐(높이 z 없음)</strong>. 높이는 특권 쪽에만 있다.</li>
+</ul>
+
+<h3 class="ps">행동</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>값</th></tr></thead>
+  <tbody>
+    <tr><td>정의</td><td>θ<sup>target</sup> = θ<sup>ref</sup> + a<sub>t</sub> (p.4). 코드: 참조 관절을 행동 단위로 바꾼 (θ<sup>ref</sup> − θ<sub>0</sub>)/scale 에 actor 출력을 더함 (<code>RefJointPos</code>, <a href="../reference/hdmi/code/active_adaptation/learning/ppo/ppo_roa.py"><code>ppo_roa.py</code></a>)</td></tr>
+    <tr><td>관절 수</td><td>23 (다리 12, 허리 3, 팔 4×2). 손목 6 은 행동에서 빠짐 (<code>action_scaling</code>)</td></tr>
+    <tr><td>배율</td><td>hip yaw·pitch 0.55, hip roll·knee 0.35, ankle 0.44, waist roll·pitch 0.44, waist yaw 0.55, 팔 0.44</td></tr>
+    <tr><td>지연·평활</td><td>지연 2–6 물리 스텝(10–30 ms), 적용 행동 = lerp(이전, 새 행동, α), α ∈ [0.8, 1.0] 에피소드마다 (<a href="../reference/hdmi/code/active_adaptation/envs/mdp/action.py"><code>action.py</code></a>)</td></tr>
+    <tr><td>손목</td><td>빵 상자·여행가방 등: 손목 kp 4.0(부드럽게), 손목 yaw 초기 ±0.4 rad</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">4. 보상 · 종료 · 커리큘럼</h2>
+<h3 class="ps">보상 (p.4 표 I 와 코드)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>묶음</th><th>항 (표 I 가중)</th><th>코드 구현</th></tr></thead>
+  <tbody>
+    <tr><td rowspan="4">로봇 추종</td><td>Body Local Pose 2.0</td><td>상체(어깨·팔꿈치·손목)·하체(hip·knee·ankle) 위치·자세 각 0.5 = 2.0. exp(−평균 오차/σ), 위치 σ 0.5, 자세 σ 1.0, 루트 yaw 기준 지역 좌표</td></tr>
+    <tr><td>Root Global Pose 1.0</td><td>골반 위치 0.5(σ 0.5) + 자세 0.5(σ 0.5)</td></tr>
+    <tr><td>Body Global Velocity 1.0</td><td>16 몸체 선속도 0.5(σ 0.5) + 각속도 0.5(σ 2.5)</td></tr>
+    <tr><td>Joint Tracking 1.0</td><td>관절 위치 0.5(σ 0.25) + 속도 0.5(σ 2.5), 허리·다리·어깨·팔꿈치</td></tr>
+    <tr><td rowspan="2">물체 추종·상호작용</td><td>Object Pose 2.0</td><td>위치 1.0(σ 0.5) + 자세 1.0(σ 0.5)</td></tr>
+    <tr><td><strong>Contact Reward 5.0</strong></td><td><code>eef_contact_exp</code> weight 1.0 × gain 5.0, pos_sigma 0.3, frc_sigma 40, <strong>frc_thres 10 N</strong></td></tr>
+    <tr><td rowspan="7">정규화</td><td>Action Rate L2 0.1</td><td>같음</td></tr>
+    <tr><td>Joint Position Limits L1 10.0</td><td>soft factor 0.9</td></tr>
+    <tr><td>Joint Velocity 5.0e−4</td><td>같음</td></tr>
+    <tr><td>Joint Torque Limits L1 0.01</td><td>soft factor 0.6</td></tr>
+    <tr><td>Feet Impact Force L2 1.0</td><td>발목 roll 링크</td></tr>
+    <tr><td>Feet Slip 0.5</td><td>같음</td></tr>
+    <tr><td>Feet Air Time 5.0</td><td>임계 0.5 s</td></tr>
+    <tr><td>표에 없음</td><td>–</td><td>survival 1.0 (loco·feet 묶음에 각각)</td></tr>
+  </tbody>
+</table></div>
+
+<h3 class="ps">접촉(상호작용) 보상 — 이 논문의 핵심</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>식</th><th>뜻</th></tr></thead>
+  <tbody>
+    <tr><td>R<sub>contact,i</sub> = exp(−‖p<sub>eef,i</sub> − p<sub>target,i</sub>‖<sub>2</sub> / σ<sub>pos</sub>) · min(exp((‖F<sub>contact,i</sub>‖<sub>2</sub> − F<sub>thres</sub>) / σ<sub>frc</sub>), 1) (식 1)</td><td>손 i 의 위치 항 × 힘 항. 힘이 F<sub>thres</sub> 이상이면 힘 항 = 1 로 포화 → "충분하되 지나치지 않게"</td></tr>
+    <tr><td>R<sub>interaction</sub> = (1/N<sub>c</sub>) Σ R<sub>contact,i</sub> · c<sub>t,i</sub> (식 2)</td><td>참조가 접촉을 원하는 시점(c = 1)의 손들 평균</td></tr>
+    <tr><td>코드: 손별 r·c·gain + (1 − c), 그 뒤 두 손 평균</td><td>접촉을 원하지 않는 손은 상수 1, 원하는 손은 최대 5. 힘은 손목 roll·pitch·yaw 링크와 물체 사이 접촉력의 합(물체 좌표), 손끝 점 = wrist_yaw 링크에서 앞 0.05 m</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>빵 상자 접촉 목표 (물체 좌표): 왼손 (0, +0.17, 0.14) m, 오른손 (0, −0.17, 0.14) m = 상자 좌우 옆면 (<a href="../reference/hdmi/code/cfg/task/G1/hdmi/carry_and_place_bread_box.yaml"><code>carry_and_place_bread_box.yaml</code></a>).</li>
+  <li>여행가방 (−0.1, ±0.18, 0.25), 어깨 위 상자 (−0.1, ±0.18, 0.15), 폼 매트 (0, ±0.21, −0.1), 상자 밀기 (0, ∓0.2, 0.8) m.</li>
+</ul>
+
+<h3 class="ps">종료 (p.4 표 II 와 코드)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>조건</th><th>논문 임계</th><th>코드</th><th>최소 연속 스텝</th></tr></thead>
+  <tbody>
+    <tr><td>루트(torso) 전역 자세 오차</td><td>0.5 m, 1.2 rad</td><td>같음</td><td>25 (0.5 s)</td></tr>
+    <tr><td>몸체 지역 자세 오차(최대값)</td><td>0.5 m, 1.2 rad</td><td>같음</td><td>25</td></tr>
+    <tr><td>물체 자세 오차</td><td>0.5 m, 1.2 rad</td><td>0.5 m, <strong>0.8 rad</strong></td><td>25</td></tr>
+    <tr><td>접촉 상실</td><td>"Pos 0.2 m &amp; Force 1.0 N"</td><td>접촉 = 거리 &lt; 0.2 m <strong>그리고</strong> 힘 ≥ 1 N. 접촉이 필요한 손 하나라도 접촉이 아니면 "상실" → 0.2 m 넘게 떨어지거나 1 N 미만이면 걸림</td><td>25</td></tr>
+  </tbody>
+</table></div>
+<p>오차가 임계를 25 스텝 연속 넘어야 종료한다(<code>_cum_error_mixin</code>, <a href="../reference/hdmi/code/active_adaptation/envs/mdp/commands/hdmi/terminations.py"><code>terminations.py</code></a>). 에피소드는 최대 1000 스텝(20 s), 여행가방 500 스텝.</p>
+
+<h3 class="ps">초기화 · 커리큘럼</h3>
+<ul>
+  <li>RSI: 참조의 임의 프레임에서 로봇·물체를 함께 시작 (p.3). 코드: 시작 위상 균일, 루트 위치 ±0.05 m(z ±0.01), roll·pitch ±0.1, yaw ±0.2 rad, 속도 ±0.2 m/s·±0.5 rad/s, 관절 ±0.1 잡음. 물체 위치 ±0.05 m·yaw ±0.1 rad (빵 상자는 xy 0).</li>
+  <li>FAQ: 초기 위치·방향 무작위 범위는 문 약 20 cm, 빵 상자 약 10 cm.</li>
+  <li>별도 커리큘럼 없음. 엔트로피 계수 0.001 고정.</li>
+</ul>
+
+<h2 class="ps">5. 학습 설정 (알고리즘 · 망 · 무작위화)</h2>
+<p>논문은 "모든 정책을 같은 하이퍼파라미터로 IsaacSim 에서 학습" (p.5) 이라고만 하고 값은 없다. 아래는 코드 값.</p>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>값 (코드)</th></tr></thead>
+  <tbody>
+    <tr><td>env 수 / 정책 주기 / 물리</td><td>4096 / 0.02 s / Isaac 0.005 s (MuJoCo 0.002 s)</td></tr>
+    <tr><td>총 프레임</td><td>150 M (주석 처리된 300 M) → rollout 32 스텝 기준 약 1,144 iteration. 논문 그래프의 가로축도 0–1000 "training step" (그림 7, 9)</td></tr>
+    <tr><td>PPO</td><td>rollout 32, epoch 3, mini-batch 8, clip 0.2, γ 0.99, λ 0.95, lr 3e−4 (KL 0.01 적응), entropy 0.001, grad clip 1.0</td></tr>
+    <tr><td>actor</td><td>MLP [512, 256, 256] + LayerNorm, 초기 std 1.0(student 로드 시 0.5), 모든 Linear 직교 초기화 gain 0.01 → 처음엔 잔차 ≈ 0 = 참조 그대로</td></tr>
+    <tr><td>critic</td><td>MLP [512, 256, 128], 보상 묶음(추종·물체·loco·feet …)마다 가치 출력 하나씩</td></tr>
+    <tr><td>특권 인코더 / 적응 모듈</td><td>잠재 256. 적응 모듈은 MLP [256, 256] (GRU 선택 가능)</td></tr>
+    <tr><td>학습 시간·GPU</td><td>논문에 없음</td></tr>
+  </tbody>
+</table></div>
+<h3 class="ps">도메인 무작위화 (코드; 논문은 "관성·마찰 무작위화"만 언급, p.4)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>대상</th><th>범위</th></tr></thead>
+  <tbody>
+    <tr><td>몸체 질량</td><td>×0.9–1.1</td></tr>
+    <tr><td>발·손목 마찰</td><td>정 0.3–1.6, 동 0.3–1.2, 반발 0–0.2</td></tr>
+    <tr><td>골반·torso COM</td><td>±0.02 m</td></tr>
+    <tr><td>관절 오프셋</td><td>±0.01 rad</td></tr>
+    <tr><td>빵 상자·여행가방·어깨 상자</td><td>질량 1.2–1.8 kg, 동마찰 0.3–0.8, 정/동 비 1.0–2.0, 반발 0–0.2, 크기 ×0.9–1.1(접촉 목표도 같이 배율)</td></tr>
+    <tr><td>폼 매트 / 밀기 상자</td><td>0.9–1.2 kg / 6–12 kg</td></tr>
+    <tr><td>행동</td><td>지연 10–30 ms, 저역 통과 α 0.8–1.0</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">6. teacher → student / 증류</h2>
+<p>논문에는 없다. 공개 코드에 ROA(Regularized Online Adaptation) 식 단계가 있다 (<a href="../reference/hdmi/code/active_adaptation/learning/ppo/ppo_roa.py"><code>ppo_roa.py</code></a>, <a href="../reference/hdmi/code/FAQ.md"><code>FAQ.md</code></a>).</p>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>단계 (algo)</th><th>무엇을 학습</th><th>입력</th></tr></thead>
+  <tbody>
+    <tr><td><code>ppo_roa_train</code> (teacher)</td><td>PPO: actor + 특권 인코더(priv + object → 256). 동시에 ① 적응 모듈이 특권 잠재를 MSE 로 예측(epoch 2), ② student actor 가 teacher 평균 행동(참조 + 잔차, 절대값)을 MSE 로 따라 함 = "residual action distillation"</td><td>teacher: command, policy, 특권 잠재 / 적응: policy + command + object</td></tr>
+    <tr><td><code>ppo_roa_finetune</code> (student)</td><td>student actor 를 PPO 로 이어 학습, 적응 모듈은 계속 MSE 학습, 실행은 EMA(τ 0.04) 적응 모듈</td><td>command, policy, 예측 잠재</td></tr>
+    <tr><td><code>ppo_roa_train_est</code> (선택)</td><td>깊이 추정기: CNN(채널 8-8-8, 커널 5, Mish → 64) + MLP 가 적응 잠재를 예측</td><td>깊이 160×120(기본 카메라 꺼짐)</td></tr>
+  </tbody>
+</table></div>
+<p>FAQ: 명시적 정규화 항은 빼고 teacher 학습 중 잠재 BC 만 남겼다. student 가 teacher 정보에 일찍 노출돼 학습·탐색이 빨라진다고 설명. 깊이 단계의 결과는 논문·README 어디에도 없다.</p>
+
+<h2 class="ps">7. 결과</h2>
+<p>시뮬 평가: 참조 시작에서 출발, 어떤 종료도 안 걸리고 끝내면 성공, 4096 env 평균·표준편차 (p.6). 표 형태 수치는 없고 그림뿐이라 아래 값은 그림에서 읽은 근사값.</p>
+<h3 class="ps">상호작용 보상·접촉 종료 절제 (p.6 그림 6, 7)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>과제</th><th>전체 (보상 + 종료)</th><th>보상 빼기 (종료 유지)</th><th>둘 다 빼기</th><th>해석</th></tr></thead>
+  <tbody>
+    <tr><td>여행가방 (불완전 참조)</td><td>약 1.0, 약 350 step 에 도달</td><td>약 1.0, 약 600 step 에야</td><td>0</td><td>참조가 손을 제대로 안 대면, 접촉 보상이 참조에서 벗어나 잡게 만든다</td></tr>
+    <tr><td>여행가방 (완벽 참조)</td><td>약 1.0</td><td>약 1.0</td><td>약 1.0 (조금 느림)</td><td>참조가 좋으면 접촉 보상 없이도 됨</td></tr>
+    <tr><td>상자 밀기, 평가 때 접촉 종료 끔</td><td>약 1.0</td><td>약 1.0</td><td>약 1.0</td><td>겉보기 성공은 같음</td></tr>
+    <tr><td>상자 밀기, 평가 때 접촉 종료 켬</td><td>약 1.0</td><td>약 0.9</td><td>약 0.3–0.6</td><td>보상 없이 배운 정책은 L 자 손끝을 상자 모서리가 아니라 수직면에 대 접촉이 불안정</td></tr>
+    <tr><td>빵 상자·어깨 위 상자 등 나머지</td><td colspan="3">세 변형 모두 약 1.0 (그림 6)</td><td>대부분 과제는 두 장치를 빼도 최종 성공률이 같음</td></tr>
+  </tbody>
+</table></div>
+<h3 class="ps">잔차 행동 절제 (p.7 그림 8, 9)</h3>
+<ul>
+  <li>잔차 + 몸체 추종 종료(전체)가 8 과제 모두 관절·몸체 추종 오차 가장 낮음. 잔차를 빼면 오차가 크고 수렴이 느리며 같은 성능에 못 미침 (그림 9a: 관절 오차 약 0.1 대 약 0.2–0.3).</li>
+  <li>여행가방에서 잔차·종료를 둘 다 빼면 무릎 꿇기를 못 배우고 <strong>두 발을 붙인 채 허리를 숙이는</strong> 국소해로 감 (그림 9b).</li>
+  <li>이유: 기본 자세 기준 행동이면 무릎 꿇은 상태에서 시작한 에피소드의 첫 행동이 로봇을 "벌떡" 세워 균형을 잃고 쓸모없는 표본을 만든다 (그림 9c).</li>
+</ul>
+
+<h2 class="ps">8. 실기 · sim2real</h2>
+<ul>
+  <li>배치: 시뮬 정책을 그대로 G1 에. 골반과 물체에 MoCap 마커 → 물체 자세를 로봇 몸통 기준으로 변환해 입력 (p.5). sim2real 코드는 별도 저장소(README).</li>
+  <li>참조 출처: 모두 RGB 영상, 여행가방만 OMOMO 데이터셋 (p.5).</li>
+</ul>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>과제</th><th>결과</th><th>실패·특이점</th></tr></thead>
+  <tbody>
+    <tr><td>문 밀고 지나가기 → 돌아서 발로 차 열고 다시 지나가기</td><td><strong>67 회 연속</strong>(약 34 분) 후 실패. 바닥 나무판 제거 뒤에도 약 7 회</td><td>매 회 시작 위치 10–30 cm 무작위에도 발걸음·팔 높이를 맞춤</td></tr>
+    <tr><td>여행가방 (무릎 꿇고 들어 걷기)</td><td>7 회 연속 성공</td><td>–</td></tr>
+    <tr><td>빵 상자 들어 옮겨 놓기</td><td>완주 2 회</td><td>빠른 180° 회전에서 가끔 다리끼리 부딪힘</td></tr>
+    <tr><td>폼 매트 옮기기</td><td>성공(횟수 없음)</td><td>–</td></tr>
+    <tr><td>Truman 인사 (계단 오르기·절·앉기·손 흔들기·뛰어내리기)</td><td>연속 3 회</td><td>계단에서 사람이 가끔 등을 가볍게 받침</td></tr>
+  </tbody>
+</table></div>
+<p>FAQ: 14 과제 중 6 개만 실기. 공에 마커를 못 달거나 등받이가 단단한 접이식 의자가 없어서.</p>
+
+<h2 class="ps">9. 코드에서 확인한 것</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>파일</th><th>내용</th></tr></thead>
+  <tbody>
+    <tr><td><a href="../reference/hdmi/code/cfg/task/base/hdmi-base.yaml"><code>cfg/task/base/hdmi-base.yaml</code></a></td><td>공통: env 4096, 행동 배율·지연·α, 추종 몸체, 관측 그룹·잡음, 보상 가중·σ, DR, 종료</td></tr>
+    <tr><td><a href="../reference/hdmi/code/cfg/task/G1/hdmi/carry_and_place_bread_box.yaml"><code>cfg/task/G1/hdmi/carry_and_place_bread_box.yaml</code></a></td><td>빵 상자: 받침 2 개, 접촉 목표 ±0.17 m 옆면, 질량 1.2–1.8 kg, 크기 ×0.9–1.1, 손목 kp 4</td></tr>
+    <tr><td><a href="../reference/hdmi/code/cfg/task/G1/hdmi/move_suitcase.yaml"><code>move_suitcase.yaml</code></a>, <a href="../reference/hdmi/code/cfg/task/G1/hdmi/carry_box_over_shoulder.yaml"><code>carry_box_over_shoulder.yaml</code></a>, <a href="../reference/hdmi/code/cfg/task/G1/hdmi/push_box.yaml"><code>push_box.yaml</code></a></td><td>과제별 접촉 목표·물체 DR</td></tr>
+    <tr><td><a href="../reference/hdmi/code/active_adaptation/envs/mdp/commands/hdmi/rewards.py"><code>active_adaptation/envs/mdp/commands/hdmi/rewards.py</code></a></td><td>추종 보상(지수 꼴, 평균 오차/σ), <code>eef_contact_exp</code></td></tr>
+    <tr><td><a href="../reference/hdmi/code/active_adaptation/envs/mdp/commands/hdmi/terminations.py"><code>terminations.py</code></a></td><td>누적 스텝 기반 종료, 접촉 상실</td></tr>
+    <tr><td><a href="../reference/hdmi/code/active_adaptation/envs/mdp/commands/hdmi/command.py"><code>command.py</code></a></td><td>참조 표본·RSI, 물체 접촉 신호(motion.npz 의 <code>object_contact</code>), 접촉점·접촉력 계산. 과제당 동작 파일 1 개만 허용</td></tr>
+    <tr><td><a href="../reference/hdmi/code/active_adaptation/learning/ppo/ppo_roa.py"><code>active_adaptation/learning/ppo/ppo_roa.py</code></a></td><td>teacher·student·깊이 추정기 단계, 망 크기, PPO 값</td></tr>
+    <tr><td><a href="../reference/hdmi/code/active_adaptation/envs/mdp/action.py"><code>active_adaptation/envs/mdp/action.py</code></a></td><td>관절 위치 행동, 지연·저역 통과</td></tr>
+    <tr><td><a href="../reference/hdmi/code/data/"><code>data/</code></a></td><td>참조 motion.npz 포함(빵 상자 1.7 MB 등, 합 30 MB). <strong>학습된 가중치는 없음</strong></td></tr>
+  </tbody>
+</table></div>
+<h3 class="ps">논문과 코드가 다른 곳</h3>
+<ul>
+  <li>물체 자세 종료 임계: 표 II 1.2 rad vs 코드 0.8 rad.</li>
+  <li>코드에는 표 I 에 없는 survival 보상(1.0 × 2 묶음)이 있다.</li>
+  <li>논문은 단일 RL 정책만 설명하지만 코드는 teacher(특권 잠재) → student(적응 모듈 + PPO 미세조정) 2 단계로 학습한다(README 의 Teacher/Student 명령).</li>
+  <li>정책의 물체 관측은 xy·yaw 뿐(높이 없음).</li>
+</ul>
+
+<h2 class="ps">10. 한계</h2>
+<ul>
+  <li>MoCap 의존: 실기 물체 자세를 MoCap 으로 받음. 온보드 감지가 다음 과제 (p.8).</li>
+  <li>기술마다 정책 하나: 과제당 영상 1 편·정책 1 개, 통합 모델 없음 (p.8).</li>
+  <li>일반화가 좁음: 물체·로봇 초기 위치 무작위가 5–10 cm 수준이고 물체 배치를 바꾼 평가는 없다.</li>
+  <li>접촉 주석·물체 궤적은 수작업 (FAQ).</li>
+  <li>실기 수치가 대부분 연속 성공 횟수이고 실패율 통계가 없다. 시뮬 절제도 그림뿐.</li>
+</ul>
+
+<h2 class="ps">11. 우리에게 가져올 것</h2>
+<div class="take"><ol>
+  <li><strong>가져올 것 — 손별 접촉 보상 꼴</strong>: 손 i 마다 exp(−‖p<sub>손</sub> − p<sub>옆면 목표</sub>‖ / 0.3) × min(exp((‖F<sub>i</sub>‖ − F<sub>thres</sub>) / 40), 1). 목표점은 상자 좌표에서 좌우 옆면 중심(HDMI 빵 상자는 (0, ±0.17, 0.14) m; 우리는 손 사이 상자 폭의 절반 ±0.185 또는 ±0.2025 m, 높이는 상자 중심 근처). 손끝 점은 공 손 중심에서 손바닥 방향으로 오프셋.</li>
+  <li><strong>값 바꿀 것 — F<sub>thres</sub> 10 N 은 우리에게 낮다</strong>: 2 kg 상자를 두 손 마찰로만 버티려면 2μF ≥ 19.6 N, μ 0.5 면 손당 약 20 N, μ 1.0 이면 약 10 N 이 필요하다. 상자 질량·마찰 무작위 범위의 최악값에 맞춰 손당 약 20 N 에서 포화시키고, 과도한 조임은 별도 벌점으로 막는다.</li>
+  <li><strong>바꿀 것 — 두 손 평균 대신 약한 쪽</strong>: HDMI 는 두 손 보상을 평균한다(한 손만 닿아도 절반 점수). dev10 v2 의 한 손 밀기 국소해를 막으려면 두 손 곱 또는 min(왼, 오른)으로 묶는다.</li>
+  <li><strong>가져올 것 — 접촉 상실 종료</strong>: "필요한 손이 0.2 m 넘게 떨어지거나 1 N 미만"이 25 스텝(0.5 s) 연속이면 종료. 우리는 참조 접촉 신호가 없으니 "두 손 접촉이 한 번 성립한 뒤" 또는 "들기 마감 뒤"부터 켠다. HDMI 절제에서 이 종료는 접촉 보상이 없을 때 정책의 약점을 드러내는 평가 도구로도 쓰였다(상자 밀기 0.3–0.6) — 평가 때 켜고 끈 두 성공률을 같이 보는 방식도 그대로 쓸 만하다.</li>
+  <li><strong>가져올 것 — 잔차는 기준 자세 근처에서 탐색</strong>: 기본 자세 기준 행동은 쪼그린 상태에서 시작한 에피소드를 "벌떡 일어서기"로 망치고, 결국 무릎 대신 허리를 숙이는 국소해로 간다(그림 9b). 우리 대응: 상위 행동을 "현재 명령/명목 자세 + 작은 델타"로 정의하고, 쪼그린 상태에서 시작할 때 명령 초기값을 그 자세의 실제 골반 높이·pitch 로 맞춘다. 마지막 층을 작게 초기화(HDMI 직교 gain 0.01)해 처음 출력이 0 근처가 되게 한다.</li>
+  <li><strong>참고 — 행동 지연·저역 통과 DR</strong>: 지연 10–30 ms + α 0.8–1.0 평활. dev12 하위가 상체 목표를 저역 통과해 관측하므로, 상위 출력에도 같은 꼴의 지연을 넣는다(우리 실측으로 K1 실기는 Isaac 보다 5–15 ms 늦게 따라간다).</li>
+  <li><strong>참고 — 보상 묶음별 가치 헤드</strong>: critic 이 추종·물체·loco·feet 묶음마다 가치를 따로 낸다. 우리 보상도 집기·자세·정규화 묶음 크기가 크게 달라 묶음별 가치 헤드를 시험할 만하다.</li>
+  <li><strong>참고 — student 를 teacher 학습 중에 같이 증류하고 이어서 PPO 미세조정</strong>: dev10 v2 의 student 격차(teacher 90 % vs student 69 %)에 대한 한 처방. 단 HDMI 는 그 효과를 숫자로 보이지 않았다.</li>
+  <li><strong>가져오지 말 것 — 영상 한 편 추종</strong>: 과제당 참조 1 개와 5–10 cm 초기 무작위는 우리 상자 배치 범위(앞 0.04–0.30 m, 옆 ±0.15 m, yaw ±40°, 받침 0–0.3 m)를 감당하지 못한다. 위상 φ 관측도 참조 시간이 없는 우리 과제에는 맞지 않는다.</li>
+  <li><strong>가져오지 말 것 — 물체 관측을 xy·yaw 만</strong>: 우리 상자는 높이가 0–0.3 m 로 바뀌므로 teacher 에는 z 와 크기까지 준다. 실기 MoCap 대신 D436 깊이 student 로 가야 하는 점도 다르다.</li>
+  <li><strong>라이선스</strong>: 저장소에 LICENSE 가 없다. 수치·아이디어만 참고하고 코드는 옮기지 않는다.</li>
+</ol></div>
+
+<p class="src">출처 표기: (p.N), (표 N), (그림 N), (식 N), 코드는 파일 경로. 논문에 없는 값은 "논문에 없음".</p>
+</main>
+</body>
+</html>

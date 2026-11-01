@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LessMimic — 논문 상세</title>
+<link rel="stylesheet" href="paper.css">
+</head>
+<body>
+<main class="wrap">
+<a class="back" href="../index.html#catalog">← 자료 목록으로</a>
+
+<header class="ph">
+  <h1>LessMimic: 거리장(DF) 특징만 보고 참조 동작 없이 집기·앉기·밀기·나르기를 하는 단일 전신 정책</h1>
+  <p class="orig">LessMimic: Long-Horizon Humanoid Interaction with Unified Distance Field Representations</p>
+  <p class="meta">Yutang Lin, Jieming Cui (공동 1저자), Yixuan Li, Baoxiong Jia, Yixin Zhu, Siyuan Huang · 북경대 AI 연구원, BIGAI 등 · 사전 공개 (arXiv 2026-02) · 로봇 이름 본문에 없음(사진상 Unitree G1 계열) · 시뮬레이터 논문에 없음</p>
+  <div class="chips">
+    <a class="chip loc" href="../reference/lessmimic/paper.pdf">로컬 PDF</a>
+    <a class="chip loc" href="../reference/lessmimic/code/">로컬 코드</a>
+    <span class="badge only">README 만</span>
+    <a class="chip" href="https://arxiv.org/abs/2602.21723" target="_blank" rel="noopener">arXiv 2602.21723</a>
+    <a class="chip gh" href="https://github.com/Yutang-Lin/LessMimic" target="_blank" rel="noopener">Yutang-Lin/LessMimic</a>
+    <a class="chip" href="https://lessmimic.github.io" target="_blank" rel="noopener">프로젝트 페이지</a>
+    <span class="simv s3">유사도 3</span>
+    <span class="badge">LICENSE 없음</span>
+  </div>
+</header>
+
+<div class="callout blue tldr">손·골반 등 링크마다 물체 표면까지의 거리·법선·법선/접선 속도(DF 특징)를 VAE 잠재로 압축해 정책 입력으로 쓰고, ResMimic teacher → BC(DAgger) → 판별기(AIP) RL → 깊이 student(DAgger) 3 단계로 학습. 실기 22 cm 상자 집기 MoCap 판 10/10, 깊이 판 8/10; 60 cm 상자 8/10, 7/10 (p.8 표 IV).</div>
+
+<h2 class="ps">우리와 무엇이 같고 다른가</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>이 논문</th><th>우리 (dev10 pelvis_pick)</th></tr></thead>
+  <tbody>
+    <tr><td>하위 제어기</td><td>정책이 "전신 관절 행동"을 내고 그 뒤 "low-level whole-body controller"가 실행(무엇인지 논문에 없음). 계층 상위는 없음</td><td class="ours">dev12 하체 RL(동결), 골반 vx·vy·ωz·높이·pitch·roll 추종, 상체 11 외부 PD</td></tr>
+    <tr><td>상위 출력</td><td>전신 관절 행동(차원 논문에 없음). 입력 명령은 루트 궤적 c<sup>root</sup> 뿐</td><td class="ours">상체 11 + 골반 명령</td></tr>
+    <tr><td>과제·물체</td><td>PickUp(바닥 상자를 두 손으로 들어 유지), SitStand, Push, Carry. 크기 ×0.4–1.6, 상자·원통·구</td><td class="ours">바닥·받침대 0–0.3 m 박스 37×40.5×29 cm, 0.5–2 kg, 두 손 옆면 조이기</td></tr>
+    <tr><td>지각·증류</td><td>MoCap 판(π<sub>full</sub>, 물체 자세로 DF 계산) → 1 인칭 깊이 판(π<sub>vis</sub>) DAgger 증류</td><td class="ours">특권 teacher → D436 깊이(26×64, 6 프레임) student (DAgger)</td></tr>
+    <tr><td>로봇·손</td><td>휴머노이드(이름 없음, 사진은 G1 계열·머리 카메라), 손가락 없이 두 손으로 끼워 듦</td><td class="ours">K1 23 DoF, 고무 공 손</td></tr>
+    <tr><td>시뮬레이터·물리</td><td>논문에 없음 (라이브 데모는 MuJoCo, README)</td><td class="ours">Isaac Lab + Newton</td></tr>
+    <tr><td>학습 방식</td><td>ResMimic(참조 추종) teacher → BC → AIP + AMP + 루트 추종 RL → 깊이 증류</td><td class="ours">과제 보상 PPO teacher → DAgger student</td></tr>
+    <tr><td>성공 정의</td><td>PickUp: 상자가 지면 위 0.3 m 이상, 3 s 이상 안정 유지 (부록 B-D)</td><td class="ours">집어 들고 서서 유지 (정의 확정 전)</td></tr>
+    <tr><td>실기</td><td>PickUp 22·60 cm, SitStand 12·46 cm, 각 10 회 (p.8 표 IV)</td><td class="ours">아직 없음</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">1. 문제와 과제</h2>
+<ul>
+  <li>문제 (p.1): 참조 동작 기반 정책은 특정 물체 기하에 묶여 새 모양에서 실패하고, 실시간으로 참조에서 벗어나는 것을 "추종 실패"로 벌한다. 참조 없는 정책(PhysHSI 등)은 과제별 보상·관측이라 기술을 이어 붙이지 못한다.</li>
+  <li>주장: 물체 표면까지의 거리장(Distance Field, DF)이 "기하에 무관하고 과제 공통인 상호작용 표현"이다. 손이 물체를 잡을 때의 국소 DF 구조는 물체 크기·접근 방향과 거의 무관하다 (p.1–2).</li>
+  <li>과제 4 개 (p.6): <strong>PickUp</strong> = 바닥의 크기 다른 상자를 두 손으로 들어 안정적으로 잡고 있기. SitStand = 높이 다른 의자에 골반 접촉. Push = 손 접촉을 유지하며 밀기. Carry = 상자를 집어 정해진 경로로 나르기.</li>
+  <li>실행 때 입력은 목표 루트 궤적 + 고유감각 + DF 잠재뿐. 참조 동작·과제별 보상·별도 계획기가 없다 (p.2).</li>
+</ul>
+
+<h2 class="ps">2. 시스템 구조</h2>
+<div class="fig">
+  <p><strong>표현</strong></p>
+  <div class="flow">
+    <span class="node">물체 자세(MoCap) 또는 1 인칭 깊이</span><span class="arr">→</span>
+    <span class="node">링크별 u<sub>t</sub> = [Φ(x), ∇Φ(x), v<sup>norm</sup>, v<sup>tan</sup>]</span><span class="arr">→</span>
+    <span class="node">창 길이 l 이력 I<sub>t</sub></span><span class="arr">→</span>
+    <span class="node">VAE 인코더(MLP, ReLU) → 잠재 z<sub>t</sub></span>
+  </div>
+  <p style="margin-top:12px"><strong>학습 3 단계 (p.4–5, 그림 3)</strong></p>
+  <div class="flow">
+    <span class="node frozen">π<sub>mimic</sub> = ResMimic (참조 동작 + 잔차, 고정 teacher)</span><span class="arr">→ BC·DAgger 24,000 iter →</span>
+    <span class="node">π<sub>base</sub> (Transformer, 입력 o<sup>prop</sup>·c<sup>root</sup>·z)</span><span class="arr">→ AIP + AMP RL →</span>
+    <span class="node">π<sub>full</sub> (물체 기하 무작위)</span><span class="arr">→ DAgger 120,000 iter →</span>
+    <span class="node">π<sub>vis</sub> (깊이 인코더 E<sub>φ</sub> + 같은 제어 머리)</span>
+  </div>
+  <p style="margin-top:12px"><strong>실행</strong></p>
+  <div class="flow">
+    <span class="node">루트 궤적 명령 + 고유감각 + 깊이 이력 S<sub>t</sub></span><span class="arr">→</span>
+    <span class="node frozen">π<sub>vis</sub></span><span class="arr">→</span>
+    <span class="node">전신 관절 행동</span><span class="arr">→</span>
+    <span class="node">하위 전신 제어기 (논문에 설명 없음)</span>
+  </div>
+  <p style="margin-top:8px;font-size:13px">제어 주기, 하위 제어기 정체, 시뮬레이터는 논문에 없음. 세 단계 모두 같은 정책 구조를 쓰고 목적 함수만 바뀐다 (부록 A).</p>
+</div>
+
+<h2 class="ps">3. 관측과 행동</h2>
+<h3 class="ps">DF 상호작용 특징 (p.4, 식 1–2)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>성분</th><th>정의</th><th>뜻</th></tr></thead>
+  <tbody>
+    <tr><td>Φ(x<sub>t</sub>)</td><td>링크 위치 x<sub>t</sub> 에서 물체 표면까지 거리 (부호 없는 거리)</td><td>얼마나 가까운가</td></tr>
+    <tr><td>∇Φ(x<sub>t</sub>)</td><td>표면 투영점에서의 기울기 = 국소 법선</td><td>어느 쪽 면인가</td></tr>
+    <tr><td>v<sup>norm</sup></td><td>(v<sub>t</sub> · ∇Φ) ∇Φ</td><td>다가감·누르는 세기</td></tr>
+    <tr><td>v<sup>tan</sup></td><td>v<sub>t</sub> − v<sup>norm</sup></td><td>표면을 따라 미끄러짐</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>"과제 관련 링크"마다 u<sub>t</sub> 를 모아 길이 l 의 창 I<sub>t</sub> 로 만든다. 링크 목록·l·잠재 차원은 논문에 없음.</li>
+  <li>VAE 가 각 시점 u 를 잠재 z 로 압축(재매개화), 잠재 열을 이어 붙여 정책에 줌. 목적: 센서 잡음 평활 + 창 길이와 무관한 고정 차원 (부록 A).</li>
+  <li>물체의 전역 자세·크기에 불변 → 다른 크기·모양·배치에서도 비슷한 특징 (p.4). 그림 4: 의자에 앉을 때 평균 DF 거리는 줄고 기울기 크기는 커진다.</li>
+</ul>
+<h3 class="ps">정책 입력 · 출력</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>정책</th><th>입력</th><th>출력</th></tr></thead>
+  <tbody>
+    <tr><td>π<sub>mimic</sub> (ResMimic teacher)</td><td>특권 정보 + 전신 참조 동작 o<sup>mimic</sup></td><td>행동 a<sup>mimic</sup></td></tr>
+    <tr><td>π<sub>base</sub>, π<sub>full</sub></td><td>o<sup>base</sup> = [o<sup>prop</sup>(관절 위치·속도), c<sup>root</sup>(성긴 목표 루트 궤적), z<sub>t</sub>] (식 A1)</td><td>전신 관절 행동, 마지막 층 선형</td></tr>
+    <tr><td>π<sub>vis</sub></td><td>o<sup>vis</sup> = [o<sup>prop</sup>, c<sup>root</sup>, S<sub>t</sub>(1 인칭 깊이 프레임 이력)]</td><td>같음</td></tr>
+  </tbody>
+</table></div>
+<p>π<sub>base</sub> 는 처음부터 실행 때와 똑같은 관측만 쓴다(특권 정보 없음). 관측 차원·행동 차원·깊이 해상도·프레임 수는 "부록 B 에 있다"고 했지만 실제 부록에는 없다 (논문에 없음).</p>
+
+<h2 class="ps">4. 보상 · 종료 · 커리큘럼</h2>
+<p>사전학습(BC)에는 보상이 없다. RL 후학습의 보상 r<sub>t</sub> = r<sub>task</sub> + λ<sub>i</sub> r<sub>interact</sub> + λ<sub>s</sub> r<sub>style</sub> (식 A4), 세부는 표 A2 (p.13).</p>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항</th><th>식</th><th>가중</th><th>설명</th></tr></thead>
+  <tbody>
+    <tr><td>Root Tracking</td><td>−‖x<sup>root</sup> − c<sup>root</sup>‖² (식 5)</td><td>1.0</td><td>참조 동작 없이 목표 루트 궤적만 따라감</td></tr>
+    <tr><td>Interaction Style (AIP)</td><td>max(0, 1 − 0.25(D(z<sub>t</sub>) − 1)²) (식 6)</td><td><strong>2.0</strong></td><td>판별기가 <strong>DF 잠재 z</strong> 만 보고 "유효한 상호작용인가"를 판정</td></tr>
+    <tr><td>Motion Style (AMP)</td><td>max(0, 1 − 0.25(D<sub>AMP</sub>(s) − 1)²) (식 7)</td><td>1.0</td><td>전신 상태로 자연스러운 걸음·자세</td></tr>
+    <tr><td>Object Tracking</td><td>exp(−‖x<sup>obj</sup> − x̃<sup>obj</sup>‖² / σ²)</td><td>1.0</td><td>물체가 원하는 조작 궤적을 따름 (σ 값 논문에 없음)</td></tr>
+    <tr><td>Action Reg.</td><td>‖Δa‖²</td><td>5.0 (벌점)</td><td>급한 행동 변화</td></tr>
+    <tr><td>Termination</td><td>상수</td><td>−10.0</td><td>넘어짐·균형 상실로 조기 종료 시</td></tr>
+    <tr><td>Joint Limit</td><td>n<sub>exceed</sub></td><td>−5.0</td><td>소프트 한계 초과 관절 수</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>AIP 판별기 손실(최소제곱 GAN, 식 4): L<sub>D</sub> = E<sub>z∼B<sub>ref</sub></sub>[(D(z) − 1)²] + E<sub>z∼π</sub>[(D(z) + 1)²]. 기준 버퍼 B<sub>ref</sub> = 사전학습 때 모은 상호작용 잠재. 판별기 lr 2e−4.</li>
+  <li>본문은 "동작 추종 보상과 수작업 성형 항은 일부러 뺐다"(p.5)고 하지만, 표 A2 에는 루트 궤적 추종과 물체 궤적 추종 보상이 있다. 빠진 것은 관절·몸체 참조 추종이다.</li>
+  <li>종료 조건: 넘어짐·균형 상실(구체 임계 논문에 없음).</li>
+  <li>커리큘럼: 명시 없음. 대신 사전학습(고정 물체·참조) → 후학습(기하 무작위)으로 단계적 확장.</li>
+</ul>
+
+<h2 class="ps">5. 학습 설정 (알고리즘 · 망 · 무작위화)</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>단계</th><th>값 (p.12 표 A1)</th></tr></thead>
+  <tbody>
+    <tr><td>사전학습 (BC)</td><td>lr 1e−3, 배치 4096 × 8 (8 병렬 환경), 24,000 iteration, Adam</td></tr>
+    <tr><td>후학습 (RL)</td><td>정책 lr 1e−3, 판별기 lr 2e−4, γ 0.99, 보상 가중 λ 1.5, entropy 5e−4, 환경 4096 × 8, 환경 스텝 240,000</td></tr>
+    <tr><td>증류 (DAgger)</td><td>lr 1e−3, 배치 2048 × 8, 120,000 iteration</td></tr>
+    <tr><td>망</td><td>Transformer 정책(층·폭 논문에 없음), 은닉층 ReLU, 출력 선형. VAE 인코더·디코더 MLP(ReLU). 깊이 인코더 E<sub>φ</sub> 구조 논문에 없음</td></tr>
+    <tr><td>RL 알고리즘·학습 시간·GPU</td><td>논문에 없음 (PPO 라는 명시도 없음)</td></tr>
+  </tbody>
+</table></div>
+<h3 class="ps">도메인 무작위화 (부록 B-A, 수치는 논문에 없음)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>축</th><th>내용</th></tr></thead>
+  <tbody>
+    <tr><td>물체 기하</td><td>에피소드마다 축별 독립 배율(약한 비등방 변형 포함), 상자·원통 형태 교대, 방향·위치 섭동</td></tr>
+    <tr><td>물리</td><td>물체 질량, 표면 마찰, 반발</td></tr>
+    <tr><td>초기 조건</td><td>로봇·물체 초기 자세 작은 이동·회전, 관절은 서기 자세 주변</td></tr>
+    <tr><td>명령 섭동</td><td>루트 궤적 명령의 위치·방향에 유계 잡음 — 긴 연결에서 오차 누적 대비</td></tr>
+    <tr><td>행동 잡음</td><td>후학습 때 정책 출력에 평균 0 가우시안 잡음(모터 편차·지연 흉내)</td></tr>
+    <tr><td>지각 (증류)</td><td>카메라 자세 흔들림, 깊이 양자화, 무작위 결손, 가산 잡음, 에피소드별 외부 파라미터 무작위</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">6. teacher → student / 증류</h2>
+<p>이 논문의 핵심은 두 번의 teacher → student 단계다.</p>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>단계</th><th>teacher</th><th>student</th><th>손실·방식</th><th>정보 비대칭</th></tr></thead>
+  <tbody>
+    <tr><td>① 상호작용 기술 사전학습</td><td>π<sub>mimic</sub> = ResMimic(참조 추종 + 잔차), 고정</td><td>π<sub>base</sub></td><td>L<sub>BC</sub> = E<sub>s∼π<sub>base</sub></sub>‖π<sub>base</sub>(o<sup>base</sup>) − π<sub>mimic</sub>(o<sup>mimic</sup>)‖² (식 3), DAgger: student 롤아웃 상태에서 teacher 라벨</td><td>teacher 는 전신 참조 동작, student 는 루트 명령 + DF 잠재뿐</td></tr>
+    <tr><td>③ 시각 증류</td><td>π<sub>full</sub> (MoCap DF), 고정</td><td>π<sub>vis</sub></td><td>L<sub>distill</sub> = E<sub>s∼π<sub>vis</sub></sub>‖π<sub>vis</sub>(o<sup>vis</sup>) − π<sub>full</sub>(o<sup>base</sup>)‖² (식 8), DAgger, 강한 DR</td><td>teacher 는 정확한 물체 자세로 만든 DF, student 는 깊이 이력에서 같은 기하 단서를 스스로 복원</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>①과 ③ 사이에 RL 후학습(②)이 있다. BC 만 한 정책(절제 "− RL")은 PickUp 1.0× 31.7 %, 후학습 뒤 100 % (표 II) — teacher 를 흉내 낸 student 를 RL 로 다시 다듬는 것이 결정적이었다.</li>
+  <li>teacher 데이터의 물리 타당성: 원 MoCap 리타게팅 데이터를 그대로 쓰면(절제 "− Syn.") Carry 82.9 → 66.5 %, Push 51.3 → 41.9 %. ResMimic 으로 물리적으로 실현된 궤적을 만드는 이유.</li>
+  <li>시각 증류 손실: PickUp 은 거의 그대로(1.0× 100 → 91.0 %, 1.4× 88.0 → 99.7 %), Carry 82.9 → 35.8 %, 5 과제 연결 61.7 → 15.9 %. SitStand 는 등 뒤 접촉이 1 인칭으로 안 보여 시각 판 평가 제외 (p.7).</li>
+</ul>
+
+<h2 class="ps">7. 결과</h2>
+<h3 class="ps">크기 일반화 (p.6 표 II, 3 시드, 학습 크기 1.0×)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>방법</th><th>PickUp 0.4</th><th>0.6</th><th>1.0</th><th>1.4</th><th>1.6</th><th>SitStand 0.4 / 1.0 / 1.6</th><th>Push 접촉률 0.6 / 1.0 / 1.4</th><th>Carry</th></tr></thead>
+  <tbody>
+    <tr><td>HDMI (재구현)</td><td>0.0</td><td>99.7</td><td>100.0</td><td>40.7</td><td>1.7</td><td>0.0 / 99.0 / 1.7</td><td>0.3 / 97.3 / 10.6</td><td>27.4</td></tr>
+    <tr><td>ResMimic (재구현)</td><td>0.0</td><td>18.3</td><td>100.0</td><td>99.7</td><td>63.0</td><td>0.0 / 100.0 / 93.7</td><td>0.4 / 93.1 / 2.2</td><td>32.9</td></tr>
+    <tr><td>VisualMimic</td><td>0.0</td><td>0.0</td><td>100.0</td><td>0.0</td><td>0.0</td><td>–</td><td>– / 20.6 / –</td><td>–</td></tr>
+    <tr><td>PhysHSI</td><td>23.1</td><td>70.5</td><td>100.0</td><td>47.9</td><td>39.9</td><td>61.3 / 76.2 / 71.8</td><td>–</td><td>81.6</td></tr>
+    <tr><td>− AIP</td><td>0.0</td><td>0.7</td><td>23.3</td><td>57.3</td><td>64.0</td><td>98.7 / 98.3 / 89.0</td><td>82.9 / 72.5 / 6.5</td><td>0.0</td></tr>
+    <tr><td>− Syn. (원 MoCap)</td><td>34.0</td><td>94.3</td><td>99.3</td><td>99.7</td><td>99.7</td><td>95.3 / 30.0 / 86.3</td><td>0.0 / 41.9 / 3.5</td><td>66.5</td></tr>
+    <tr><td>− Rand. (기하 무작위 없음)</td><td>0.0</td><td>0.0</td><td>0.0</td><td>0.0</td><td>0.0</td><td>0.0 / 81.3 / 97.7</td><td>0.0 / 67.0 / 2.1</td><td>0.0</td></tr>
+    <tr><td>− RL (BC 만)</td><td>0.0</td><td>2.0</td><td>31.7</td><td>37.0</td><td>9.7</td><td>1.7 / 64.7 / 15.0</td><td>0.0 / 67.3 / 0.0</td><td>5.3</td></tr>
+    <tr><td>− Trans. (MLP)</td><td>0.0</td><td>0.0</td><td>0.0</td><td>0.0</td><td>0.0</td><td>98.0 / 77.7 / 95.7</td><td>18.3 / 85.7 / 3.0</td><td>0.0</td></tr>
+    <tr><td><strong>Ours (MoCap)</strong></td><td>63.0</td><td>100.0</td><td>100.0</td><td>88.0</td><td>94.0</td><td>79.0 / 80.3 / 61.7</td><td>13.9 / 51.3 / 2.0</td><td><strong>82.9</strong></td></tr>
+    <tr><td><strong>Ours (Vision)</strong></td><td>63.7</td><td>94.7</td><td>91.0</td><td>99.7</td><td>93.0</td><td>–</td><td>1.2 / 35.2 / 1.9</td><td>35.8</td></tr>
+  </tbody>
+</table></div>
+<div class="callout">초록·결론은 "PickUp 과 SitStand 에서 0.4×–1.6× 모두 80–100 %"라고 하지만 표 II 의 MoCap 판은 PickUp 0.4× 63.0 %, SitStand 0.4× 79.0 %·1.6× 61.7 % 다. Push 접촉률도 1.0× 에서 HDMI(97.3 %)·ResMimic(93.1 %)보다 낮다(51.3 %). 본문 "5 과제 62.1 %" 와 표 III 61.7 % 도 조금 다르다.</div>
+<ul>
+  <li>가장 작은 0.4× 크기를 본문이 "15 cm" 로 적어(p.7), 학습 크기 1.0× 는 약 37 cm 로 추정된다(추정, 논문에 직접 없음).</li>
+  <li>참조 기반(HDMI·ResMimic)은 학습 크기 1.0× 근처에서만 높고 크기가 바뀌면 급락. PickUp 은 상자 외에 구·원통 모양도 시험 (p.6–7).</li>
+</ul>
+
+<h3 class="ps">긴 연결 (p.7 표 III, 무작위 순서 과제 N 개를 리셋 없이)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>방법</th><th>N=5</th><th>N=10</th><th>N=15</th><th>N=25</th><th>N=40</th></tr></thead>
+  <tbody>
+    <tr><td>− AIP / − Syn. / − Rand. / − RL / − Trans.</td><td>5.2 / 22.1 / 1.9 / 3.2 / 1.7</td><td>0.0 / 4.9 / 0 / 0 / 0</td><td>0 / 1.0 / 0 / 0 / 0</td><td>0</td><td>0</td></tr>
+    <tr><td><strong>Ours (MoCap)</strong></td><td>61.7</td><td>38.1</td><td>23.5</td><td>9.0</td><td>2.1</td></tr>
+    <tr><td>Ours (Vision)</td><td>15.9</td><td>2.5</td><td>0.0</td><td>0.0</td><td>0.0</td></tr>
+  </tbody>
+</table></div>
+
+<h3 class="ps">절제 요약 (p.8)</h3>
+<ul>
+  <li>AIP 제거: 크기 변화에 대한 강건성이 크게 떨어짐 → 기하 일관 상호작용의 주된 장치.</li>
+  <li>합성(물리 타당 teacher 궤적) 제거: Carry 같은 지속 접촉 과제가 가장 크게 나빠짐.</li>
+  <li>기하 무작위 제거: 학습 크기 밖에서 거의 0 (PickUp 은 학습 크기 1.0× 에서도 0).</li>
+  <li>RL 제거: BC 만으로는 새 기하로 못 넘어감.</li>
+  <li>Transformer → MLP: PickUp·Carry 0 %. 저자는 다기술 상호작용의 시간 의존성을 담을 용량 부족으로 설명.</li>
+</ul>
+
+<h2 class="ps">8. 실기 · sim2real</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>판</th><th>PickUp 22 cm 성공 / 루트 정확도</th><th>PickUp 60 cm</th><th>SitStand 12 cm</th><th>SitStand 46 cm</th></tr></thead>
+  <tbody>
+    <tr><td>MoCap</td><td><strong>10/10</strong> / 94.44 %</td><td>8/10 / 81.39 %</td><td>8/10 / 84.89 %</td><td>10/10 / 91.88 %</td></tr>
+    <tr><td>깊이 (Vision)</td><td><strong>8/10</strong> / 89.15 %</td><td>7/10 / 75.24 %</td><td>–</td><td>–</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>출처 p.8 표 IV. 루트 정확도 R<sub>acc</sub> = 루트가 명령 궤적에서 0.6 m 안에 있던 시간 비율(평가용 외부 MoCap 으로 측정).</li>
+  <li>그림 5 (p.7): 학습 기하인 상자를 바닥에서 <strong>무릎을 꿇고</strong> 집는 모습, 학습에 없던 축구공 집기, 12·46 cm 의자 앉기. 그림 6: 캐비닛 밀고 → 상자 집어 나르기를 리셋 없이 연결.</li>
+  <li>그림 1: 상자를 떨어뜨리면 새 위치에서 다시 집기 시작(실패 회복).</li>
+  <li>실패 양상의 정성 설명은 없다. 깊이 판의 성능 저하는 "깊이 관측의 지각 불확실성" 탓으로 설명 (p.7).</li>
+</ul>
+
+<h2 class="ps">9. 코드에서 확인한 것</h2>
+<p>로컬 <a href="../reference/lessmimic/code/README.md"><code>code/README.md</code></a> 와 <code>resources/teaser.png</code> 뿐이다. README 는 초록·저자·인용과 "Code will be released. Stay tuned." 한 줄, 논문 PDF·프로젝트 페이지·MuJoCo 라이브 데모 링크만 담는다. 학습 코드·설정·가중치 없음 → 이 페이지의 모든 수치는 논문에서 왔다.</p>
+
+<h2 class="ps">10. 한계</h2>
+<ul>
+  <li>재현 정보 부족: 로봇·시뮬레이터·제어 주기·하위 제어기·행동 차원·DF 링크 목록·창 길이·망 크기·RL 알고리즘·DR 수치가 모두 논문에 없다.</li>
+  <li>teacher 가 ResMimic(참조 동작 필요)이라 새 과제마다 MoCap 참조와 그것을 추종하는 teacher 가 먼저 있어야 한다.</li>
+  <li>본문 주장(80–100 %)과 표 II 수치가 어긋나는 셀이 있다. 시드 3 개.</li>
+  <li>깊이 판은 단일 PickUp 외에는 크게 떨어진다(Carry 35.8 %, 5 과제 15.9 %). 등 뒤 접촉(SitStand)은 1 인칭으로 못 봄.</li>
+  <li>저자: 관절·변형 물체로 확장, 부분 관측 강건성이 다음 과제 (p.8).</li>
+</ul>
+
+<h2 class="ps">11. 우리에게 가져올 것</h2>
+<div class="take"><ol>
+  <li><strong>가져올 것 — 손별 DF 특징을 teacher 관측으로</strong>: 양 손바닥(공 손 중심)마다 [상자 표면까지 거리 Φ 1, 표면 법선 ∇Φ 3, 법선 속도 3, 접선 속도 3] = 10 차원. 상자 자세 그 자체보다 "어느 면에 얼마나 가까운가, 누르고 있나, 미끄러지나"를 직접 준다. 옆면 조이기에서 법선이 상자 좌우(±y) 면을 가리키는지가 바로 보이므로 한 손 밀기·앞면 대기를 정책이 구분하기 쉽다. 접선 속도는 들 때 상자가 손 사이로 미끄러지는지의 신호.</li>
+  <li><strong>가져올 것 — student 보조 목표로 DF 특징</strong>: LessMimic 의 시각 증류는 깊이에서 DF 잠재를 복원하게 만드는 구조다. 우리 D436 student 에 "손바닥–상자 거리·법선 예측" 보조 헤드를 붙이면 dev10 v2 에서 student 격차의 원인으로 본 접촉 정보 부족을 부분적으로 메울 수 있다(깊이에서 기하로 계산 가능한 양이라 흉내 가능).</li>
+  <li><strong>근거 — BC 만으로는 부족, student 를 RL 로 다듬기</strong>: BC 만 한 정책은 PickUp 31.7 %, RL 후학습 뒤 100 % (표 II "− RL"). 우리 DAgger student(Isaac 69 %, MuJoCo 50 %)도 DAgger 뒤 RL 미세조정 단계를 넣을 근거.</li>
+  <li><strong>가져올 것 — 성공 정의</strong>: "상자 바닥이 지면 0.3 m 위, 3 s 이상 안정 유지"를 우리 받침대 높이에 맞춰 "시작 높이 + Δh, 3 s 유지 + 두 손 접촉 유지 + 넘어짐 없음"으로. 접촉률 지표(손 접촉 시간 비율, 몸통 위주 접촉은 실패)도 평가에 함께 기록한다 — 팔뚝·몸통으로 끌어안는 해를 거를 수 있다.</li>
+  <li><strong>참고 — 크기 무작위는 고정 크기 과제에도</strong>: 기하 무작위를 빼면 학습 크기에서도 0 % (표 II "− Rand."). 우리 상자는 37×40.5×29 cm 하나지만 실물 오차·인지 오차를 감안해 각 축 ±10–20 % 정도의 크기 무작위를 teacher 에 넣는다(값은 우리 결정, 논문 수치 아님).</li>
+  <li><strong>참고 — 시각 DR 목록</strong>: 카메라 자세 흔들림 + 에피소드별 외부 파라미터 무작위 + 깊이 양자화 + 결손 + 가산 잡음. 우리 D436 student 의 DR 항목 점검표로 쓴다(수치는 우리 실측 기준: 장착 오프셋, 프레임 나이).</li>
+  <li><strong>참고 — 루트 궤적만 명령으로</strong>: 상위가 루트 궤적만 주고 손 동작은 상호작용 표현으로 알아서 하게 하는 구조는 우리 2 단계(접근·운반)에서 "골반 경로 명령 + 상체는 정책"과 같은 꼴이다.</li>
+  <li><strong>가져오지 말 것 — AIP 판별기</strong>: 기준 상호작용 잠재 버퍼가 ResMimic teacher 의 성공 롤아웃에서 나온다. 우리는 참조 동작·teacher 데이터가 없어 판별기 기준을 만들 수 없다. 나중에 우리 teacher 성공 롤아웃으로 student 를 정규화하는 용도로나 고려.</li>
+  <li><strong>가져오지 말 것 — ResMimic teacher 와 전신 행동</strong>: 우리는 하위(dev12)를 고정하고 상체 11 + 골반 명령만 낸다. 무릎 꿇고 집기(그림 5a)도 우리 하위 명령 공간(골반 높이 0.335 m 이상) 밖이다.</li>
+  <li><strong>주의 — MLP 붕괴 결과</strong>: MLP 로 바꾸면 PickUp 0 % 였다. 이 결과는 여러 과제를 한 정책에 넣은 설정에서 나온 것이라 우리 단일 과제에 그대로 옮기긴 어렵지만, 상위 정책에 이력(행동·관측 몇 스텝)을 주는 근거로는 쓸 수 있다.</li>
+  <li><strong>라이선스·재현</strong>: 코드 미공개(README 만), LICENSE 없음. 수치·아이디어만 참고.</li>
+</ol></div>
+
+<p class="src">출처 표기: (p.N), (표 N), (그림 N), (식 N), 코드는 파일 경로. 논문에 없는 값은 "논문에 없음".</p>
+</main>
+</body>
+</html>

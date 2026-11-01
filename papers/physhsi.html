@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PhysHSI — 논문 상세</title>
+<link rel="stylesheet" href="paper.css">
+</head>
+<body>
+<main class="wrap">
+<a class="back" href="../index.html#catalog">← 자료 목록으로</a>
+
+<header class="ph">
+  <h1>PhysHSI: AMP 단일 정책으로 걷기·집기·나르기·놓기를 잇고 실기 물체 인지를 붙인 G1 장면 상호작용 시스템</h1>
+  <p class="orig">PhysHSI: Towards a Real-World Generalizable and Natural Humanoid-Scene Interaction System</p>
+  <p class="meta">Huayi Wang, Wentao Zhang, Runyi Yu (공동 1저자), Tao Huang, … , Qifeng Chen, Jingbo Wang, Jiangmiao Pang et al. · Shanghai AI Laboratory, HKUST · 사전 공개 (arXiv 2025-10) · Unitree G1 29 DoF, 고무 손 · IsaacGym (legged_gym)</p>
+  <div class="chips">
+    <a class="chip loc" href="../reference/physhsi/paper.pdf">로컬 PDF</a>
+    <a class="chip loc" href="../reference/physhsi/code/">로컬 코드</a>
+    <a class="chip" href="https://arxiv.org/abs/2510.11072" target="_blank" rel="noopener">arXiv 2510.11072</a>
+    <a class="chip gh" href="https://github.com/InternRobotics/PhysHSI" target="_blank" rel="noopener">InternRobotics/PhysHSI</a>
+    <a class="chip" href="https://why618188.github.io/physhsi/" target="_blank" rel="noopener">프로젝트 페이지</a>
+    <span class="simv s4">유사도 4</span>
+    <span class="badge">CC BY-NC-SA 4.0</span>
+    <span class="badge wt">가중치</span>
+  </div>
+</header>
+
+<div class="callout blue tldr">사람 MoCap 몇 개(걷기 11 + 운반 5 클립)에 상자 위치를 손으로 주석해 AMP 판별기에 넣고, 29 관절 목표를 직접 내는 PPO 정책 하나로 "걸어가 → 고무 손으로 끼워 들고 → 나르고 → 놓기"를 학습. 시뮬 Carry Box 성공 84.60 %(전체 분포), 실기 집기 8/10·전 과정 6/10, 상자 0–60 cm 높이·0.6–3.6 kg 까지 (p.5 표 I, p.6 표 III, p.7 표 IV).</div>
+
+<h2 class="ps">우리와 무엇이 같고 다른가</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>이 논문</th><th>우리 (dev10 pelvis_pick)</th></tr></thead>
+  <tbody>
+    <tr><td>하위 제어기</td><td><strong>없음</strong>. 단일 정책이 29 관절 PD 목표를 직접 냄(정책 50 Hz, PD 500 Hz) (p.3, 그림 2)</td><td class="ours">dev12 하체 RL(동결), 골반 vx·vy·ωz·높이·pitch·roll 추종, 상체 11 은 외부 PD 목표</td></tr>
+    <tr><td>상위 출력</td><td>29 관절 위치 목표 = 기본 자세 + 0.25·a (<a href="../reference/physhsi/code/legged_gym/legged_gym/envs/g1/carrybox_config.py"><code>carrybox_config.py</code></a>)</td><td class="ours">상체 11 관절 목표 + 골반 명령</td></tr>
+    <tr><td>과제·물체</td><td>임의 위치(0.7–4 m 밖)·높이(0–0.6 m) 상자로 걸어가 들고, 다른 목표(높이 0–0.4 m)에 놓기. 상자 폭 0.21–0.39 m·높이 0.15–0.35 m(코드), 밀도 10–100 kg/m³</td><td class="ours">바닥·받침대 0–0.3 m 박스 37×40.5×29 cm, 0.5–2 kg, 발끝 앞 0.04–0.30 m, 두 손 옆면 조이기 → 서서 유지 (나중에 접근·운반)</td></tr>
+    <tr><td>지각·증류</td><td>증류 없음. actor 가 상자 위치·6D 회전·크기·목표를 직접 받고, 실기는 LiDAR 오도메트리 + 머리 D455 AprilTag 로 그 값을 채움. 시뮬에서 잡음·오프셋·시야 밖 가림을 흉내 냄 + 비대칭 critic (p.4–5, 부록 A)</td><td class="ours">특권 teacher → D436 깊이(26×64, 6 프레임) + 고유감각 student (DAgger)</td></tr>
+    <tr><td>로봇·손</td><td>G1 29 DoF(허리 3, 손목 3×2), 손가락 없는 고무 손(<code>rubber_hand</code> 충돌체)으로 양손 클램프</td><td class="ours">K1 23 DoF(허리 yaw 1, 팔 5×2), 고무 공 손, 35.7 kg</td></tr>
+    <tr><td>시뮬레이터·물리</td><td>IsaacGym PhysX TGS, dt 5 ms, decimation 4, 위치 반복 8 (코드)</td><td class="ours">Isaac Lab + Newton</td></tr>
+    <tr><td>학습 방식</td><td>AMP(판별기 스타일 보상) + PPO, 혼합 RSI, 스타일 가중치 2 단계 증가</td><td class="ours">PPO teacher(행동 = 상체 + 골반 명령), 하위 고정</td></tr>
+    <tr><td>성공 정의</td><td>상자를 목표 위치 0.1 m 안에 놓음(평가) (p.13)</td><td class="ours">집어 들고 서서 유지 (정의 확정 전)</td></tr>
+    <tr><td>실기</td><td>과제당 10 회, 실내·실외, 온보드 Jetson Orin NX (p.5–6)</td><td class="ours">아직 없음 (dev12 는 스모크만)</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">1. 문제와 과제</h2>
+<ul>
+  <li>목표: 실기 휴머노이드가 장면·물체와 상호작용(HSI)하면서 (1) 다양한 배치·목표로 일반화, (2) 사람 같은 동작, (3) 끊기지 않는 물체 인지를 함께 갖추기 (p.1).</li>
+  <li>기존 방식의 문제: 처음부터 RL 은 보상·상태 전이 설계가 무겁고 동작이 부자연스러움, 동작 추종(tracking)은 참조에 묶여 새 배치로 일반화가 안 됨, 시뮬 HSI 연구는 완벽한 물체 관측을 가정 (p.1–2).</li>
+  <li>과제 4 개 + 스타일 보행: <strong>Carry Box</strong>(걸어가기 → 들기 → 나르기 → 놓기, 4 단계), Sit Down, Lie Down, Stand Up, 공룡 걸음·하이니 보행 (p.5, 부록 A).</li>
+  <li>Carry Box 장면: 시뮬에서는 얇은 받침판 두 장이 시작·목표 높이의 상자를 받침. 에피소드 20 s (p.10; <a href="../reference/physhsi/code/legged_gym/legged_gym/envs/g1/carrybox_config.py"><code>carrybox_config.py</code></a> <code>episode_length_s = 20</code>).</li>
+</ul>
+
+<h2 class="ps">2. 시스템 구조</h2>
+<p>세 부분: (a) 데이터 준비, (b) AMP 정책 학습, (c) 실기 배치 (p.3, 그림 2). 계층 없이 정책 하나가 모든 관절을 낸다.</p>
+<div class="fig">
+  <p><strong>학습 (시뮬)</strong></p>
+  <div class="flow">
+    <span class="node">AMASS·SAMP SMPL 동작</span><span class="arr">→</span>
+    <span class="node">G1 리타게팅 + 평활 필터</span><span class="arr">→</span>
+    <span class="node">접촉 키프레임 φ1(집기)·φ2(놓기) 수동 주석 → 상자 = 두 손 중점</span><span class="arr">→</span>
+    <span class="node frozen">참조 데이터셋 M (고정)</span>
+  </div>
+  <div class="flow" style="margin-top:8px">
+    <span class="node">관측: 고유감각 108 + 과제 15, 이력 5–6</span><span class="arr">→</span>
+    <span class="node">정책 π (MLP 512-256-256, 학습)</span><span class="arr">→</span>
+    <span class="node">29 관절 목표 50 Hz</span><span class="arr">→</span>
+    <span class="node">PD 500 Hz → 시뮬</span><span class="arr">→</span>
+    <span class="node">판별기 D (학습): 10 스텝 창, 상자 위치 포함 → 스타일 보상</span><span class="arr">+</span>
+    <span class="node">과제·정규화 보상</span>
+  </div>
+  <p style="margin-top:12px"><strong>실기 배치</strong></p>
+  <div class="flow">
+    <span class="node">LiDAR 점구름에서 상자 대략 위치 수동 지정 (초기화)</span><span class="arr">→</span>
+    <span class="node">FAST-LIO 오도메트리 10 Hz 로 전파 (거친 위치)</span><span class="arr">→</span>
+    <span class="node">AprilTag 첫 검출(30 Hz) 시 정밀 위치로 전환</span><span class="arr">→</span>
+    <span class="node">FK 25 Hz + 내장 상태 추정 500 Hz</span><span class="arr">→</span>
+    <span class="node">정책 50 Hz (Jetson Orin NX)</span><span class="arr">→</span>
+    <span class="node">PD 500 Hz</span>
+  </div>
+  <p style="margin-top:8px;font-size:13px">학습되는 것: 정책, critic, 판별기. 고정: 참조 데이터. 실기 인지는 학습 요소 없음(규칙 기반). 속도는 그림 2 (p.3).</p>
+</div>
+
+<h2 class="ps">3. 관측과 행동</h2>
+<h3 class="ps">정책(actor) 관측</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>묶음</th><th>구성 (차원)</th><th>비고</th></tr></thead>
+  <tbody>
+    <tr><td>고유감각 o<sup>P</sup> 108</td><td>몸통 각속도 3, 중력 방향 3, 관절 위치 29, 관절 속도 29, 끝단 5 개(양손·양발·머리) 몸통 기준 위치 15, 직전 행동 29 (p.3, 식 1)</td><td>코드 배율: 각속도 ×0.25, 관절 속도 ×0.05. 균일 잡음: 각속도 0.3, 중력 0.05, 관절 위치 0.02, 관절 속도 2.0, 끝단 0.05 m</td></tr>
+    <tr><td>과제 o<sup>G</sup> 15</td><td>상자 크기 3, 상자 위치 3, 상자 회전 6D 6, 목표 위치 3 — 모두 몸통 기준 (p.3, p.10)</td><td>실기 인지 흉내: 위치 ±0.05 m·회전 ±5° 잡음, 멀 때 오프셋 xy ±0.2 m·z ±0.4 m + 회전 = 단위, 시야 밖이면 0 으로 가림. 성공 뒤엔 과제 관측 전체를 −1 로 (코드 <code>compute_task_observations</code>)</td></tr>
+    <tr><td>이력</td><td>논문: 5 스텝 (p.3). 코드: <code>num_actor_history = 6</code> → 6 × (108 + 15) = 738 차원</td><td>논문과 코드가 다름</td></tr>
+  </tbody>
+</table></div>
+
+<h3 class="ps">critic · 판별기 관측</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>대상</th><th>구성</th><th>출처</th></tr></thead>
+  <tbody>
+    <tr><td>critic</td><td>한 스텝 고유감각 108 + 몸통 선속도 3 + 가리지 않은 과제 관측 15 = 126 (잡음 없음)</td><td>p.4 (비대칭 actor-critic), 코드 <code>num_privileged_obs</code></td></tr>
+    <tr><td>판별기 (논문)</td><td>스텝당 57: 몸통 높이 1, 몸통 선속도 3, 각속도 3, 중력 3, 관절 29, 끝단 15, 상자 위치 3</td><td>p.3, 식 2</td></tr>
+    <tr><td>판별기 (코드)</td><td>스텝당 60: 높이 1, 관절 29, 끝단 15, 상자 위치 3(0.7 m 밖이면 방향만 남기고 0.7 m 원 위로 당김, z = 0), 선속도 3, 각속도 3, 방향 뺀 몸통 회전 6D 6. 창 길이 10 스텝 → 600 차원</td><td><code>compute_amp_observations</code>, <code>amp.window_length = 10</code></td></tr>
+  </tbody>
+</table></div>
+<p>판별기 관측에 상자 위치를 넣은 것이 핵심이다. 판별기가 "멀면 걸어가고, 들고 있으면 상자가 두 손 사이에 있어야 한다"를 단계 구분 없이 스스로 조건화한다 (p.3, p.6).</p>
+
+<h3 class="ps">행동과 저수준</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>값</th></tr></thead>
+  <tbody>
+    <tr><td>행동</td><td>29 차원 관절 위치 목표 (p.3). q<sub>target</sub> = q<sub>default</sub> + 0.25·a, 환경 자르기 ±100 (사실상 없음)</td></tr>
+    <tr><td>주기</td><td>sim dt 0.005 s × decimation 4 = 50 Hz</td></tr>
+    <tr><td>PD kp / kd</td><td>hip 150 / 2, knee 300 / 4, ankle 40 / 1, waist 300 / 4, shoulder 200 / 3, elbow 100 / 1, wrist 20 / 0.5</td></tr>
+    <tr><td>기본 자세</td><td>hip pitch −0.1, knee 0.3, ankle pitch −0.2, shoulder roll ±0.1, elbow 1.2 rad</td></tr>
+  </tbody>
+</table></div>
+<p style="font-size:13px;color:var(--muted)">출처: <a href="../reference/physhsi/code/legged_gym/legged_gym/envs/g1/carrybox_config.py"><code>carrybox_config.py</code></a>, <a href="../reference/physhsi/code/legged_gym/legged_gym/envs/g1/carrybox.py"><code>carrybox.py</code></a> <code>_compute_torques</code></p>
+
+<h2 class="ps">4. 보상 · 종료 · 커리큘럼</h2>
+<h3 class="ps">전체 보상</h3>
+<ul>
+  <li>논문: r = w<sub>G</sub>·r<sup>G</sup> + w<sub>R</sub>·r<sup>R</sup> + w<sub>S</sub>·r<sup>S</sup>, w<sub>G</sub> = 0.7, w<sub>R</sub> = 0.7, w<sub>S</sub> = 0.3 (p.3, p.12 표 VIII). 스타일 r<sup>S</sup> = −log(1 − D) (식 4).</li>
+  <li>코드: r = amp_coef·(0.5·r<sub>amp</sub>) + (1 − amp_coef)·(r<sup>G</sup> + r<sup>R</sup>), r<sub>amp</sub> = max(0, 1 − 0.25·(d − 1)²) — 최소제곱 GAN 꼴 (<a href="../reference/physhsi/code/rsl_rl/rsl_rl/modules/amp.py"><code>rsl_rl/rsl_rl/modules/amp.py</code></a>, <a href="../reference/physhsi/code/rsl_rl/rsl_rl/runners/him_on_policy_runner.py"><code>him_on_policy_runner.py</code></a>). amp_coef 는 1 단계 0.25, 2 단계 0.3.</li>
+</ul>
+
+<h3 class="ps">Carry Box 과제 보상 (논문 식, p.10)</h3>
+<p>기호: p<sup>o</sup> 상자, p<sup>b</sup> 몸통, p<sup>g</sup> 목표, d* 몸통→상자 수평 단위 벡터, d<sup>#</sup> 몸통→목표 단위 벡터, Δθ 목표 방향과 몸통 방향의 yaw 오차, p<sup>hand</sup> 두 손 평균.</p>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항</th><th>식</th><th>게이트</th></tr></thead>
+  <tbody>
+    <tr><td>r<sup>loco</sup> (식 8)</td><td>1.0·exp(−5·(0.85 − d*·ṗ<sup>b</sup><sub>xy</sub>)²) + 0.5·exp(−0.75·|Δθ(d*, d<sub>b</sub>)|)</td><td>상자까지 수평 0.7 m 안이면 상수 1.5</td></tr>
+    <tr><td>r<sup>carry</sup> (식 10)</td><td>1.0·exp(−5·(0.85 − d<sup>#</sup>·ṗ<sup>b</sup><sub>xy</sub>)²) + 0.5·exp(−0.75·|Δθ(d<sup>#</sup>, d<sub>b</sub>)|) + <strong>0.7·exp(−3·‖p<sup>o</sup> − p<sup>hand</sup>‖²)</strong></td><td>상자에서 0.7 m 밖이면 0, 몸통이 목표 0.7 m 안이면 2.2</td></tr>
+    <tr><td>r<sup>pick</sup> (식 11)</td><td><strong>2.0·exp(−3·|0.75 − p<sup>o</sup><sub>z</sub>|)</strong></td><td>상자에서 0.7 m 밖이면 0, 목표 0.7 m 안이거나 상자 높이 &gt; 0.75 m 이면 2.0</td></tr>
+    <tr><td>r<sup>put</sup> (식 12)</td><td>1.0·exp(−10·‖p<sup>o</sup> − p<sup>g</sup>‖) + 1.0·exp(−3·(p<sup>o</sup><sub>z</sub> − p<sup>g</sup><sub>z</sub>))</td><td>몸통이 목표 0.7 m 밖이면 0, 상자–목표 0.05 m 안이면 2.0</td></tr>
+    <tr><td>합 (식 13)</td><td colspan="2">r<sup>G</sup> = r<sup>loco</sup> + r<sup>carry</sup> + r<sup>pick</sup> + r<sup>put</sup> (TokenHSI 식 다단계 보상)</td></tr>
+  </tbody>
+</table></div>
+<div class="callout">손–상자 <strong>접촉·힘 보상이 없다</strong>. 두 손 평균 위치를 상자 중심에 두는 항(0.7)과 상자 높이 항(2.0)뿐이고, 두 손 클램프 모양은 AMP 운반 동작이 만든다. 코드 설정의 <code>hand_contact = 0.0</code> 은 보상 함수에서 쓰이지도 않는다.</div>
+
+<h3 class="ps">공개 코드의 과제 보상 (실제로 학습에 쓰인 것)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항 (scale)</th><th>내용</th><th>게이트·포화</th></tr></thead>
+  <tbody>
+    <tr><td><code>walk_task</code> (1.0)</td><td>1.0·exp(−5·(0.85 − v<sub>→상자</sub>)²) + 0.5·exp(−0.75·|yaw 오차|) (위치 항 가중 0.0)</td><td>상자 0.7 m 안 또는 배치 완료면 최대 1.5</td></tr>
+    <tr><td><code>carryup_task</code> (1.0)</td><td>0.7·exp(−3·‖mean(손) − 상자 중심‖²) + 2.0·exp(−3·max(0.72 − 상자 z, 0))</td><td>상자 0.7 m 밖이면 0. 상자 z &gt; 0.72 m 또는 목표 수평 0.6 m 안이면 높이 항 = 1. 배치 완료(0.05 m)면 2.7</td></tr>
+    <tr><td><code>relocation_task</code> (1.0)</td><td>0.5·exp(−0.75·|목표 방향 yaw 오차|) + 1.0·exp(−5·(0.85 − v<sub>→목표</sub>)²) + 1.0·exp(−10·‖상자 − 목표‖) + 1.0·exp(−3·|상자 z − 목표 z|)(목표 수평 0.6 m 안에서만)</td><td>상자가 받침에서 0.05 m 이상 뜨거나 시작점에서 0.5 m 이상 움직였을 때만 켜짐. 목표 0.65 m 안이면 속도·위치 항 = 1</td></tr>
+    <tr><td><code>standup_task</code> (0.2)</td><td>머리 높이 0.5 + 기본 자세 유지 exp(−0.3·Σ|q − q<sub>0</sub>|) 1.0 + 두 손 떼기 0.5</td><td>성공(배치) 뒤에만</td></tr>
+  </tbody>
+</table></div>
+<p style="font-size:13px;color:var(--muted)">출처: <a href="../reference/physhsi/code/legged_gym/legged_gym/envs/g1/carrybox.py"><code>carrybox.py</code></a> <code>_reward_walk_task</code>·<code>_reward_carryup_task</code>·<code>_reward_relocation_task</code>·<code>_reward_standup_task</code></p>
+
+<h3 class="ps">정규화 보상 (p.12 표 VI)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항</th><th>논문</th><th>코드</th></tr></thead>
+  <tbody>
+    <tr><td>dof velocity</td><td>−2e−4</td><td>−2e−4</td></tr>
+    <tr><td>dof acceleration</td><td>−1e−7</td><td>−1e−7</td></tr>
+    <tr><td>dof position limits</td><td>−5.0</td><td>−5.0</td></tr>
+    <tr><td>dof velocity limits</td><td>−1e−3</td><td>−1e−3</td></tr>
+    <tr><td>torques</td><td>−1e−4</td><td>−1e−4</td></tr>
+    <tr><td>torque limits</td><td>−0.1</td><td><strong>−0.03</strong></td></tr>
+    <tr><td>action rate</td><td>−0.03</td><td>−0.03</td></tr>
+  </tbody>
+</table></div>
+
+<h3 class="ps">종료 조건 (코드, 논문에 없음)</h3>
+<ul>
+  <li>시간 20 s, 머리 높이 &lt; 0.6 m, 몸통 높이 &lt; 0.2 m, |roll| &gt; 0.5 rad 또는 |pitch| &gt; 1.1 rad, 2 번 몸체 수평 속도 &gt; 3 m/s, hip yaw 링크 높이 &lt; 0.15 m.</li>
+  <li>2 단계(<code>carrybox_resume</code>)에서만: 상자가 거의 옆으로 넘어짐(상자 기준 중력 z &gt; −0.05) 시 종료.</li>
+  <li>상자 떨어뜨림·손 접촉 상실 자체로는 종료하지 않는다.</li>
+</ul>
+<p style="font-size:13px;color:var(--muted)">출처: <code>check_termination</code>, <a href="../reference/physhsi/code/legged_gym/legged_gym/envs/g1/carrybox_resume_config.py"><code>carrybox_resume_config.py</code></a></p>
+
+<h3 class="ps">커리큘럼 · 초기화</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>장치</th><th>논문</th><th>코드에서 확인한 값</th></tr></thead>
+  <tbody>
+    <tr><td>스타일 가중치 증가</td><td>초반엔 작은 w<sub>S</sub> 로 탐색, 점점 키워 빠르고 거친 지름길을 막음 (p.4)</td><td>2 단계 수동: amp_coef 0.25, 상자 넘어짐 종료 끔, 약 20k iter → amp_coef 0.3, 종료 켬, 30–40k iter 이어학습 (README)</td></tr>
+    <tr><td>혼합 RSI</td><td>참조 동작의 위상 φ ∈ [0, 1] 에서 시작하되 (φ, 1] 구간 장면은 무작위, 일부는 기본 자세 + 완전 무작위 장면 (p.4)</td><td><code>hybrid_init_prob = 0.8</code>: 80 % 참조 상태, 20 % 기본 자세. 참조 기술 비중 loco 0.8 : pickUp 0.2 : carryWith 0.2 : putDown 0 (정규화 시 67:17:17:0 %). 참조 시작 시 몸통 속도는 U(−0.2, 0.2) 로 덮음, 상자 50 % 확률로 180° 회전</td></tr>
+    <tr><td>L2C2 매끄러움</td><td>배치용 매끄러움·안정 (p.4)</td><td>관측 t 와 t+1 사이 무작위 보간 입력에 대한 정책 평균 차 제곱 × 0.111, 가치 차 × 0.0111 을 손실에 더함 (<a href="../reference/physhsi/code/rsl_rl/rsl_rl/algorithms/him_ppo.py"><code>him_ppo.py</code></a>)</td></tr>
+  </tbody>
+</table></div>
+
+<h3 class="ps">장면 무작위화</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>논문 (p.10)</th><th>코드</th></tr></thead>
+  <tbody>
+    <tr><td>상자·목표 수평 위치</td><td>로봇 기준 [−4, 4] m</td><td>상자: 각 축 ±(0.7–4.0) m, yaw 0–2π. 목표: 상자→로봇 방향에서 ±(10–80)°, 거리 0.6–4.0 m</td></tr>
+    <tr><td>높이</td><td>상자·목표 모두 0–0.6 m</td><td>상자 중심 높이 U(0, 0.65) m(최소 = 반높이, 즉 바닥), 목표 중심 높이 U(0, 0.4) m(최소 = 받침 위)</td></tr>
+    <tr><td>상자 크기</td><td>폭 0.2–0.5 m, 높이 0.15–0.35 m</td><td>기본 0.3×0.3×0.25 m × (x·y 0.7–1.3, z 0.6–1.4, 0.1 간격) → <strong>폭 0.21–0.39 m</strong>, 높이 0.15–0.35 m</td></tr>
+    <tr><td>밀도</td><td>10–100 kg/m³</td><td>같음 (질량 약 0.07–5.3 kg)</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">5. 학습 설정 (알고리즘 · 망 · 무작위화)</h2>
+<h3 class="ps">PPO · AMP 하이퍼파라미터</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>논문 (p.12 표 VIII)</th><th>코드</th></tr></thead>
+  <tbody>
+    <tr><td>env 수</td><td>4096</td><td>4096</td></tr>
+    <tr><td>iter 당 스텝 / epoch / mini-batch</td><td>100 / 5 / –</td><td>100 / 5 / 4</td></tr>
+    <tr><td>clip / entropy / γ / λ</td><td>0.2 / 0.01 / 0.99 / 0.95</td><td>같음</td></tr>
+    <tr><td>학습률</td><td>desired KL 0.01</td><td>1e−3, KL 적응</td></tr>
+    <tr><td>grad clip / Adam ε</td><td>1.0 / 1e−8</td><td>1.0</td></tr>
+    <tr><td>actor · critic</td><td>MLP [512, 256, 256], "double critic"</td><td>MLP [512, 256, 256], ELU, 초기 std 1.0</td></tr>
+    <tr><td>판별기</td><td>MLP [512, 256, 256]</td><td><strong>[512, 256]</strong>, ReLU, 최소제곱 손실 (D(expert) − 1)² + (D(policy) + 1)²</td></tr>
+    <tr><td>gradient penalty</td><td>w<sub>gp</sub> 1.0</td><td>λ 5 × 0.1 = 0.5 (expert 쪽만)</td></tr>
+    <tr><td>거리 임계 ε (잡기 단계 판정)</td><td>0.6 m</td><td>–</td></tr>
+    <tr><td>iteration</td><td>논문에 없음</td><td>1 단계 20,000 + 2 단계 최대 50,000(README 는 30–40k). 공개 <code>carrybox.pt</code> 는 내부 이름 <code>model_65000</code></td></tr>
+    <tr><td>학습 시간·GPU</td><td>논문에 없음</td><td>–</td></tr>
+  </tbody>
+</table></div>
+
+<h3 class="ps">도메인 무작위화 (p.12 표 VII 와 코드)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>논문</th><th>코드</th></tr></thead>
+  <tbody>
+    <tr><td>actuator offset</td><td>U(−0.05, 0.05) rad</td><td>±0.05 × 토크 한계 (토크 오프셋)</td></tr>
+    <tr><td>motor strength</td><td>U(0.9, 1.1)</td><td>같음</td></tr>
+    <tr><td>payload</td><td>U(−2, 2) kg</td><td><strong>[−2, 5] kg</strong></td></tr>
+    <tr><td>COM 이동</td><td>U(−0.05, 0.05) m</td><td>±0.1 m</td></tr>
+    <tr><td>Kp, Kd 배율</td><td>U(0.85, 1.15)</td><td>0.9–1.1</td></tr>
+    <tr><td>링크 질량</td><td>–</td><td>×0.8–1.2</td></tr>
+    <tr><td>지면 마찰·반발</td><td>–</td><td>0.1–1.5, 0–1.0</td></tr>
+    <tr><td>상자·받침 마찰, 상자 반발</td><td>0.5–1.2, 0.5–1.2, 0–0.2</td><td>같은 값이 있으나 <code>random_props = False</code> 라 꺼져 있음</td></tr>
+    <tr><td>외란</td><td>–</td><td>몸통에 ±50 N(축별), 8 정책 스텝마다 1 스텝</td></tr>
+    <tr><td>행동 지연</td><td>"delays" 언급 (p.5)</td><td>0–4 sim 스텝(0–20 ms) 무작위</td></tr>
+    <tr><td>초기 관절</td><td>–</td><td>±0.1 rad</td></tr>
+    <tr><td>관측 잡음</td><td>각속도 0.3, 관절 위치 0.02, 관절 속도 2.0, 중력 0.05, FK 0.05 m</td><td>같음</td></tr>
+    <tr><td>물체 위치 오프셋·잡음</td><td>±0.05 m, ±0.05 m</td><td>멀 때 오프셋 xy ±0.2·z ±0.4 m, 잡음 ±0.05 m</td></tr>
+    <tr><td>물체 회전 오프셋·잡음</td><td>±5°, ±5°</td><td>임의 축 ±5°</td></tr>
+    <tr><td>카메라 시야</td><td>수평 86°·수직 57° (D455)</td><td>수평 85–90°, 수직 55–60°, 태그 면 각도 60 ± 10°, 거리 2.5 m 이내, 정밀 전환 거리 0.7–2.0 m</td></tr>
+  </tbody>
+</table></div>
+
+<h3 class="ps">시뮬에서 실기 인지 흉내 (가림 전략)</h3>
+<ul>
+  <li>잡기 단계(상자가 움직이는 물체)에서 상자가 <strong>시야 밖</strong>이면 actor 의 상자 위치·회전을 가린다 (p.5).</li>
+  <li>시야 밖 판정 (p.10–11): 태그 면 법선과 시선 각도 &gt; 60° + Δ (Δ ∈ [−10°, 10°]), 태그 네 모서리 중 하나라도 FOV 밖, 태그 평균 거리 &gt; 2.5 m.</li>
+  <li>코드: 태그를 한 번 본 뒤 거리 0.65 m 안에서 안 보이면 위치 0·회전 단위로 가림, 정밀 전환 거리 밖은 거친 오프셋을 더함.</li>
+</ul>
+
+<h2 class="ps">6. teacher → student / 증류</h2>
+<p>해당 없음 — 증류 단계가 없다. actor 는 배치 때 얻을 수 있는 값(상자 자세 = AprilTag + 오도메트리, 끝단 = FK)만 쓰고, critic 만 특권 정보(선속도, 가리지 않은 상자 관측)를 보는 비대칭 actor-critic 으로 해결 (p.4).</p>
+
+<h2 class="ps">7. 결과</h2>
+<h3 class="ps">시뮬 비교 (p.5 표 I, 5 시드 × 1000 에피소드)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>장면</th><th>방법</th><th>Carry Box 성공 %</th><th>S<sub>human</sub></th><th>Sit Down %</th><th>Lie Down %</th><th>Stand Up %</th></tr></thead>
+  <tbody>
+    <tr><td rowspan="3">분포 안</td><td>RL-Rewards</td><td>72.92 ± 8.29</td><td>1.67</td><td>83.60</td><td>76.72</td><td>93.02</td></tr>
+    <tr><td>Tracking-Based</td><td>11.84 ± 3.16</td><td>4.83</td><td>31.46</td><td>19.58</td><td>99.00</td></tr>
+    <tr><td><strong>PhysHSI</strong></td><td><strong>91.34 ± 1.63</strong></td><td>4.00</td><td>96.28</td><td>97.86</td><td>99.68</td></tr>
+    <tr><td rowspan="3">전체 분포</td><td>RL-Rewards</td><td>63.40 ± 8.63</td><td>1.17</td><td>73.14</td><td>55.76</td><td>90.50</td></tr>
+    <tr><td>Tracking-Based</td><td>0.02 ± 0.01</td><td>0.50</td><td>1.12</td><td>0.94</td><td>35.32</td></tr>
+    <tr><td><strong>PhysHSI</strong></td><td><strong>84.60 ± 3.74</strong></td><td>3.83</td><td>91.32</td><td>81.28</td><td>92.24</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>"분포 안" = 데이터셋 장면 설정만, "전체 분포" = 물체 0–5 m, 상자 높이 0–0.6 m, 크기 0.2–0.5 m 에서 균일 표본 (p.5).</li>
+  <li>S<sub>human</sub> = Gemini-2.5-Pro 가 영상 3 개를 보고 0–5 점 (p.5, p.13).</li>
+  <li>Tracking-Based 는 과제당 참조 2–5 개만 있어 전체 분포에서 거의 0 %. RL-Rewards 는 손으로 만든 보행 보상(표 IX)이라 S<sub>human</sub> 이 낮음.</li>
+</ul>
+<div class="callout">논문 안의 Carry Box 성공률이 서로 다르다: 표 I 91.34(분포 안)·84.60(전체), 본문 "81.34 %" (p.5), 표 II PhysHSI 79.34 (p.6). Sit Down 은 표 II 91.32 = 표 I 전체 분포 값이라, 표 II 는 전체 분포 설정으로 보이지만 Carry Box 값만 어긋난다.</div>
+
+<h3 class="ps">절제 (p.6 표 II, Carry Box)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>설정</th><th>Carry Box %</th><th>S<sub>human</sub></th><th>Sit Down %</th><th>해석</th></tr></thead>
+  <tbody>
+    <tr><td>평활 없음</td><td>63.28 ± 11.72</td><td>2.33</td><td>87.24</td><td>판별기가 리타게팅 떨림·급변을 흉내 냄</td></tr>
+    <tr><td>상자 주석 없음</td><td>55.42 ± 8.17</td><td>2.60</td><td>72.36</td><td>판별기가 단계(걷기/들기)를 구분 못 함</td></tr>
+    <tr><td>RSI 없음</td><td>41.24 ± 6.92</td><td>2.50</td><td>78.24</td><td>집기 전이를 거의 못 겪음</td></tr>
+    <tr><td><strong>단순 RSI</strong>(데이터 장면 그대로)</td><td><strong>5.70 ± 2.38</strong></td><td>0.50</td><td>18.70</td><td>RSI 없음보다 나쁨: 좁은 장면에 과적합</td></tr>
+    <tr><td>가림 없음 (상한)</td><td>85.90 ± 2.90</td><td>4.30</td><td>/</td><td>가림은 학습만 조금 늦추고 최종 영향 작음</td></tr>
+    <tr><td>PhysHSI (혼합 RSI + 가림)</td><td>79.34 ± 4.71</td><td>3.83</td><td>91.32</td><td></td></tr>
+  </tbody>
+</table></div>
+
+<h3 class="ps">기준선 설정 (p.12–13)</h3>
+<ul>
+  <li>RL-Rewards: 스타일 대신 보행 보상(base height −10, z velocity −2, roll-pitch velocity −0.05, orientation −1, feet clearance −0.5, feet air time 0.05, feet distance 0.5, hip joint deviation −0.5) (표 IX).</li>
+  <li>Tracking-Based: body position 1.0, body rotation 0.5, base position 1.0, base rotation 0.5, base linear velocity 0.5, end-effector position 1.5, joint position 1.0, object position 1.0 (표 X).</li>
+</ul>
+
+<h2 class="ps">8. 실기 · sim2real</h2>
+<h3 class="ps">하드웨어</h3>
+<ul>
+  <li>Unitree G1 + 내장 Livox Mid-360 LiDAR + 머리 Intel RealSense D455(수평 86°·수직 57°), 3D 프린트 브래킷: torso 기준 (0.08, 0.01, 0.40) m, pitch 약 40° (p.5, p.12 그림 6).</li>
+  <li>인지(점구름 표시, FAST-LIO, AprilTag, FK)와 정책 모두 Jetson Orin NX 온보드 (p.5).</li>
+</ul>
+<h3 class="ps">실기 결과 (p.6 표 III, 과제당 10 회)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>과제</th><th>성공</th><th>마감 오차 (m)</th><th>수행 시간 (s)</th><th>최대 이동 (m)</th></tr></thead>
+  <tbody>
+    <tr><td>Carry Box</td><td><strong>집기 8/10, 전 과정 6/10</strong></td><td>0.19 ± 0.10</td><td>10.5 ± 2.8</td><td>5.69</td></tr>
+    <tr><td>Sit Down</td><td>9/10</td><td>0.07 ± 0.03</td><td>6.2 ± 1.3</td><td>4.14</td></tr>
+    <tr><td>Lie Down</td><td>8/10</td><td>0.16 ± 0.07</td><td>6.7 ± 1.0</td><td>3.76</td></tr>
+    <tr><td>Stand Up</td><td>8/10</td><td>/</td><td>2.3 ± 0.4</td><td>1.74</td></tr>
+  </tbody>
+</table></div>
+
+<h3 class="ps">Carry Box 한계 시험 (p.7 표 IV, 조건당 3 회)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>조건</th><th colspan="5">성공</th></tr></thead>
+  <tbody>
+    <tr><td>상자 높이</td><td>0 cm 2/3</td><td>20 cm 3/3</td><td>40 cm 3/3</td><td>60 cm 1/3</td><td></td></tr>
+    <tr><td>상자 무게</td><td>0.6 kg 2/3</td><td>1.2 kg 3/3</td><td>2.3 kg 2/3</td><td>3.6 kg 1/3</td><td><strong>4.5 kg 0/3</strong></td></tr>
+    <tr><td>최대 크기</td><td>20 cm 2/3</td><td>30 cm 3/3</td><td>40 cm 2/3</td><td>45 cm 3/3</td><td></td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>저자 결론: 0–60 cm, 0.6–3.6 kg, 최대 크기 20–45 cm 에서 "안정". 더 높은 상자는 서 있어도 수직 시야 밖, 더 무겁거나 넓은 상자는 <strong>고무 손·팔 길이 도달 한계</strong>로 실패, 무거우면 모터 과열 위험 (p.7).</li>
+  <li>바닥(0 cm)도 2/3 으로 완벽하지 않다.</li>
+</ul>
+<h3 class="ps">물체 위치 추정 모듈 (p.6–7, 그림 5)</h3>
+<ul>
+  <li>실기 17 회 중 15 회 성공. 실패 2: 거친 안내가 너무 빗나가 태그가 시야에 안 들어옴 1, 시스템 다운 1.</li>
+  <li>MoCap 대비 오차: 멀 때 약 0.35 m(수동 지정 점이 0.3 m 빗나감), 2.4 m 안에서 AprilTag 로 전환된 뒤 평균 0.05 m. 잡기 단계에서는 빠른 손 동작 때문에 AprilTag 잡음이 커짐.</li>
+  <li>잡은 뒤 상자가 시야를 벗어나면 위치·회전을 가리고 고유감각만으로 수행; 거리 임계 ε 로 "잡힘"을 판정해 그 뒤엔 상자가 로봇과 함께 움직인다고 가정 (p.4–5).</li>
+</ul>
+
+<h2 class="ps">9. 코드에서 확인한 것</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>파일</th><th>내용</th></tr></thead>
+  <tbody>
+    <tr><td><a href="../reference/physhsi/code/legged_gym/legged_gym/envs/g1/carrybox_config.py"><code>legged_gym/legged_gym/envs/g1/carrybox_config.py</code></a></td><td>1 단계 설정: env 4096, 관측 차원, PD 이득, 상자 크기·밀도, RSI 확률, DR, 보상 가중, AMP(amp_coef 0.25, 창 10), PPO(max 20,000 iter)</td></tr>
+    <tr><td><a href="../reference/physhsi/code/legged_gym/legged_gym/envs/g1/carrybox_resume_config.py"><code>carrybox_resume_config.py</code></a></td><td>2 단계: 차이는 <code>box_termination = True</code>, amp_coef 0.3, max 50,000 iter, resume 뿐</td></tr>
+    <tr><td><a href="../reference/physhsi/code/legged_gym/legged_gym/envs/g1/carrybox.py"><code>carrybox.py</code></a> (2,067 줄)</td><td>관측·AMP 관측·종료·혼합 RSI·상자/목표 배치·태그 가시성·보상 함수</td></tr>
+    <tr><td><a href="../reference/physhsi/code/rsl_rl/rsl_rl/algorithms/him_ppo.py"><code>rsl_rl/rsl_rl/algorithms/him_ppo.py</code></a></td><td>PPO + L2C2 매끄러움 손실 + AMP 판별기 손실을 한 옵티마이저로</td></tr>
+    <tr><td><a href="../reference/physhsi/code/rsl_rl/rsl_rl/modules/amp.py"><code>rsl_rl/rsl_rl/modules/amp.py</code></a></td><td>판별기 [512, 256], 최소제곱 손실, 보상 max(0, 1 − 0.25(d − 1)²), 과제와 선형 혼합</td></tr>
+    <tr><td><a href="../reference/physhsi/code/legged_gym/resources/config/carrybox.yaml"><code>legged_gym/resources/config/carrybox.yaml</code></a></td><td>참조 클립 목록과 표본 가중: pickUp 3(각 4.0), carryWith 3(5.0·2.0·5.0), putDown 2(각 5.0), loco 11(각 1.0)</td></tr>
+    <tr><td><a href="../reference/physhsi/code/legged_gym/resources/ckpt/"><code>legged_gym/resources/ckpt/</code></a></td><td><strong>실제 가중치</strong>(LFS 포인터 아님): carrybox.pt 15.4 MB(zip, <code>model_65000</code>), sitdown·liedown·standup·styleloco 2 종</td></tr>
+  </tbody>
+</table></div>
+<h3 class="ps">논문과 코드가 다른 곳</h3>
+<ul>
+  <li>actor 이력 5(논문) vs 6(코드). 판별기 관측 57 vs 60 (중력 3 대신 방향 뺀 6D 회전), 판별기 망 [512, 256, 256] vs [512, 256].</li>
+  <li>스타일 보상 −log(1 − D)(식 4) vs 최소제곱 GAN 보상 max(0, 1 − 0.25(d − 1)²) × 0.5.</li>
+  <li>들기 목표 높이 0.75 m 양쪽 오차(식 11) vs 0.72 m 한쪽(모자랄 때만) 오차.</li>
+  <li>torque limits −0.1 vs −0.03. payload ±2 vs [−2, 5] kg. COM ±0.05 vs ±0.1 m. Kp·Kd 0.85–1.15 vs 0.9–1.1.</li>
+  <li>상자 폭 0.2–0.5 m(논문) vs 0.21–0.39 m(코드 크기 격자). 상자·받침 마찰 무작위화는 코드에서 꺼짐.</li>
+</ul>
+
+<h2 class="ps">10. 한계</h2>
+<ul>
+  <li>도달 한계: 고무 손 클램프 + 팔 길이로 넓은(&gt; 45 cm)·무거운(≥ 4.5 kg) 상자 실패; 높은 상자는 시야 밖 (p.7).</li>
+  <li>접촉·힘 보상이 없어 두 손 조임 강도를 직접 다루지 못함; 무거울수록 모터 과열 (p.7).</li>
+  <li>데이터: 리타게팅 동작에 물체를 수동 주석, 고품질 소량만 선별 → 확장이 어렵다 (p.7).</li>
+  <li>인지: 거친 위치를 사람이 LiDAR 점구름에서 지정 + AprilTag 필요, 모듈식이라 취약 (p.7).</li>
+  <li>평가: 실기 과제당 10 회, 한계 시험 조건당 3 회. 시뮬 성공률 수치가 표·본문마다 다름.</li>
+</ul>
+
+<h2 class="ps">11. 우리에게 가져올 것</h2>
+<div class="take"><ol>
+  <li><strong>가져올 것 — 거리 게이트 + 한쪽 높이 보상 꼴</strong>: 상자 0.7 m 밖이면 집기 보상 0, 높이 항은 exp(−3·max(h* − h<sub>box</sub>, 0)) 로 모자랄 때만 깎고 h* 를 넘으면 상수. 가중 비율도 참고(손 위치 0.7 : 상자 높이 2.0 — 들기가 손 맞추기보다 3 배 큼). 단 h* = 0.72 m 는 G1 키 기준 절대 높이라 그대로 쓰지 말고, K1 은 "시작 높이(0/0.1/0.2/0.3 m 받침) + Δh" 로 정한다.</li>
+  <li><strong>가져오지 말 것 — 접촉 보상 없이 손 평균만 맞추기</strong>: PhysHSI 는 AMP 운반 동작이 두 손 클램프 모양을 강제해서 손 평균–상자 중심 항만으로 됐다. 우리는 상체에 스타일 사전이 없고 dev10 v2 에서 한 손 밀기 국소해를 이미 겪었다. 두 손 평균을 상자 중심에 두는 항은 손을 앞·뒷면에 대도 만족되므로, 손 목표를 <strong>상자 좌우 옆면 중심 두 점</strong>으로 바꾸고 min(왼 힘, 오른 힘) 접촉 항을 따로 둔다.</li>
+  <li><strong>가져올 것 — 혼합 초기화와 그 절제 결과</strong>: 단순 RSI(5.70 %)가 RSI 없음(41.24 %)보다 나쁘고 혼합 RSI 가 79.34 % (p.6 표 II). 우리는 MoCap 이 없으니 "쪼그려 손이 옆면 근처에 있는 상태"를 teacher 자신의 롤아웃 스냅숏에서 뽑아 일부(예: 20–50 %)만 그 상태에서 시작하고, 나머지는 서 있는 기본 자세 + 완전 무작위 상자 배치(높이 0–0.3 m, 앞 0.04–0.30 m, 옆 ±0.15 m, yaw ±40°)로 둔다. 스냅숏 장면 그대로만 쓰면 과적합한다는 것이 이 표의 교훈.</li>
+  <li><strong>가져올 것 — 단계적 엄격화</strong>: 1 단계는 느슨한 종료(상자 넘어짐 종료 끔)·약한 스타일, 2 단계에서 종료 켜고 가중을 올려 이어학습. 우리 대응: 처음엔 행동 변화율·자세 벌점을 작게 두고 집기가 생긴 뒤 키운다. 단, 이어학습 때 critic 입력이 바뀌면 critic 을 무작위로 새로 만들면 첫 갱신에 actor 가 망가지니 넓힌 입력만 0 으로 늘려 이어 붙인다.</li>
+  <li><strong>가져올 것 — 환경 안에서 행동을 자르지 않음</strong>: PhysHSI 는 clip ±100(사실상 없음) + action rate −0.03 + L2C2(정책 0.111, 가치 0.011)로 매끄러움을 만든다. dev10 v2 의 "환경 안 자르기 → std 발산"과 "켜짐/꺼짐 포화"에 대한 대안으로, 상위 출력은 자르지 말고 범위 밖 L2 벌점 + L2C2 식 관측 보간 평활 손실을 시험해 볼 만하다.</li>
+  <li><strong>가져올 것 — 시야 기반 가림을 teacher 단계에서 미리</strong>: 상자가 카메라 FOV 밖(수평 85–90°, 수직 55–60° 무작위, 거리 2.5 m)이면 상자 관측을 가리는 방식은 성공률 손실이 작았다(85.90 → 79.34 %). 우리 D436 student 도 잡은 뒤 상자가 너무 가깝거나 시야를 벗어나므로, teacher actor 에 "보이는가" 기준의 가림이나 잡음(위치 ±0.05 m, 회전 ±5°)을 넣어 student 가 흉내 낼 수 있는 teacher 로 만든다. 접촉력·질량은 critic 전용으로.</li>
+  <li><strong>참고 값 — DR</strong>: payload [−2, 5] kg, 몸통 외란 ±50 N(8 스텝마다), 행동 지연 0–20 ms, Kp·Kd 0.9–1.1, 관측 잡음(각속도 0.3, 관절 속도 2.0). dev12 가 이미 손 하중 0–5 kg 으로 학습됐으므로 상위 학습에서는 상자 0.5–2 kg 에 상자 마찰(0.5–1.2)·반발(0–0.2)을 실제로 켜서 쓴다(PhysHSI 공개 코드는 꺼져 있었다).</li>
+  <li><strong>가져오지 말 것 — 29 관절 직접 출력 + 전신 AMP</strong>: 우리는 하위를 고정하고 상체 11 + 골반 명령을 내는 구조라 이 논문의 행동 공간은 맞지 않는다. 다리 AMP 는 dev12 에 이미 있고, 상체 AMP 를 붙이려면 K1 상체 집기 참조 클립이 필요하다.</li>
+  <li><strong>가져오지 말 것 — 인지 파이프라인</strong>: LiDAR 수동 지정 + AprilTag 는 실험실 장치. 우리는 깊이 student 로 간다. 다만 "멀면 거친 안내, 가까우면 정밀"이라는 나눔은 나중의 접근 단계에 참고.</li>
+  <li><strong>기대치 조정</strong>: 같은 고무 손 G1 도 실기 바닥 상자 2/3, 4.5 kg 0/3, 넓은 상자는 도달 한계로 실패했다. 우리 상자(폭 40.5 cm, 0.5–2 kg)는 PhysHSI 학습 범위(폭 ≤ 0.39 m) 위쪽 끝이고 K1 팔은 G1 보다 짧으니, 바닥 상자 도달은 보상보다 골반 높이·pitch 범위와 상자 앞 거리 분포로 풀어야 한다(우리 dev10 v2 결론과 같은 방향).</li>
+  <li><strong>평가 방식</strong>: 시드 5 × 1000 에피소드를 평균 ± 표준편차로 보고하면서도 표마다 값이 달랐다. 우리는 고정 평가셋·체크포인트 이웃 비교로 같은 숫자를 다시 낼 수 있게 한다.</li>
+</ol></div>
+
+<p class="src">출처 표기: (p.N), (표 N), (그림 N), (식 N), 코드는 파일 경로. 논문에 없는 값은 "논문에 없음".</p>
+</main>
+</body>
+</html>

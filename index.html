@@ -1,0 +1,1300 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>박스 집기 상위 정책 참고 연구</title>
+<style>
+:root {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --surface-2: #f0f2f5;
+  --text: #1c2027;
+  --muted: #5d6675;
+  --faint: #8a93a1;
+  --border: #e1e5eb;
+  --accent: #2b59d1;
+  --accent-soft: #e9effd;
+  --c-iface: #2b6fde;  --s-iface: #e8f0fd;
+  --c-box: #b8620d;    --s-box: #fbefe2;
+  --c-vision: #11806a; --s-vision: #e2f3ee;
+  --c-frozen: #7445cc; --s-frozen: #f0eafb;
+  --lfs: #b2421c;  --lfs-bg: #fde9e1;
+  --wt: #1b7340;   --wt-bg: #e3f4e8;
+  --only: #6b7380; --only-bg: #eceef1;
+  --sim5: #2b59d1; --sim4: #5b7fe0; --sim3: #9bb0ea; --sim2: #c9d4f3; --sim1: #e3e8f7;
+  --sim-text-hi: #ffffff; --sim-text-lo: #23324f;
+  --shadow: 0 1px 2px rgba(20, 30, 50, .05), 0 2px 8px rgba(20, 30, 50, .04);
+  --radius: 12px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111317;
+    --surface: #191c21;
+    --surface-2: #21252c;
+    --text: #e5e8ec;
+    --muted: #a1aab7;
+    --faint: #78818e;
+    --border: #2d323a;
+    --accent: #7fa2ff;
+    --accent-soft: #1d2740;
+    --c-iface: #73a3ff;  --s-iface: #1a2640;
+    --c-box: #eaa35c;    --s-box: #33261a;
+    --c-vision: #52c7a6; --s-vision: #16302a;
+    --c-frozen: #b392ff; --s-frozen: #2a2140;
+    --lfs: #ff9c7a;  --lfs-bg: #3a2119;
+    --wt: #74d69a;   --wt-bg: #17301f;
+    --only: #a1aab7; --only-bg: #262a31;
+    --sim5: #6f95ff; --sim4: #4c6fcf; --sim3: #34508f; --sim2: #2a3a5e; --sim1: #222c42;
+    --sim-text-hi: #0d1322; --sim-text-lo: #d7e0f7;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .3);
+  }
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Pretendard", "Pretendard Variable", -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", system-ui, sans-serif;
+  font-size: 15.5px;
+  line-height: 1.7;
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "D2Coding", monospace;
+  font-size: .86em;
+  background: var(--surface-2);
+  padding: .08em .35em;
+  border-radius: 5px;
+  word-break: break-all;
+}
+b, strong { font-weight: 700; }
+h1, h2, h3, h4 { line-height: 1.35; margin: 0; }
+
+/* ---------- layout ---------- */
+.layout {
+  max-width: 1380px;
+  margin: 0 auto;
+  padding: 0 28px;
+  display: grid;
+  grid-template-columns: 210px minmax(0, 1fr);
+  gap: 44px;
+}
+main { min-width: 0; max-width: 1100px; padding-bottom: 80px; }
+section { scroll-margin-top: 20px; padding-top: 40px; }
+
+/* ---------- toc ---------- */
+.side { position: relative; }
+.toc { position: sticky; top: 24px; margin-top: 40px; }
+.toc > summary {
+  list-style: none; cursor: pointer; font-weight: 700; font-size: 13px;
+  color: var(--muted); letter-spacing: .04em;
+}
+.toc > summary::-webkit-details-marker { display: none; }
+.toc nav { display: flex; flex-direction: column; gap: 2px; margin-top: 10px; border-left: 2px solid var(--border); }
+.toc nav a {
+  display: block; padding: 5px 12px; margin-left: -2px; font-size: 14px; color: var(--muted);
+  border-left: 2px solid transparent; line-height: 1.4;
+}
+.toc nav a:hover { color: var(--text); text-decoration: none; }
+.toc nav a.active { color: var(--accent); border-left-color: var(--accent); font-weight: 600; }
+.toc nav a .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 7px; vertical-align: 1px; }
+@media (min-width: 961px) { .toc > summary { pointer-events: none; } }
+
+/* ---------- header ---------- */
+.hero { padding-top: 44px; }
+.eyebrow { margin: 0 0 6px; font-size: 13px; color: var(--muted); letter-spacing: .03em; }
+.hero h1 { font-size: clamp(26px, 4vw, 36px); letter-spacing: -.02em; }
+.hero .sub { margin: 8px 0 0; font-size: 17px; color: var(--muted); }
+.meta-links { margin: 12px 0 0; font-size: 14px; color: var(--faint); }
+.verdict {
+  margin-top: 22px; padding: 16px 20px; border-radius: var(--radius);
+  background: var(--accent-soft); border: 1px solid var(--border);
+  font-size: 19px; font-weight: 700; letter-spacing: -.01em;
+}
+.verdict .lbl, .lbl {
+  display: inline-block; font-size: 12px; font-weight: 700; color: var(--accent);
+  background: var(--surface); border: 1px solid var(--border); border-radius: 999px;
+  padding: 1px 9px; margin-right: 8px; vertical-align: 3px; letter-spacing: .02em;
+}
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); gap: 12px; margin-top: 16px; }
+.stat { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 16px; box-shadow: var(--shadow); }
+.stat b { display: block; font-size: 26px; line-height: 1.2; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.stat span { font-size: 13px; color: var(--muted); }
+
+/* ---------- generic ---------- */
+h2.sec { font-size: 24px; letter-spacing: -.015em; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+h2.sec .claim { font-size: 15px; font-weight: 500; color: var(--muted); letter-spacing: 0; }
+.sec-lead { margin: 6px 0 18px; color: var(--muted); }
+.topic-bar { width: 6px; height: 26px; border-radius: 3px; display: inline-block; }
+.panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; box-shadow: var(--shadow); }
+.muted { color: var(--muted); }
+.small { font-size: 13.5px; }
+.inf { font-size: 12px; color: var(--faint); border: 1px dashed var(--border); border-radius: 4px; padding: 0 5px; margin-left: 2px; white-space: nowrap; }
+
+/* ---------- summary blocks ---------- */
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 330px), 1fr)); gap: 14px; }
+.arch { display: flex; flex-direction: column; align-items: stretch; gap: 0; }
+.arch .box { border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; background: var(--surface-2); }
+.arch .box small { display: block; color: var(--muted); font-size: 12px; }
+.arch .box b { font-size: 15px; }
+.arch .box.learn { border-color: var(--accent); background: var(--accent-soft); }
+.arch .down { text-align: center; color: var(--muted); font-size: 13px; padding: 4px 0; }
+.arch .split { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.arch .split .down { padding: 2px 0 4px; }
+.roots { display: grid; gap: 10px; }
+.root { border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; background: var(--surface); }
+.root h3 { font-size: 15px; margin-bottom: 4px; }
+.root p { margin: 2px 0; font-size: 14px; }
+.root .fix { color: var(--text); }
+.root .fix::before { content: "처방 "; font-weight: 700; color: var(--accent); }
+.root.other { background: var(--surface-2); }
+.steps { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: 10px; counter-reset: st; }
+.steps li { position: relative; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px 12px 46px; font-size: 14.5px; line-height: 1.5; counter-increment: st; }
+.steps li::before {
+  content: counter(st); position: absolute; left: 12px; top: 12px; width: 24px; height: 24px; border-radius: 50%;
+  background: var(--accent); color: var(--surface); font-weight: 700; font-size: 13px; display: grid; place-items: center;
+}
+.callout { margin-top: 12px; padding: 10px 14px; border-left: 4px solid var(--c-box); background: var(--s-box); border-radius: 0 8px 8px 0; font-size: 14.5px; }
+.callout.blue { border-left-color: var(--accent); background: var(--accent-soft); }
+h3.sub-h { font-size: 16px; margin: 22px 0 10px; }
+
+/* ---------- cards ---------- */
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 310px), 1fr)); gap: 14px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; display: flex; flex-direction: column; gap: 8px; box-shadow: var(--shadow); }
+.card-top { display: flex; align-items: center; gap: 10px; }
+.rank { width: 28px; height: 28px; border-radius: 8px; background: var(--accent); color: var(--surface); display: grid; place-items: center; font-weight: 800; font-size: 14px; flex: none; }
+.card h3 { font-size: 18px; letter-spacing: -.01em; }
+.robot { margin-left: auto; font-size: 12px; color: var(--muted); border: 1px solid var(--border); border-radius: 999px; padding: 1px 9px; white-space: nowrap; }
+.card .why { margin: 0; font-size: 14.5px; line-height: 1.55; }
+.card .num { font-size: 14px; background: var(--surface-2); border-radius: 8px; padding: 7px 10px; line-height: 1.5; }
+.card .num b { font-size: 17px; color: var(--accent); font-variant-numeric: tabular-nums; }
+.card .take { margin: 0; font-size: 13.5px; color: var(--muted); line-height: 1.55; }
+.card .take::before { content: "가져올 것 · "; font-weight: 700; color: var(--text); }
+.card .meta { font-size: 12.5px; color: var(--faint); margin-top: auto; }
+
+/* ---------- chips & badges ---------- */
+.chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.chip {
+  display: inline-block; font-size: 12.5px; line-height: 1.5; padding: 1px 9px; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text); white-space: nowrap;
+}
+.chip { max-width: 100%; white-space: normal; }
+.takeaways li, .steps li, .ladder div, .root, .panel, .card, details.more li { min-width: 0; overflow-wrap: anywhere; }
+a.chip:hover { border-color: var(--accent); color: var(--accent); text-decoration: none; }
+.chip.loc { background: var(--accent-soft); border-color: transparent; color: var(--accent); font-weight: 600; }
+.chip.gh::before { content: "GitHub "; color: var(--faint); }
+.badge { display: inline-block; font-size: 11.5px; font-weight: 700; line-height: 1.5; padding: 1px 7px; border-radius: 5px; white-space: nowrap; cursor: default; }
+.badge.lfs { color: var(--lfs); background: var(--lfs-bg); }
+.badge.wt { color: var(--wt); background: var(--wt-bg); }
+.badge.only { color: var(--only); background: var(--only-bg); font-weight: 600; }
+
+/* ---------- tables ---------- */
+.tbl-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow); }
+table { border-collapse: collapse; width: 100%; font-size: 14px; line-height: 1.55; }
+th, td { text-align: left; vertical-align: top; padding: 9px 12px; border-bottom: 1px solid var(--border); }
+thead th { background: var(--surface-2); font-size: 12.5px; color: var(--muted); font-weight: 700; white-space: nowrap; }
+tbody tr:last-child td { border-bottom: 0; }
+td.n { font-weight: 800; color: var(--accent); width: 34px; text-align: center; font-variant-numeric: tabular-nums; }
+.t-wide { min-width: 860px; }
+.t-mid { min-width: 680px; }
+td details { margin-top: 4px; }
+td details > summary { font-size: 12.5px; }
+
+/* ---------- problem tags ---------- */
+.ptag { display: inline-block; font-size: 12px; font-weight: 700; padding: 0 7px; border-radius: 5px; background: var(--s-box); color: var(--c-box); margin: 1px 3px 1px 0; white-space: nowrap; }
+.ptag.none { background: var(--only-bg); color: var(--only); font-weight: 600; }
+
+/* ---------- topic sections ---------- */
+.takeaways { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.takeaways li { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px 10px 36px; position: relative; font-size: 15px; line-height: 1.6; }
+.takeaways li::before { content: ""; position: absolute; left: 15px; top: 18px; width: 8px; height: 8px; border-radius: 50%; background: var(--tc, var(--accent)); }
+.topic-iface { --tc: var(--c-iface); --ts: var(--s-iface); }
+.topic-box { --tc: var(--c-box); --ts: var(--s-box); }
+.topic-vision { --tc: var(--c-vision); --ts: var(--s-vision); }
+.topic-frozen { --tc: var(--c-frozen); --ts: var(--s-frozen); }
+.topic-iface .topic-bar, .topic-box .topic-bar, .topic-vision .topic-bar, .topic-frozen .topic-bar { background: var(--tc); }
+.ladder { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); gap: 8px; margin-top: 12px; }
+.ladder div { border-radius: 10px; padding: 10px 12px; background: var(--ts, var(--surface-2)); font-size: 14px; line-height: 1.5; }
+.ladder div b { display: block; color: var(--tc); font-size: 12.5px; }
+
+/* ---------- details ---------- */
+details.more { margin-top: 10px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; }
+details.more > summary { cursor: pointer; padding: 10px 14px; font-weight: 600; font-size: 14.5px; list-style: none; display: flex; align-items: center; gap: 8px; }
+details.more > summary::-webkit-details-marker { display: none; }
+details.more > summary::before { content: "▸"; color: var(--muted); font-size: 12px; transition: transform .15s; }
+details.more[open] > summary::before { transform: rotate(90deg); }
+details.more > summary .cnt { margin-left: auto; font-weight: 500; font-size: 12.5px; color: var(--faint); }
+details.more > .body { padding: 0 14px 14px; }
+details.more > .body > .tbl-wrap { box-shadow: none; }
+details.more ul, details.more ol { margin: 6px 0; padding-left: 20px; }
+details.more li { margin: 4px 0; font-size: 14.5px; }
+details.more p { margin: 8px 0; font-size: 14.5px; }
+td details > summary { cursor: pointer; color: var(--accent); }
+
+/* ---------- catalogue ---------- */
+.legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 13px; color: var(--muted); margin: 10px 0 0; }
+.legend span { display: inline-flex; align-items: center; gap: 5px; }
+.controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 14px 0 10px; }
+.search {
+  flex: 1 1 240px; min-width: 0; font: inherit; font-size: 15px; padding: 8px 12px; border-radius: 10px;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text);
+}
+.search:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.fchips { display: flex; flex-wrap: wrap; gap: 6px; }
+.fchip {
+  font: inherit; font-size: 13.5px; padding: 4px 12px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text);
+}
+.fchip[aria-pressed="true"] { background: var(--text); color: var(--bg); border-color: var(--text); }
+.toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; cursor: pointer; user-select: none; }
+.toggle input { width: 16px; height: 16px; accent-color: var(--accent); }
+.count { font-size: 13px; color: var(--muted); margin-left: auto; }
+#catalog table { min-width: 980px; }
+#catalog td.sid { white-space: nowrap; }
+#catalog td.sid code { background: none; padding: 0; font-size: 13px; font-weight: 700; color: var(--text); word-break: normal; }
+#catalog td.venue { font-size: 13px; color: var(--muted); min-width: 120px; }
+#catalog td.lic { font-size: 12.5px; color: var(--muted); min-width: 90px; }
+#catalog td.links { min-width: 300px; }
+#catalog td.sim { text-align: center; white-space: nowrap; }
+.simv { display: inline-block; min-width: 34px; padding: 1px 7px; border-radius: 6px; font-weight: 700; font-size: 13px; font-variant-numeric: tabular-nums; }
+.simv.s5 { background: var(--sim5); color: var(--sim-text-hi); }
+.simv.s4 { background: var(--sim4); color: var(--sim-text-hi); }
+.simv.s3 { background: var(--sim3); color: var(--sim-text-lo); }
+.simv.s2 { background: var(--sim2); color: var(--sim-text-lo); }
+.simv.s1 { background: var(--sim1); color: var(--sim-text-lo); }
+.cnote { font-size: 12.5px; color: var(--muted); margin-top: 4px; line-height: 1.5; }
+.cnote strong { color: var(--text); }
+.tdots { display: flex; gap: 3px; margin-top: 3px; }
+.tdot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.t-iface { background: var(--c-iface); }
+.t-box { background: var(--c-box); }
+.t-vision { background: var(--c-vision); }
+.t-frozen { background: var(--c-frozen); }
+.sortbtn { font: inherit; font-size: 12.5px; font-weight: 700; color: var(--muted); background: none; border: 0; padding: 0; cursor: pointer; white-space: nowrap; }
+.sortbtn:hover { color: var(--accent); }
+.empty { padding: 24px; text-align: center; color: var(--muted); }
+
+/* ---------- gaps ---------- */
+.gaps ul { margin: 6px 0 0; padding-left: 18px; }
+.gaps li { margin: 5px 0; font-size: 14.5px; }
+.gaps h3 { font-size: 16px; }
+
+/* ---------- narrow screens ---------- */
+@media (max-width: 960px) {
+  .layout { display: block; padding: 0 16px; }
+  .side { position: sticky; top: 0; z-index: 20; margin: 0 -16px; padding: 0 16px; background: var(--bg); border-bottom: 1px solid var(--border); }
+  .toc { position: static; margin: 0; }
+  .toc > summary { padding: 11px 0; font-size: 14px; color: var(--text); }
+  .toc > summary::after { content: " ▾"; color: var(--muted); }
+  .toc[open] > summary::after { content: " ▴"; }
+  .toc nav { margin: 0 0 10px; max-height: 60vh; overflow-y: auto; }
+  section { scroll-margin-top: 56px; padding-top: 32px; }
+  .hero { padding-top: 24px; }
+  .verdict { font-size: 17px; }
+  .arch .split { grid-template-columns: 1fr; }
+  .count { margin-left: 0; width: 100%; }
+}
+.plink { color: inherit; text-decoration: underline; text-decoration-color: var(--accent); text-underline-offset: 3px; }
+.plink:hover { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="layout">
+<aside class="side">
+  <details class="toc" id="toc" open>
+    <summary>목차</summary>
+    <nav aria-label="목차">
+      <a href="#top">요약</a>
+      <a href="#glance">한눈에: 가장 가까운 연구</a>
+      <a href="#recs">우리 설계에 주는 권고</a>
+      <a href="#fixes">원문 대조로 고친 점</a>
+      <a href="#t-iface"><span class="dot t-iface"></span>계층 명령 인터페이스</a>
+      <a href="#t-box"><span class="dot t-box"></span>박스 들기·운반</a>
+      <a href="#t-vision"><span class="dot t-vision"></span>시각 teacher→student</a>
+      <a href="#t-frozen"><span class="dot t-frozen"></span>고정 하위 위 상위 학습</a>
+      <a href="#catalog">자료 목록 (113)</a>
+      <a href="#gaps">확인 못 한 것</a>
+    </nav>
+  </details>
+</aside>
+
+<main>
+<!-- ===================== 요약 ===================== -->
+<section id="top" class="hero">
+  <p class="eyebrow">dev10 · pelvis_pick · 2026-10-23</p>
+  <h1>박스 집기 상위 정책 참고 연구</h1>
+  <p class="sub">dev12 골반 명령 하체 정책 위 상체·골반 명령 상위 정책, K1 박스 집기</p>
+  <p class="meta-links"><a href="reports/%EB%B0%95%EC%8A%A4%20%EC%A7%91%EA%B8%B0%20%EC%83%81%EC%9C%84%20%EC%A0%95%EC%B1%85%20%EC%B0%B8%EA%B3%A0%20%EC%97%B0%EA%B5%AC.md">원문 보고서 (.md)</a> · <a href="research_notes/%EB%B0%95%EC%8A%A4%20%EC%A7%91%EA%B8%B0%20%EC%83%81%EC%9C%84%20%EC%A0%95%EC%B1%85%20%EC%B0%B8%EA%B3%A0%20%EC%97%B0%EA%B5%AC/">조사 노트 4 개</a> · <a href="reference/">받은 자료 reference/</a></p>
+
+  <div class="verdict"><span class="lbl">결론</span>VIRAL 뼈대 위에 델타 명령과 두 손 접촉을 얹어라</div>
+  <div class="callout">44 편 원문 대조 뒤: 아래 처방 중 <b>접촉 critic 전용</b>과 <b>두 손 min-힘 보상</b>은 문헌 근거가 약하다(가설로 시험할 것). 세부 숫자도 일부 바뀌었다 → <a href="#fixes">원문 대조로 고친 점</a>. 논문 이름을 누르면 상세 설명 페이지로 간다.</div>
+
+  <div class="stats">
+    <div class="stat"><b>113</b><span>카탈로그 항목 (네 노트 중복 제거)</span></div>
+    <div class="stat"><b>44 · 22</b><span>로컬 논문 PDF · 코드 폴더 (합 4.3 GB)</span></div>
+    <div class="stat"><b>5</b><span>가중치·자산이 Git LFS 포인터뿐인 곳</span></div>
+    <div class="stat"><b>0</b><span>우리 조합 그대로의 공개 선례</span></div>
+  </div>
+
+  <div class="grid2" style="margin-top:16px">
+    <div class="panel">
+      <h3 class="sub-h" style="margin-top:0">우리 설계</h3>
+      <div class="arch">
+        <div class="box learn"><small>상위 · 학습 대상</small><b>특권 RL teacher → D436 깊이 student</b></div>
+        <div class="split">
+          <div><div class="down">↓ 골반 명령 (6)</div><div class="box"><small>하체 · 동결</small><b>dev12 골반 명령 추종 RL</b><br><span class="small muted">손 하중 0–5 kg 학습</span></div></div>
+          <div><div class="down">↓ 상체 관절 목표 (11)</div><div class="box"><small>상체 · 외부 PD 목표</small><b>dev12 가 목표·변화율을 관측</b></div></div>
+        </div>
+        <div class="down">↓</div>
+        <div class="box"><small>로봇</small><b>K1 · 고무 손 두 손 옆면 조이기 · 바닥 상자</b></div>
+      </div>
+      <p class="small muted" style="margin:10px 0 0">가장 가까운 공개 뼈대: VIRAL·DoorMan, AdaptManip, Humanoid Hanoi, PRISM. 이 조합 그대로의 공개 선례는 없다.</p>
+    </div>
+
+    <div class="panel">
+      <h3 class="sub-h" style="margin-top:0">v2 의 여섯 문제 → 두 뿌리</h3>
+      <div class="roots">
+        <div class="root">
+          <h3>뿌리 1 · 행동 매개화</h3>
+          <p class="muted">"절대 행동을 환경에서 자른다" 한 설계 → 추종기 밖 출력 · 원출력 포화 · std 발산 · 비단조 성공률</p>
+          <p class="fix">델타 행동 + 유계 분포 + dev12 가 실제로 도달하는 범위로 자르기</p>
+        </div>
+        <div class="root">
+          <h3>뿌리 2 · 정보 비대칭</h3>
+          <p class="muted">teacher 가 student 가 못 보는 접촉을 actor 로 봄 → student 약 20 %p 낮음</p>
+          <p class="fix">접촉을 critic 전용으로 + student RL 미세조정 (시각 인코더 개선이 아님)</p>
+        </div>
+        <div class="root other">
+          <h3>따로 · 바닥 도달, 한 손 밀기</h3>
+          <p>바닥 도달 한계는 상위 기법으로 안 풀림 → 상위가 낸 낮은 집기 명령을 하위 학습에 되먹이는 데이터 집계(Hanoi)가 유일한 직접 처방. 한 손 밀기는 두 손 min-힘 보상 + L∧R 게이트.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h3 class="sub-h">근거에 가장 잘 맞는 첫 실험 순서</h3>
+  <ol class="steps">
+    <li><b>dev12 도달 영역 측정</b><br><span class="small muted">높이 × pitch × 상체 자세 격자</span></li>
+    <li><b>teacher</b>: 델타·유계 행동 + 두 손 min-힘 보상</li>
+    <li><b>접촉을 critic 전용</b>으로 옮긴 teacher 의 하락 폭 확인</li>
+    <li><b>student</b>: DAgger 후 λ 경사 PPO</li>
+  </ol>
+  <div class="callout">dev12 는 고정한 채 시작하되, 바닥 상자 성공률이 막히는 시점에 dev12 를 <b>원래 추종 보상 그대로</b> 재학습할 계획을 미리 세워 둔다.</div>
+  <div class="callout blue"><b>코드 뼈대</b>: AGILE (Isaac Lab <code>ActionTerm</code> 으로 동결 하체 감싸기) + VIRAL <a href="reference/viral/code/gr00t/rl/envs/base_task/homie_base.py"><code>homie_base.py</code></a> (명령 자르기 · 델타 누적 · 현재 명령 관측; 벌점은 VIRAL 이 경첩, DoorMan 이 잘린 양 제곱). AGILE 행동 항은 벌점 없이 자르기만 하므로 벌점을 더해 쓴다. student 격차엔 PRISM 의 λ 경사 PPO+DAgger 가 가장 단순. AGILE·VIRAL·DoorMan 의 하체 가중치·시연 데이터는 <b>Git LFS 포인터만</b> 있어 쓰려면 <code>git lfs pull</code>.</div>
+</section>
+
+<!-- ===================== 한눈에 ===================== -->
+<section id="glance">
+  <h2 class="sec">한눈에: 가장 가까운 연구</h2>
+  <p class="sec-lead">유사도 순위 1–6. 7–10 위는 아래 표.</p>
+
+  <div class="cards">
+    <article class="card">
+      <div class="card-top"><span class="rank">1</span><h3><a class="plink" href="papers/viral.html">VIRAL</a></h3><span class="robot">G1</span></div>
+      <p class="why">동결 HOMIE 하체(속도·높이·rpy·팔 명령) 위 PPO teacher → RGB student. 우리와 같은 뼈대.</p>
+      <div class="num">실기 <b>54/59</b> · 주기 20.2 s</div>
+      <p class="take">델타 행동(×0.1 누적, 11 차원), 명령 자르기 + 자르기 전 명령 경첩 벌점(−20; 잘린 양 제곱 벌점은 DoorMan), 현재 명령 관측, 시연 RSI, DAgger/BC α 0.5</p>
+      <div class="chips">
+        <a class="chip loc" href="papers/viral.html">상세 설명</a>
+        <a class="chip loc" href="reference/viral/paper.pdf">로컬 PDF</a>
+        <a class="chip loc" href="reference/viral/code/">로컬 코드</a>
+        <a class="chip" href="https://arxiv.org/abs/2511.15200" target="_blank" rel="noopener">arXiv 2511.15200</a>
+        <a class="chip gh" href="https://github.com/NVlabs/GR00T-VisualSim2Real" target="_blank" rel="noopener">NVlabs/GR00T-VisualSim2Real</a>
+        <span class="badge lfs" title="HOMIE 가중치·시연 npz·로봇 메시는 LFS 포인터만">LFS</span>
+      </div>
+      <div class="meta">CVPR 2026 · Apache-2.0 · Isaac Lab</div>
+    </article>
+
+    <article class="card">
+      <div class="card-top"><span class="rank">2</span><h3><a class="plink" href="papers/doorman.html">DoorMan</a></h3><span class="robot">G1</span></div>
+      <p class="why">VIRAL 과 같은 스택. student 가 DAgger 로 정체(논문은 시야 가림을 원인으로 듦) → student RL 로 메움. 우리 격차와 같은 꼴.</p>
+      <div class="num">student <b>50–70 %</b> → GRPO 후 <b>80.8–85.8 %</b> · 실기 83 %</div>
+      <p class="take">student RL 미세조정, 단계 스냅숏 리셋 버퍼 100</p>
+      <div class="chips">
+        <a class="chip loc" href="papers/doorman.html">상세 설명</a>
+        <a class="chip loc" href="reference/doorman/paper.pdf">로컬 PDF</a>
+        <a class="chip loc" href="reference/doorman/code/">로컬 코드</a>
+        <a class="chip" href="https://arxiv.org/abs/2512.01061" target="_blank" rel="noopener">arXiv 2512.01061</a>
+        <a class="chip gh" href="https://github.com/NVlabs/GR00T-VisualSim2Real" target="_blank" rel="noopener">GR00T-VisualSim2Real (doorman 브랜치)</a>
+        <span class="badge lfs" title="모델·시연 npz 56·메시 165 는 LFS 포인터만">LFS</span>
+      </div>
+      <div class="meta">CVPR 2026 · Apache-2.0 · GRPO 코드는 공개 안 됨</div>
+    </article>
+
+    <article class="card">
+      <div class="card-top"><span class="rank">3</span><h3><a class="plink" href="papers/adaptmanip.html">AdaptManip</a></h3><span class="robot">G1 고무 손</span></div>
+      <p class="why">동결 보행 명령 [vx, vy, ω, z] + 상체 잔차 17 = 우리와 같은 행동 꼴.</p>
+      <div class="num">Isaac <b>0.85</b> / MuJoCo <b>0.75</b> · Pure RL 0.62 / 0.37</div>
+      <p class="take">좌우 대칭 손실, 수직 미끄럼 벌점, 상자 높이 종료, Isaac + MuJoCo 이중 평가</p>
+      <div class="chips">
+        <a class="chip loc" href="papers/adaptmanip.html">상세 설명</a>
+        <a class="chip loc" href="reference/adaptmanip/paper.pdf">로컬 PDF</a>
+        <a class="chip" href="https://arxiv.org/abs/2602.14363" target="_blank" rel="noopener">arXiv 2602.14363</a>
+        <span class="badge only">코드 없음</span>
+      </div>
+      <div class="meta">arXiv 2026 (RA-L 여부 미확인) · 프로젝트 페이지만</div>
+    </article>
+
+    <article class="card">
+      <div class="card-top"><span class="rank">4</span><h3><a class="plink" href="papers/humanoid_hanoi.html">Humanoid Hanoi</a></h3><span class="robot">Digit · 손가락 없음</span></div>
+      <p class="why">Pickup 출력 = 팔 관절 목표 + 골반 pitch·높이. 공유 WBC(MHC) 위 기술 LSTM.</p>
+      <div class="num">Pickup <b>96.92 %</b> (Extended) · E2E 81.11 % · 낮은 상자 85.00 → <b>95.03 %</b> (데이터 집계)</div>
+      <p class="take">두 손 접촉(L∧R) 게이트 보상, 접촉 뒤 받침 제거, 높이별 접근 시간, 하위 WBC 데이터 집계</p>
+      <div class="chips">
+        <a class="chip loc" href="papers/humanoid_hanoi.html">상세 설명</a>
+        <a class="chip loc" href="reference/humanoid_hanoi/paper.pdf">로컬 PDF</a>
+        <a class="chip loc" href="reference/humanoid_hanoi/code/">로컬 코드</a>
+        <a class="chip" href="https://arxiv.org/abs/2602.13850" target="_blank" rel="noopener">arXiv 2602.13850</a>
+        <a class="chip gh" href="https://github.com/osudrl/Humanoid_Hanoi" target="_blank" rel="noopener">osudrl/Humanoid_Hanoi</a>
+      </div>
+      <div class="meta">CoRL 2026 · MuJoCo 코드 · LICENSE 없음</div>
+    </article>
+
+    <article class="card">
+      <div class="card-top"><span class="rank">5</span><h3><a class="plink" href="papers/prism.html">PRISM</a></h3><span class="robot">G1 고무 손</span></div>
+      <p class="why">상자 집기·운반을 깊이 student 로 실기까지. 가장 단순한 student RL 혼합 손실.</p>
+      <div class="num">실기 상자 <b>15/15</b></div>
+      <p class="take">λ 경사 PPO+DAgger, teacher 접촉 일정 → student 보상, 깊이 DR 수치</p>
+      <div class="chips">
+        <a class="chip loc" href="papers/prism.html">상세 설명</a>
+        <a class="chip loc" href="reference/prism/paper.pdf">로컬 PDF</a>
+        <a class="chip loc" href="reference/prism/code/">로컬 코드</a>
+        <a class="chip" href="https://arxiv.org/abs/2609.38172" target="_blank" rel="noopener">arXiv 2609.38172</a>
+        <a class="chip gh" href="https://github.com/amazon-far/PRISM" target="_blank" rel="noopener">amazon-far/PRISM</a>
+        <span class="badge wt" title="_ckpts/ box_23000 · teacher_40000 · student_28000">가중치</span>
+      </div>
+      <div class="meta">프리프린트 2026-09 · Apache-2.0 · 실제 체크포인트 있음</div>
+    </article>
+
+    <article class="card">
+      <div class="card-top"><span class="rank">6</span><h3><a class="plink" href="papers/agile.html">AGILE</a></h3><span class="robot">G1</span></div>
+      <p class="why">Isaac Lab + RSL-RL 에서 동결 속도·높이 하체를 행동 항으로 감싸고 상체 RL. 우리 코드 뼈대의 꼴.</p>
+      <div class="num">시뮬 100 회 <b>90 %</b></div>
+      <p class="take"><a href="reference/agile/code/agile/rl_env/mdp/actions/policy_actions.py"><code>AgileBasedLowerBodyAction</code></a> 코드 꼴</p>
+      <div class="chips">
+        <a class="chip loc" href="papers/agile.html">상세 설명</a>
+        <a class="chip loc" href="reference/agile/paper.pdf">로컬 PDF</a>
+        <a class="chip loc" href="reference/agile/code/">로컬 코드</a>
+        <a class="chip" href="https://arxiv.org/abs/2603.20147" target="_blank" rel="noopener">arXiv 2603.20147</a>
+        <a class="chip gh" href="https://github.com/nvidia-isaac/WBC-AGILE" target="_blank" rel="noopener">nvidia-isaac/WBC-AGILE</a>
+        <span class="badge lfs" title="data/policy/ 하체 .pt·.onnx 11 개는 LFS 포인터만">LFS</span>
+      </div>
+      <div class="meta">프리프린트 2026-03 · Apache-2.0 + BSD-3 (RSL_RL)</div>
+    </article>
+  </div>
+
+  <h3 class="sub-h">7–10 위</h3>
+  <div class="tbl-wrap">
+    <table class="t-mid">
+      <thead><tr><th>#</th><th>연구</th><th>왜 가까운가</th><th>가져올 것</th><th>자료</th></tr></thead>
+      <tbody>
+        <tr><td class="n">7</td><td><b>VisualMimic</b></td><td>동결 키포인트 추종기 + RL teacher → 깊이 student, G1 상자 들기</td><td>상위 출력 μ±1.64σ 자르기, 하위 명령 ×U(0.5, 1.5) 잡음</td><td><div class="chips"><a class="chip loc" href="reference/visualmimic/paper.pdf">로컬 PDF</a><a class="chip loc" href="reference/visualmimic/code/">로컬 코드</a><a class="chip" href="https://arxiv.org/abs/2509.20322" target="_blank" rel="noopener">arXiv</a><span class="badge wt" title="checkpoints/lift_box 등 4 개 (sim2sim·체크포인트만)">가중치</span></div></td></tr>
+        <tr><td class="n">8</td><td><b>SplitAdapter</b></td><td>G1 고무 손 실기 상자 0.30×0.43×0.30 m (우리 37×40×29 cm 와 거의 같음). 실기 16/27 → 26/27</td><td>두 손 중 약한 쪽 힘 보상(20 N 포화), 낮은 상자 머뭇거림 벌점</td><td><div class="chips"><a class="chip loc" href="reference/splitadapter/paper.pdf">로컬 PDF</a><a class="chip" href="https://arxiv.org/abs/2606.03297" target="_blank" rel="noopener">arXiv</a><span class="badge only">논문만</span></div></td></tr>
+        <tr><td class="n">9</td><td><b>DextrAH-G</b></td><td>접촉력을 critic 전용으로 둔 teacher → student 가 시뮬에서 teacher 와 같은 약 99 %</td><td>teacher actor 에서 접촉·질량 빼기</td><td><div class="chips"><a class="chip loc" href="reference/dextrah_g/paper.pdf">로컬 PDF</a><a class="chip loc" href="reference/dextrah_g/code/">로컬 코드</a><a class="chip" href="https://arxiv.org/abs/2407.02274" target="_blank" rel="noopener">arXiv</a><span class="badge lfs" title="USD 자산 447 개는 LFS 포인터만">LFS</span></div></td></tr>
+        <tr><td class="n">10</td><td><b>HiWET</b></td><td>동결 하위(vx, vy, ωz, 높이 0.3–0.78 m, 손 자세) 위 PPO 상위</td><td>같은 꼴 RL 상위의 비대칭 actor-critic 설정</td><td><div class="chips"><a class="chip loc" href="reference/hiwet/paper.pdf">로컬 PDF</a><a class="chip" href="https://arxiv.org/abs/2602.06341" target="_blank" rel="noopener">arXiv</a><span class="badge only">논문만</span></div></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ===================== 권고 ===================== -->
+<section id="recs">
+  <h2 class="sec">우리 설계에 주는 권고</h2>
+  <div class="callout">원문 대조 결과 권고 7·9 의 근거는 약해졌고, 1–5·10 은 세부 숫자가 바뀌었다. 먼저 <a href="#fixes">원문 대조로 고친 점</a>을 볼 것.</div>
+  <p class="sec-lead">v2 의 여섯 문제마다 공개 처방이 있다. 아래 문제 번호(P1–P6)를 권고 표에서 다시 쓴다.</p>
+
+  <div class="tbl-wrap">
+    <table class="t-wide">
+      <thead><tr><th>v2 문제</th><th>문헌 처방</th><th>근거 수치</th></tr></thead>
+      <tbody>
+        <tr><td><span class="ptag">P1</span> 추종기가 못 따라가는 출력</td><td>상위 출력을 하위 학습 명령 분포로 자름 + 잘린 양 벌점, 하위 학습 때 명령 잡음, 상위가 낸 명령으로 하위 데이터 집계</td><td>자르기 없으면 Kick Ball 189 → 12, 명령 잡음 없으면 Push Box 151 → 2 (<a href="https://arxiv.org/html/2509.20322v1" target="_blank" rel="noopener">VisualMimic</a>); 낮은 상자 85.00 → 95.03 % (<a href="https://arxiv.org/abs/2602.13850" target="_blank" rel="noopener">Hanoi</a>)</td></tr>
+        <tr><td><span class="ptag">P2</span> 켜짐/꺼짐 포화된 원출력</td><td>델타 행동(증분 × 0.1 누적), 원 행동 변화율 벌점, 명령–하위 사이 2차 스프링</td><td>절대 행동은 "fails to reach high success" (<a href="https://arxiv.org/html/2511.15200v1" target="_blank" rel="noopener">VIRAL</a>); bang-bang 은 행동 비용이 없으면 자연 발생 (<a href="https://arxiv.org/abs/2111.02552" target="_blank" rel="noopener">Seyde</a>)</td></tr>
+        <tr><td><span class="ptag">P3</span> 환경 안 자르기 → PPO std 발산</td><td>rsl_rl <code>BetaDistribution</code> 또는 tanh-가우시안 + std 상한 + 원 행동 범위 밖 L2 벌점, 초기 std 0.5, 마지막 층 축소</td><td>마지막 층 100배 축소 Humanoid +66 % (<a href="https://arxiv.org/abs/2006.05990" target="_blank" rel="noopener">What Matters</a>); 경계 자르기는 정책경사 편향 (<a href="http://proceedings.mlr.press/v70/chou17a.html" target="_blank" rel="noopener">Chou</a>)</td></tr>
+        <tr><td><span class="ptag">P4</span> student 가 teacher 보다 약 20 %p 낮음</td><td>접촉·질량을 critic 전용으로 teacher 재학습, student RL 미세조정, 손 힘 보조 헤드</td><td>DAgger 50–70 % → GRPO 80.8–85.8 % (<a href="https://arxiv.org/html/2512.01061v1" target="_blank" rel="noopener">DoorMan</a>); critic 전용 접촉 → student ≈ teacher (<a href="https://arxiv.org/html/2407.02274v3" target="_blank" rel="noopener">DextrAH-G</a>)</td></tr>
+        <tr><td><span class="ptag">P5</span> 바닥 박스 도달 한계</td><td>보상 말고 분포·자세로: 높이·pitch 둘 다 상위에, pitch 상한 벌점, 높이별 접근 시간, 하위 데이터 집계</td><td>고무 손·팔 길이 도달 한계 (<a href="https://arxiv.org/abs/2510.11072" target="_blank" rel="noopener">PhysHSI</a>); 6 kg·0 cm 가 가장 어려움 (<a href="https://arxiv.org/abs/2606.03297" target="_blank" rel="noopener">SplitAdapter</a>)</td></tr>
+        <tr><td><span class="ptag">P6</span> 한 손 밀기 국소해</td><td>min(왼, 오른) 힘 보상, L∧R 게이트, 옆면 중심 손 목표, 접촉 마감 종료, 좌우 대칭 손실</td><td>실기 16/27 → 26/27 (보상과 어댑터가 함께 바뀜, <a href="https://arxiv.org/abs/2606.03297" target="_blank" rel="noopener">SplitAdapter</a>)</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3 class="sub-h">pelvis_pick 설계 권고 11 가지</h3>
+  <div class="tbl-wrap">
+    <table class="t-wide">
+      <thead><tr><th>#</th><th>권고</th><th>근거 연구·수치</th><th>v2 문제</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="n">1</td>
+          <td><b>뼈대</b>: dev12 하체를 Isaac Lab 행동 항으로 감싸고, 하위는 고정
+            <details><summary>자세히</summary>dev12 하체(TorchScript/ONNX)를 AGILE <code>AgileBasedLowerBodyAction</code> 꼴의 Isaac Lab 행동 항으로 감싸고 (<a href="reference/agile/code/agile/rl_env/mdp/actions/policy_actions.py">policy_actions.py</a>), 명령 자르기·잘린 양 벌점·현재 명령 관측은 VIRAL 처럼 한 곳에 둔다 (<a href="reference/viral/code/gr00t/rl/envs/base_task/homie_base.py">homie_base.py</a>). 하위는 고정.</details></td>
+          <td>AGILE 시뮬 90 %, VIRAL 실기 54/59 가 같은 구조. 하위 미세조정은 불리: GMT 미세조정 7.5 % vs 고정 + 잔차 92.5 % (<a href="https://arxiv.org/html/2510.05070v1" target="_blank" rel="noopener">ResMimic</a>)</td>
+          <td><span class="ptag">P1</span></td>
+        </tr>
+        <tr>
+          <td class="n">2</td>
+          <td><b>행동 = 델타</b>: 골반 6 + 상체 11 = 17 차원의 증분 × 작은 배율을 누적
+            <details><summary>자세히</summary>VIRAL 현재 코드는 속도 3 개도 델타로 누적하고 (<code>no_delta_vel</code> 처리는 주석 처리됨), 대신 <code>zero_vel</code> 로 놓기·잡기 단계(stage 1–3)의 속도 명령을 0 으로 덮는다 (<a href="reference/viral/code/gr00t/rl/envs/base_task/delta_action_base.py">delta_action_base.py</a>, 이번에 확인).</details></td>
+          <td>절대 행동은 "fails to reach high success" (<a href="https://arxiv.org/html/2511.15200v1" target="_blank" rel="noopener">VIRAL</a>); 행동 비용 없으면 bang-bang (<a href="https://arxiv.org/abs/2111.02552" target="_blank" rel="noopener">Seyde</a>)</td>
+          <td><span class="ptag">P2</span><span class="ptag">P3</span></td>
+        </tr>
+        <tr>
+          <td class="n">3</td>
+          <td><b>범위 = dev12 가 실제로 도달하는 영역</b>으로 자르기 (샘플러 범위 아님)
+            <details><summary>자세히</summary>고정 dev12 에 명령 격자(높이 × pitch × 상체 자세)를 넣어 잰 정상 상태 도달 영역으로 자른다 (SWAP 식 "실행된 것" 기준, <a href="https://arxiv.org/html/2610.25711v1" target="_blank" rel="noopener">SWAP</a>). 높이–pitch 결합 한계는 단순 상자 자르기로 못 담는다 <span class="inf">추론</span>. 측정은 상위 환경 스모크 안에서.</details></td>
+          <td>자르기 없으면 Kick Ball 189 → 12 (<a href="https://arxiv.org/html/2509.20322v1" target="_blank" rel="noopener">VisualMimic</a>)</td>
+          <td><span class="ptag">P1</span></td>
+        </tr>
+        <tr>
+          <td class="n">4</td>
+          <td><b>분포</b>: 환경 clip 단독 금지 → Beta 또는 tanh-가우시안
+            <details><summary>자세히</summary>rsl_rl <code>BetaDistribution</code> (2026-05, PR #202) 또는 tanh-가우시안 + <code>std_range</code> 상한 + 원 행동 범위 밖 L2 벌점, 초기 std 0.5, 마지막 층 축소, 행동 변화 벌점 (<a href="https://github.com/leggedrobotics/rsl_rl/blob/main/rsl_rl/modules/distribution.py" target="_blank" rel="noopener">rsl_rl</a>). <b>우리 rsl_rl 버전에 이 기능이 있는지 먼저 확인.</b></details></td>
+          <td>마지막 층 100배 축소 Humanoid +66 % (<a href="https://arxiv.org/abs/2006.05990" target="_blank" rel="noopener">What Matters</a>); 경계 자르기는 정책경사 편향 (<a href="http://proceedings.mlr.press/v70/chou17a.html" target="_blank" rel="noopener">Chou</a>)</td>
+          <td><span class="ptag">P3</span><span class="ptag">P2</span></td>
+        </tr>
+        <tr>
+          <td class="n">5</td>
+          <td><b>상체 탐색 공간 줄이기</b>: 단계별 명목 팔 자세 + 작은 잔차
+            <details><summary>자세히</summary>PULSE prior 잔차, HiLMa-Res 명목 + 잔차 꼴. 관절 인터페이스는 키포인트보다 약했다.</details></td>
+          <td>관절 대 키포인트 Push Box 152 → 10 (<a href="https://arxiv.org/html/2509.20322v1" target="_blank" rel="noopener">VisualMimic</a>); prior 평균 잔차 + 고정 σ 0.22 (<a href="https://arxiv.org/abs/2310.04582" target="_blank" rel="noopener">PULSE</a>)</td>
+          <td><span class="ptag">P1</span> <span class="small muted">출력 묶기</span></td>
+        </tr>
+        <tr>
+          <td class="n">6</td>
+          <td><b>탐색 초기화 필수</b>: 단계 스냅숏 리셋 + 쪼그림 RSI + 가상 상자 보조 힘 커리큘럼
+            <details><summary>자세히</summary>단계 스냅숏 리셋 버퍼 (<a href="https://arxiv.org/html/2512.01061v1" target="_blank" rel="noopener">DoorMan</a>) + 쪼그림 자세 RSI (<a href="https://arxiv.org/html/2511.15200v1" target="_blank" rel="noopener">VIRAL</a>, 없으면 10 % 미만) + 가상 상자 보조 힘 감쇠 커리큘럼 (<a href="https://arxiv.org/html/2510.05070v1" target="_blank" rel="noopener">ResMimic</a>).</details></td>
+          <td>RSI 없으면 10 % 미만 (VIRAL); 같은 명령 공간 PPO 는 Lift Box <b>0.0 %</b> (<a href="https://arxiv.org/html/2609.30594v1" target="_blank" rel="noopener">HuGo</a>)</td>
+          <td><span class="ptag none">탐색 실패 예방</span></td>
+        </tr>
+        <tr>
+          <td class="n">7</td>
+          <td><b>두 손 보상</b>: min(왼, 오른) 힘(20 N 포화) + L∧R 게이트 + …
+            <details><summary>자세히</summary>min(왼, 오른) 힘(20 N 포화) + L∧R 게이트 + 옆면 중심 목표 두 거리를 한 exp 안에 + 접촉 마감 0.5 s 종료 + 좌우 대칭 손실 + 30 N 초과 조임 벌점. 순서와 출처는 <a href="#t-box">박스 절</a>의 "보상 순서".</details></td>
+          <td>실기 16/27 → 26/27 (<a href="https://arxiv.org/abs/2606.03297" target="_blank" rel="noopener">SplitAdapter</a>); Hanoi, Xie, Dao, AdaptManip, HULK</td>
+          <td><span class="ptag">P6</span></td>
+        </tr>
+        <tr>
+          <td class="n">8</td>
+          <td><b>바닥</b>: 높이·pitch 둘 다 상위가 내고 pitch 상한 벌점 (|φ| &gt; 0.25 rad)
+            <details><summary>자세히</summary>상자 높이에 비례한 접근 시간, 들기 시작 뒤 받침 제거 (<a href="https://arxiv.org/abs/2602.13850" target="_blank" rel="noopener">Hanoi</a>). 도달 한계는 보상으로 못 고치므로 필요하면 dev12 쪽 데이터 집계로.</details></td>
+          <td>낮은 상자 85.00 → 95.03 % (Hanoi 데이터 집계); 6 kg·0 cm 가 가장 어려움 (SplitAdapter)</td>
+          <td><span class="ptag">P5</span></td>
+        </tr>
+        <tr>
+          <td class="n">9</td>
+          <td><b>teacher 를 흉내 가능하게</b>: 접촉력·질량은 critic 전용
+            <details><summary>자세히</summary>actor 는 student 가 추정 가능한 것(상자 자세·크기 + 고유감각)만. 첫 실험은 이 teacher 의 성공률 하락 폭 확인.</details></td>
+          <td>student ≈ teacher 약 99 % (<a href="https://arxiv.org/html/2407.02274v3" target="_blank" rel="noopener">DextrAH-G</a>); 깊이만 0/10 vs 깊이 + 물체 위치 10/10 (<a href="https://arxiv.org/html/2502.20396v2" target="_blank" rel="noopener">Lin et al.</a>)</td>
+          <td><span class="ptag">P4</span></td>
+        </tr>
+        <tr>
+          <td class="n">10</td>
+          <td><b>student</b>: DAgger → PRISM λ 경사 PPO 혼합 (또는 ULTRA 식 미세조정)
+            <details><summary>자세히</summary>DAgger (teacher 롤아웃 α 0.5, 리플레이 1/3, 성긴 이력) → PRISM λ 경사 PPO 혼합 또는 ULTRA 식 미세조정, 손 힘·"들렸는가" 보조 헤드, 깊이 DR (구멍 0.2, 잡음 0.03 m, 카메라 pitch 는 실측 장착 오차 이상).</details></td>
+          <td>DAgger 50–70 % → GRPO 80.8–85.8 % (DoorMan); PRISM 실기 상자 15/15; ULTRA OOD 위치 4/20 → 12/20</td>
+          <td><span class="ptag">P4</span></td>
+        </tr>
+        <tr>
+          <td class="n">11</td>
+          <td><b>계측·선택</b>: 상위 학습 중 dev12 추종 오차를 계속 기록
+            <details><summary>자세히</summary>REFINE-DP 의 "overcommand" 감시 (<a href="https://arxiv.org/html/2603.13707v2" target="_blank" rel="noopener">REFINE-DP</a>). 고치게 되면 과제 보상이 아니라 원래 추종 보상 + 상위 명령 분포로 (<a href="https://arxiv.org/abs/2410.03441" target="_blank" rel="noopener">CLoSD</a>). 체크포인트는 고정 평가셋·이웃 저장본 비교·Isaac 과 MuJoCo 둘 다.</details></td>
+          <td>상위만 미세조정 시 추종 저하, 하위 최적화 +18 % (REFINE-DP); 시드 차이만으로 결과 크게 달라짐 (<a href="https://arxiv.org/abs/1709.06560" target="_blank" rel="noopener">Henderson</a>)</td>
+          <td><span class="ptag">P1</span><span class="ptag none">비단조 성공률</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="fixes">
+  <h2 class="sec">원문 대조로 고친 점</h2>
+  <p class="sec-lead">논문 44 편의 상세 페이지를 쓰면서 원문·공개 코드와 대조했다. 위 권고 가운데 근거가 바뀐 것과, 그 판단을 정리했다. 원본 목록: <a href="reports/%EB%B3%B4%EA%B3%A0%EC%84%9C_%EC%A0%95%EC%A0%95_%EB%AA%A9%EB%A1%9D.md"><code>reports/보고서_정정_목록.md</code></a></p>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>권고·문제</th><th>원문·코드에서 확인한 것</th><th>판단</th></tr></thead>
+      <tbody>
+      <tr><td><a class="plink" href="papers/agile.html">권고 1 뼈대 (AGILE 행동 항)</a></td><td>AGILE 의 <code>AgileBasedLowerBodyAction</code> 은 벌점 없이 <code>torch.clamp</code> 만 한다. 그대로 쓰면 v2 의 std 발산과 같은 꼴. AGILE RL 정책은 하체 명령 4 도 낸다. "시뮬 90 %"는 VLA 성공률. 공개 코드는 PhysX.</td><td>유지. 잘린 양 벌점을 꼭 더한다</td></tr>
+      <tr><td><a class="plink" href="papers/viral.html">권고 2 델타 행동</a></td><td>VIRAL 증분 ×0.1 은 11 차원(속도 3 + 오른팔 7 + 손 1), 높이·rpy·왼팔은 고정. DoorMan 은 ×0.3, 19 차원.</td><td>유지, 숫자 고침</td></tr>
+      <tr><td><a class="plink" href="papers/viral.html">P1 · 권고 3 자르기</a></td><td>VIRAL main 은 잘린 양 제곱 벌점을 쓰지 않고, 자르기 전 명령의 경첩 벌점 max(0, |cmd| − 문턱) × (−20) 을 쓴다. 제곱 벌점(−1.0)은 DoorMan. VisualMimic μ±1.64σ 의 실제 폭은 대부분 ±3–9 cm.</td><td>유지. 경첩·제곱 벌점은 A/B</td></tr>
+      <tr><td><a class="plink" href="papers/whatmatters.html">P3 · 권고 4 분포</a></td><td>What Matters 는 std 발산을 다루지 않는다. 그 논문의 기본 설정이 환경 clip·벌점 없음·엔트로피 0 이고, clip 은 tanh 보다 조금 나쁠 뿐. 마지막 층 0.01 은 그 논문 기본값.</td><td>유지. 근거는 문헌이 아니라 우리 dev9·dev10 경험</td></tr>
+      <tr><td><a class="plink" href="papers/visualmimic.html">권고 5 상체 탐색 공간</a></td><td>VisualMimic "152 → 10"은 Distance 열(Forward 열은 151 → 8). PULSE "σ 0.22"는 분산 0.22(σ 약 0.47), 공개 설정은 σ 약 0.37.</td><td>유지, 숫자 고침</td></tr>
+      <tr><td><a class="plink" href="papers/dextrah_g.html">P4 · 권고 9 접촉·질량 critic 전용</a></td><td>DextrAH-G 99 % 는 성공 즉시 리셋되는 env 평균이라 쉬운 물체로 기운 값. 물체별로는 student 80 % vs teacher 85 %, 절제 실험 없음. 질량은 actor·critic 어디에도 없음. Lin et al. 은 접촉력을 쓰지 않고, "깊이만 0/10"은 들기·건네기만(한 손 잡기 2/10). DoorMan 정체 원인은 논문상 시야 가림.</td><td><b>약해짐</b>. 검증된 처방이 아니라 첫 실험으로 확인할 가설</td></tr>
+      <tr><td><a class="plink" href="papers/splitadapter.html">P6 · 권고 7 두 손 보상</a></td><td>SplitAdapter 실기 16/27 → 26/27 은 어댑터 몫. 약한 손 힘 보상은 두 행에 다 들어 있어 따로 시험되지 않았다. "20 N"은 단위 없는 "/20" 의 해석. AdaptManip 접촉 항은 한 손만 닿아도 최대. Xie 손 목표는 옆면 중심이 아니라 미리 정한 점.</td><td><b>약해짐</b>. 설계 논리만 남음, 우리 A/B 필요</td></tr>
+      <tr><td><a class="plink" href="papers/prism.html">권고 10 student</a></td><td>ULTRA 97.6 → 67.3 % 는 여러 입력 방식을 한 모델에 묶은 비용(85.03 % 는 추종 전용 student 어블레이션). PRISM 공개 설정 λ 0.01 → 0.9·700 반복, teacher 94 %, CoRL 2026. SLIM 은 SAC + teacher KL(PPO·DAgger 아님). VBC "들렸는가" 보조 헤드는 효과 미검증 옵션.</td><td>유지(주 근거 DoorMan GRPO 그대로), 세부 고침</td></tr>
+      <tr><td><a class="plink" href="papers/refine_dp.html">권고 11 계측</a></td><td>REFINE-DP "+18 %"는 Task 2 한 과제. 원문 표현은 "excessive commands".</td><td>유지</td></tr>
+      <tr><td><a class="plink" href="papers/pulse.html">상위 주기 (보고서 본문 ASE 6 Hz)</a></td><td>PULSE 표 2: 같은 ASE 잠재를 30 Hz 로 쓰면 6 Hz 보다 낫다(시험 성공 37.6 vs 33.3 %).</td><td>6 Hz 근거 철회, 10 Hz 이상 쪽</td></tr>
+      <tr><td><a class="plink" href="papers/resmimic.html">코드로 가져올 수 있는 것</a></td><td>ResMimic 핵심 장치 셋(가상 물체 힘 커리큘럼·접촉 보상·접촉 상실 종료)과 Hanoi 보상 구현은 공개 코드에 없다. PhysHSI 상자 마찰 DR 은 코드에서 꺼짐. HOMIE 하체는 정지 때만 쪼그림(쪼그려 걷기 학습 없음).</td><td>읽을 코드 기대치 낮춤</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <h3 class="sub-h">묶음별 상세</h3>
+    <details class="more">
+      <summary>계층 IL 묶음 (demohlm hiwet refine_dp oil hugo r2s2)<span class="cnt">6 건</span></summary>
+      <div class="body"><ul>
+          <li><a class="plink" href="papers/demohlm.html">demohlm</a>: 하위 동결이 그림 1(p.4)에 명시됨. LiftBox 등 4 과제는 순정 고무 손(그리퍼는 나머지 6 과제). &quot;하위 분포 밖 명령&quot;은 실패 원인으로 논문에 없음(sim2real 문제는 WBC 속도 추종 차이, p.10). teacher–student 없음. 실기 과제 수가 논문 안에서 6/7/10 으로 다름.</li>
+          <li><a class="plink" href="papers/hiwet.html">hiwet</a>: &quot;12.4 mm, 한 팔&quot;은 두 결과를 섞음 — 12.4 mm 는 하위가 두 손 명령을 따른 오차(표 1), 상위 실기 RMSE 는 12·15 mm(표 2). 높이 0.3–0.78 m 는 평가 명령 범위(학습 범위는 논문에 없음). 부록 없음.</li>
+          <li><a class="plink" href="papers/refine_dp.html">refine_dp</a>: &quot;+18 %&quot;는 Task 2 한 과제 값(%p 인지 미상). 실기 20 회 Task 1 70 %·Task 2 50 %·Task 3 75 %. 과제는 받침 위 작은 물체 그리퍼 집기(상자 아님).</li>
+          <li><a class="plink" href="papers/oil.html">oil</a>: &quot;행동 변화 L1 벌점&quot;이 아니라 가중치 0.1 의 지수 커널 보상 exp(−s‖a_t − a_{t−1}‖₁), 대상은 MHC 20 관절 목표(p.6, 표 6). 학습은 MuJoCo(Isaac Gym 아님).</li>
+          <li><a class="plink" href="papers/hugo.html">hugo</a>: PPO 384M 스텝은 기준선 설정, HuGo 자체는 LLM 이 짠 코드 정책(Lift Box 75.92 %). SONIC 24.91 % 실패 원인 = 손끝 오차 약 4 cm 로 상자를 밀어냄·접촉 유지 실패(p.6). 실기 66.7 % 는 기하 힌트 + SONIC 하위. RL 기준선은 시뮬만.</li>
+          <li><a class="plink" href="papers/r2s2.html">r2s2</a>: 43.29 %(w/o LS)를 &quot;명시 명령 대 잠재&quot; 근거로 쓰는 건 과함 — 여러 요소를 동시에 바꾼 기준선. 실기는 상자·목표 상태를 모션 캡처로 받음(p.8).</li>
+      </ul></div>
+    </details>
+    <details class="more">
+      <summary>시각 SLIM 묶음 (slim nowyouseethat dexhumanoid_recipe)<span class="cnt">4 건</span></summary>
+      <div class="body"><ul>
+          <li><a class="plink" href="papers/dexhumanoid_recipe.html">dexhumanoid_recipe</a>(Lin et al., CoRL 2025): 권고 9 &quot;접촉력·질량 critic 전용&quot;의 근거로 약함 — 접촉력은 actor·critic 어디에도 없고, 질량은 critic 무작위화 배율로만.</li>
+          <li><a class="plink" href="papers/slim.html">slim</a>: DAgger·PPO 가 아님 — off-policy SAC + teacher KL(α 0.01, 고정 σ 0.05) + 혼합 rollout(β 0.5 → 1.0). teacher 성공률 표 없음(그림: teacher 약 0.95, student 약 85 %).</li>
+          <li>&quot;깊이만 0/10 vs 깊이 + 위치 10/10&quot;은 들기·건네기만. 한 손 잡기는 깊이만 2/10.</li>
+          <li>nowyouseethat 잡음 계수는 D436 에 그대로 쓰면 과함(1 m 에서 σ 약 2.4 cm vs D436 이론 약 5 mm).</li>
+      </ul></div>
+    </details>
+    <details class="more">
+      <summary>운반 묶음 (hotice embrace boxlocomanip catchcarry)<span class="cnt">4 건</span></summary>
+      <div class="body"><ul>
+          <li><a class="plink" href="papers/boxlocomanip.html">boxlocomanip</a>(Xie): 손 목표는 &quot;옆면 중심&quot;이 아니라 &quot;predefined points on the hands and on the box&quot;(반대 옆면, p.8). r_box-hand 에 스케일 없음(0.1 m 오차도 약 0.98). 초록은 코드 제공이라 하나 PDF 에 링크 없음.</li>
+          <li><a class="plink" href="papers/hotice.html">hotice</a>: &quot;종료: 넘어짐·떨어뜨림·장애물 충돌&quot;은 과제 실패 기준이고, RL 종료 조건은 논문에 없음.</li>
+          <li><a class="plink" href="papers/embrace.html">embrace</a>: 학회 ICRA 2026(HOTICE 참고문헌 [27]). NSDF 절제는 관측과 보상을 같이 뺀 것.</li>
+          <li><a class="plink" href="papers/catchcarry.html">catchcarry</a>: (−2, 2) 제한의 구현(자르기/눌러 담기)은 논문에 없음.</li>
+      </ul></div>
+    </details>
+    <details class="more">
+      <summary>시각 VBC 묶음 (vbc prism ultra viloman visualmimic)<span class="cnt">5 건</span></summary>
+      <div class="body"><ul>
+          <li><a class="plink" href="papers/vbc.html">vbc</a>: &quot;들렸는가&quot; 보조 헤드는 논문에 없음 — 코드의 <code>--pred_success</code> 옵션(MLP student 만), 기본 GRU student·README 명령엔 없음 → 효과 미검증. 코드 기본 student = 3 프레임 54×96 GRU 128. 카메라 지연 코드 0.06–0.08 s. 정책 가중치 로컬 없음.</li>
+          <li><a class="plink" href="papers/prism.html">prism</a>: 발표처 CoRL 2026(PDF 1쪽 머리말; index 는 &quot;프리프린트&quot;). 공개 최종 student λ 0.01 → 0.9, 700 반복 간격(표 6 은 앞 단계 값). teacher 성공 129/137(94 %, 부록 C). &quot;목 10° 어긋나면 OOD&quot; 문턱은 논문에 없음. 지연 3–4 프레임은 코드 값.</li>
+          <li><a class="plink" href="papers/ultra.html">ultra</a>: 97.57 / 67.30 / 85.03 % = teacher / 통합 student / 추종 전용 student(어블레이션) — 85.03 은 &quot;미세조정 전&quot;이 아님. 격차 원인은 여러 입력 방식을 한 모델에 묶은 비용(순수 DAgger 손실의 예 아님). 시뮬 점구름은 상자 표면에서 합성.</li>
+          <li><a class="plink" href="papers/viloman.html">viloman</a>: teacher = 동결 GMT 에 참조 동작을 넣는 specialist 묶음. 84.91 → 77.55 % 는 test split.</li>
+          <li><a class="plink" href="papers/visualmimic.html">visualmimic</a>: &quot;Push Box 152 → 10&quot;은 Distance 열(Forward 열은 151 → 8, 표 III). 마스크 25 % 는 마스크 한 개 크기. 하위 추종기는 .pt 안에 들어 있음(미공개 아님). μ±1.64σ 자르기의 실제 폭은 대부분 ±3–9 cm.</li>
+      </ul></div>
+    </details>
+    <details class="more">
+      <summary>DextrAH 묶음 (dextrah_g dextrah_rgb student_informed_teacher)<span class="cnt">4 건</span></summary>
+      <div class="body"><ul>
+          <li><a class="plink" href="papers/dextrah_g.html">dextrah_g</a>: &quot;접촉력 critic 전용 → student ≈ teacher 약 99 %&quot;는 근거가 약함 — 99 % 는 성공 즉시 리셋되는 env 묶음 평균(쉬운 물체 쪽으로 기움), 물체별로는 student 80 % vs teacher 85 %(p.6–7, 부록 F.4). critic 전용 접촉이 격차를 줄였다는 절제 실험 없음(저자 &quot;believe&quot;, p.5).</li>
+          <li><a class="plink" href="papers/dextrah_g.html">dextrah_g</a>: 질량은 actor·critic 어디에도 없음. 로컬 코드의 critic 접촉은 <code>hand_forces[:, :3]</code> 3 값(논문 손끝 12 값과 다름). LFS 포인터 447 = .usd 167 + .obj 280, 체크포인트 없음.</li>
+          <li>dextrah_g 로컬 코드는 논문 G(15 Hz, Isaac Gym)가 아니라 DextrAH-RGB 시기 Isaac Lab 재구현(60 Hz, ADR). 깊이 증강 표의 값은 코드 값(논문은 막대 p 0.0025, 160×120).</li>
+          <li><a class="plink" href="papers/student_informed_teacher.html">student_informed_teacher</a>(SITT): 서랍 0.34 → 0.88 중 0.34 → 0.61 은 공유 디코더 + 특징 정렬 몫, KL 벌점·기울기 몫은 0.61 → 0.88(표 3). 본문 숫자와 표가 불일치.</li>
+      </ul></div>
+    </details>
+    <details class="more">
+      <summary>Hanoi 묶음 (humanoid_hanoi adaptmanip splitadapter hulk digitbox)<span class="cnt">5 건</span></summary>
+      <div class="body"><ul>
+          <li><a class="plink" href="papers/splitadapter.html">splitadapter</a>: 실기 16/27 → 26/27 은 어댑터 몫(같은 보상으로 학습, Base = 같은 고정 정책, p.5 §3.5·p.11). 약한 손 힘 보상은 두 행 모두에 있고 따로 시험 안 됨 → 그 보상의 근거로 쓰면 안 됨. 포화 &quot;/20&quot; 단위 없음(&quot;20 N&quot;은 해석). 고무 손 아님 — &quot;고마찰 장갑&quot;.</li>
+          <li><a class="plink" href="papers/hulk.html">hulk</a>: 노트의 명령 범위(vx·vy ±0.5 등)는 비교용 시뮬 평가 범위(공통 팔 관절 8, p.6), 학습 범위는 논문에 없음. 몸통 roll·pitch 는 G1 허리 관절.</li>
+          <li><a class="plink" href="papers/adaptmanip.html">adaptmanip</a>: 식 2 에 &quot;대칭 양손 접촉&quot; 항 없음 — 접촉 항은 손 힘 합을 1 에서 자름(한 손만 닿아도 최대). 미끄럼 벌점은 인쇄된 대로면 부호 반대. λ 값 없음.</li>
+          <li><a class="plink" href="papers/digitbox.html">digitbox</a>(Dao): r_contact = ln(0.05·c_left + 0.05·c_right), t_contact 2 s 뒤만 — exp(−r) 틀에 넣으면 부호가 이상(오기 추정). &quot;ICRA 2024&quot;는 PDF 에 없고 남의 참고문헌에만.</li>
+          <li><a class="plink" href="papers/humanoid_hanoi.html">humanoid_hanoi</a>: 공개본엔 학습·보상 구현 없음(<code>compute_rewards</code> 빈 dict, 장면·로그만). XML 은 cone elliptic·impratio 20. 코드 무작위화에 표 5 에 없는 항목(엔코더 오프셋 ±0.05 rad, 토크 지연 4–7 주기 @2 kHz, 토크 효율 0.9–1.0, 바닥 기울기 ±0.05 rad, 토크–속도 한계). Digit &quot;손&quot;은 아래팔 원통 — 아래팔로 상자를 끼움.</li>
+      </ul></div>
+    </details>
+    <details class="more">
+      <summary>CLoSD 묶음 (closd puppeteer hilmares whatmatters)<span class="cnt">5 건</span></summary>
+      <div class="body"><ul>
+          <li><a class="plink" href="papers/closd.html">closd</a>: 노트 &quot;원래 PHC 추적 보상·리셋 그대로&quot;는 논문과는 맞지만 코드는 0.25 m 추종 이탈 리셋을 안 씀(넘어짐 리셋만). 일어서기 목표 논문 0.3 m vs 코드 1.0 m, DiP 체크포인트 200K vs 300K.</li>
+          <li><a class="plink" href="papers/puppeteer.html">puppeteer</a>: &quot;51명 중 97.8 %&quot;는 응답 510 개(51명 × 10쌍) 중 97.8 %. 상위 출력은 &quot;실측 끝점 + 0.3·a&quot; 델타 명령. 상위 MPPI 반복 코드 6회(표 5 는 8).</li>
+          <li><a class="plink" href="papers/hilmares.html">hilmares</a>: &quot;상위 명령을 하위 학습 범위로 자름&quot;은 논문에 없음(추론).</li>
+          <li><a class="plink" href="papers/whatmatters.html">whatmatters</a>: &quot;환경 안 자르기 → std 발산&quot;을 직접 뒷받침하지 않음 — 논문 기본 설정이 환경 clip·벌점 없음·엔트로피 0 이고 clip 은 tanh 보다 약간 나쁠 뿐. v2 의 발산은 clip + 엔트로피 0.005 겹침으로 추정. 로컬 PDF 는 arXiv v1(2020-06).</li>
+          <li>(정정) whatmatters 페이지가 &quot;v2 teacher 관측 정규화 끔&quot;이라 쓴 근거 파일은 9월 역할 분리 판(k1_boxlift) 설정 → 페이지 문장 고침. v2(sonic_pick, TRL ppo_im_phc)는 미확인.</li>
+      </ul></div>
+    </details>
+    <details class="more">
+      <summary>ASE 묶음 (ase pulse omnigrasp maskedmimic)<span class="cnt">5 건</span></summary>
+      <div class="body"><ul>
+          <li><a class="plink" href="papers/pulse.html">pulse</a>: &quot;고정 σ 0.22&quot;는 논문상 &quot;fixed variance (0.22)&quot;(σ 약 0.47), 공개 설정은 log σ −1(σ 약 0.37). &quot;하위 과제에서 처음부터 학습보다 낫다&quot;는 생성 과제만 — VR 추적은 처음부터 쪽이 위치 오차가 작음(51.7 vs 57.8 mm 등).</li>
+          <li><a class="plink" href="papers/omnigrasp.html">omnigrasp</a>: PULSE-X 제거·PPO-10B 에서 크게 떨어지는 건 궤적 성공률뿐, 잡기 성공률은 거의 그대로(표 4: R1 잡기 97.0 %·궤적 33.6 %, PPO-10B 98.4 %·55.9 %). 30 mm 오차 원인에 MoCap–시뮬 체형 차이도.</li>
+          <li><a class="plink" href="papers/ase.html">ase</a>: &quot;처음부터 학습이 return 더 높다&quot;는 5 과제 중 4 과제(Reach 는 ASE 0.75 &gt; 0.56). &quot;고정 판별기 악용&quot;은 논문이 ASE 에선 대부분 사라졌다고 반박.</li>
+          <li><a class="plink" href="papers/maskedmimic.html">maskedmimic</a>: 로컬 ProtoMotions 3 에는 CALM·PULSE 구현 없음. Apache-2.0 은 코드만, 가중치는 NVIDIA Open Model License. PULSE 비교 수치는 PULSE 논문 보고값 그대로.</li>
+          <li>보고서 상위 주기 권고(ASE 6 Hz)의 반대 근거: PULSE 표 2 에서 같은 ASE 잠재를 30 Hz 로 쓰면 6 Hz 보다 나음(시험 성공 37.6 vs 33.3 %).</li>
+      </ul></div>
+    </details>
+    <details class="more">
+      <summary>PhysHSI 묶음 (physhsi hdmi omnicontact lessmimic resmimic)<span class="cnt">5 건</span></summary>
+      <div class="body"><ul>
+          <li><a class="plink" href="papers/physhsi.html">physhsi</a>: Carry Box 성공률 논문 안 불일치(표 I 91.34·84.60, 본문 81.34, 표 II 79.34). 상자 폭 코드 격자 0.21–0.39 m(0.2–0.5 는 본문). 상자 마찰·반발 DR 은 코드에서 꺼짐(<code>random_props = False</code>). actor 이력 코드 6(논문 5). 스타일 보상 코드 = LSGAN × 0.5.</li>
+          <li><a class="plink" href="papers/hdmi.html">hdmi</a>: 접촉 상실 종료 코드 = &quot;거리 ≥ 0.2 m 또는 힘 &lt; 1 N&quot; 25 스텝 연속. 물체 자세 종료 코드 0.8 rad(논문 1.2). 공개 코드에는 ROA 식 teacher→student 경로 있음(논문엔 없음).</li>
+          <li><a class="plink" href="papers/omnicontact.html">omnicontact</a>: 추종:AMP 코드 0.9:0.1(논문 0.85:0.15).</li>
+          <li><a class="plink" href="papers/lessmimic.html">lessmimic</a>: &quot;추종 보상 뺐다&quot;와 달리 부록 표 A2 에 루트·물체 궤적 추종 보상(각 1.0). 초록 &quot;0.4–1.6× 80–100 %&quot;가 표 II 와 불일치(PickUp 0.4× 63.0 등).</li>
+          <li><a class="plink" href="papers/resmimic.html">resmimic</a>: 핵심 장치 셋(가상 물체 PD 힘 커리큘럼, 접촉 보상, 접촉 10 프레임 상실 종료)은 공개 코드에 없음 — 코드는 물체 점구름 오차 &gt; 0.3 m 종료. 물체 관측은 현재 위치·자세 7 차원뿐. 코드에 TWIST2 식 DaggerPPO 경로가 있어 base_policy.pt 학습 방식은 불명.</li>
+      </ul></div>
+    </details>
+    <details class="more">
+      <summary>VIRAL 묶음 (viral doorman agile homie amo)<span class="cnt">5 건</span></summary>
+      <div class="body"><ul>
+          <li><a class="plink" href="papers/viral.html">viral</a>: &quot;명령 자르기 + 잘린 양 제곱 벌점&quot;은 VIRAL main 설정에서 안 씀(함수만 있음). 실제는 자르기 전 명령의 경첩 벌점 max(0, |cmd| − 문턱) × (−20), 문턱 코드 vx·vy 0.4·ωz 0.8(표 3 은 0.5). 잘린 양 제곱 벌점(−1.0)을 쓰는 건 DoorMan. VIRAL teacher 가 움직이는 건 속도 3 + 오른팔 7 + 오른손 1(증분 11), 높이 0.74·rpy·왼팔 고정. 카메라 지연 &quot;2–3 스텝&quot; 근거 없음(코드 고정 1 또는 무작위 1–5). 공개 teacher 설정에 물리 무작위화 없음.</li>
+          <li><a class="plink" href="papers/doorman.html">doorman</a>: student 정체 원인을 논문은 시야 가림(부분 관측)으로 설명 — &quot;접촉 렌치 탓&quot;은 보고서 추론. 증분 배율 0.3·19 개(양팔), ωz ±0.5. 스냅숏 버퍼 코드 200(논문 100). teacher 손 접촉 코드 48(손당 8 몸체 × 힘 3).</li>
+          <li><a class="plink" href="papers/agile.html">agile</a>: RL 집어 놓기 정책은 상체뿐 아니라 하체 명령 4 도 냄(vx −0.2–0.5, vy ±0.4, ωz ±0.5, 높이 0.65–0.72 로 자름). <code>AgileBasedLowerBodyAction</code> 은 벌점 없이 <code>torch.clamp</code> 만 → 그대로 쓰면 v2 std 발산 꼴, 벌점 추가 필요. &quot;시뮬 90 %&quot;는 GR00T N1.5 VLA 성공률(RL 전문가 성공률은 논문에 없음). 공개 코드는 PhysX(Newton 흔적 없음).</li>
+          <li><a class="plink" href="papers/homie.html">homie</a>: 쪼그림 0.24–0.74 m(논문 표 &quot;−0.24&quot;는 오기). 하체는 속도 0 일 때만 쪼그림 — 쪼그린 채 걷기는 학습에 없음. 마찰 코드 0.1–3.0.</li>
+          <li><a class="plink" href="papers/amo.html">amo</a>: RSS 2025 확인. 하체 student 는 &quot;지도 학습&quot;(DAgger 언급 없음). 회전 명령은 목표 heading.</li>
+      </ul></div>
+    </details>
+</section>
+
+
+<!-- ===================== 주제 1: 인터페이스 ===================== -->
+<section id="t-iface" class="topic-iface">
+  <h2 class="sec"><span class="topic-bar"></span>계층 명령 인터페이스 <span class="claim">같은 분할 위 RL 상위는 다섯 곳뿐</span></h2>
+  <p class="sec-lead">우리 분할(하체 = 명령 추종 RL, 상체 = 외부 PD 목표, 상위가 둘 다 냄)은 HOMIE·AMO·VIRAL·DemoHLM 이 쓰는 decoupled WBC 와 같은 꼴.</p>
+  <ul class="takeaways">
+    <li>상위를 <b>RL 로</b> 학습한 곳은 <b>VIRAL·DoorMan·HiWET·AGILE·OIL</b> 다섯뿐. 나머지는 IL.</li>
+    <li>우리만의 차이 셋: dev12 는 <b>상체 목표와 그 변화율을 직접 관측</b> · 손 하중 <b>0–5 kg</b> 학습 · 상위를 RL teacher → 깊이 student 로 학습.</li>
+    <li><b>하위 추종 오차를 상위 관측에 넣은 선례는 없다.</b> VIRAL 은 현재 명령·누적 델타, AMO·HuGo 는 직전 명령, TWIST2 는 명령 이력만. teacher 특권으로 넣는 것은 <span class="inf">추론</span></li>
+    <li>반면교사: HuGo 는 같은 명령 공간 PPO 로 Lift Box <b>0.0 %</b> (단계 구조 탐색 실패). R2S2 는 명시 명령 <b>43.29 %</b> vs 잠재 <b>100 %</b> (잠재가 탐색에 유리하다는 반대 근거).</li>
+    <li>주기는 상위 10 Hz / 하위 50 Hz 가 흔함 (DoorMan teacher 는 50 Hz). 미리보기 지연 0.2 s 진행률 <b>67 %</b> vs 0.6 s <b>13 %</b> (OpenHLM).</li>
+    <li>dev12 의 손 하중 0–5 kg 는 이미 큰 편. 두 손 조이기 반작용을 하위 학습에서 모형화한 것은 <b>Workhorse 하나뿐</b> (손목을 벌리는 최대 40 N 스프링).</li>
+  </ul>
+
+  <details class="more">
+    <summary>시스템 9 개 비교 (하위 명령 공간 · 상위 학습 · 결과)<span class="cnt">표</span></summary>
+    <div class="body">
+      <div class="tbl-wrap">
+        <table class="t-wide">
+          <thead><tr><th>연구</th><th>하위 명령 공간</th><th>상위 학습</th><th>결과</th><th>가져올 것</th></tr></thead>
+          <tbody>
+            <tr><td><b>VIRAL</b></td><td>속도 3, 높이(0.74 + Δ), rpy 3, 팔 7×2, 손; 자르기 vx·vy ±0.5, wz ±1.0, 높이 0.3–0.75, rpy ±0.5 rad (<a href="reference/viral/code/gr00t/rl/config/env/walk_stand_place_grasp_turn_homie.yaml">env yaml</a>)</td><td>PPO(델타) → RGB DAgger, 32,768 env, 16 GPU</td><td>실기 54/59, 주기 20.2 s (<a href="https://arxiv.org/html/2511.15200v1" target="_blank" rel="noopener">VIRAL</a>)</td><td>자르기·잘린 양 벌점·델타·현재 명령 관측</td></tr>
+            <tr><td><b>AGILE</b></td><td>[vx −0.5–1.5, vy ±0.5, wz ±1.0, 높이 0.4 m–기본] + 오른팔·허리 RL</td><td>상체 전문가 RL 20k iter → GR00T 미세조정</td><td>시뮬 100 회 90 % (<a href="https://arxiv.org/html/2603.20147v1" target="_blank" rel="noopener">AGILE</a>)</td><td>행동 항 꼴, 하위 학습 때 상체 사다리꼴 속도 무작위 구동</td></tr>
+            <tr><td><b>HiWET</b></td><td>[vx, vy, ωz, h 0.3–0.78, 손 자세 L·R, 허리 가중]</td><td>PPO 비대칭, 하위 "frozen"</td><td>시뮬 손 끝 12.4 mm, 한 팔 (<a href="https://arxiv.org/html/2602.06341v1" target="_blank" rel="noopener">HiWET</a>)</td><td>같은 꼴 RL 상위 설정</td></tr>
+            <tr><td><b>OIL</b></td><td>MHC 동결: 기저 지시(높이 0.36–1.05 m) + 팔 관절 8</td><td>LSTM(64) PPO 가 팔 목표만</td><td>시뮬 90.4 %, 질량 0.1–3 kg (<a href="https://arxiv.org/html/2610.14033" target="_blank" rel="noopener">OIL</a>)</td><td>물체 상태 갱신율 7–15 Hz 무작위</td></tr>
+            <tr><td><b>HOMIE</b></td><td>[vx, ω, h] + 상체 (하위는 상체 관절 상태만 봄)</td><td>IL (Seer)</td><td>실기 Squat Pick 73.3 % (<a href="https://arxiv.org/html/2502.13013" target="_blank" rel="noopener">HOMIE</a>)</td><td>상체 + 높이를 함께 내 쪼그려 집기</td></tr>
+            <tr><td><b>AMO</b></td><td>v 3 + rpy (pitch −0.52–1.57) + 높이 0.5–0.8</td><td>ACT, 관측에 직전 명령</td><td>종이가방 8/10 (<a href="https://arxiv.org/html/2505.03738" target="_blank" rel="noopener">AMO</a>)</td><td>직전 명령 관측, 큰 pitch 축</td></tr>
+            <tr><td><b>DemoHLM</b></td><td>AMO 인터페이스 + 상체 관절</td><td>IL (시연 1 개로 생성)</td><td>실기 LiftBox 5/5 (<a href="https://arxiv.org/html/2510.11258v1" target="_blank" rel="noopener">DemoHLM</a>)</td><td>같은 인터페이스의 성공 예</td></tr>
+            <tr><td><b>HuGo</b></td><td>10 차원 [기저 3, 손 L·R, 몸 높이]</td><td>PPO 384M 스텝</td><td>Lift Box 0.0 % (<a href="https://arxiv.org/html/2609.30594v1" target="_blank" rel="noopener">HuGo</a>)</td><td>반면교사: 단계 구조 탐색 실패</td></tr>
+            <tr><td><b>R2S2</b></td><td>잠재 기술 (보행·높이+pitch·손 도달)</td><td>PPO</td><td>명시 명령 43.29 % vs 잠재 100 %, 실기 90 % (<a href="https://arxiv.org/html/2505.10918v2" target="_blank" rel="noopener">R2S2</a>)</td><td>잠재 쪽이 탐색에 유리하다는 반대 근거</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </details>
+
+  <details class="more">
+    <summary>상위 관측 · 주기 · 하중 · 조이기 반작용 · 명령 평활</summary>
+    <div class="body">
+      <ul>
+        <li><b>상위가 관측하는 것</b>: VIRAL 현재 명령·누적 델타, AMO·HuGo 직전 명령, TWIST2 는 명령 이력만 (<a href="https://arxiv.org/html/2511.02832" target="_blank" rel="noopener">TWIST2</a>). 하위 추종 오차를 관측에 넣은 선례는 없다. teacher 에 특권으로 넣는 것은 추론.</li>
+        <li><b>주기</b>: 상위 10 Hz / 하위 50 Hz 가 흔하고 (DemoHLM, WholeBodyVLA, OpenHLM), DoorMan teacher 는 50 Hz. 미리보기 지연 0.2 s 진행률 67 % vs 0.6 s 13 % (<a href="https://arxiv.org/html/2606.22174" target="_blank" rel="noopener">OpenHLM</a>).</li>
+        <li><b>하중</b>: HOMIE 손 −0.1–0.3 kg (<a href="reference/homie/code/HomieRL/legged_gym/legged_gym/envs/g1/g1_29dof_config.py">코드</a>), AGILE 기저 −1–+3 kg. 손 2 kg 이상을 하위에서 학습한 것은 ULC (손목 0–2 kg, <a href="https://arxiv.org/html/2507.06905" target="_blank" rel="noopener">ULC</a>), HULK (실기 11 kg, <a href="https://arxiv.org/abs/2610.08970" target="_blank" rel="noopener">HULK</a>), SplitAdapter (0.5–5 kg). dev12 0–5 kg 는 이미 큰 편.</li>
+        <li><b>조이기 반작용</b>: 두 손 조이기를 하위 학습에서 모형화한 것은 Workhorse 의 "손목을 벌리는 최대 40 N 스프링" 하나뿐 (<a href="https://arxiv.org/html/2610.09117" target="_blank" rel="noopener">Workhorse</a>). dev12 외력이 아래 방향 위주라면 손목 벌림 방향은 학습 밖일 수 있다 <span class="inf">추론, dev12 설정 미확인</span></li>
+        <li><b>명령 평활</b>: ULC 5차 다항 보간 1.0 s, HOMIE 상체 1 s 선형 보간, SONIC 임계 감쇠 스프링 (<a href="https://arxiv.org/html/2511.07820v2" target="_blank" rel="noopener">SONIC</a>).</li>
+      </ul>
+    </div>
+  </details>
+</section>
+
+<!-- ===================== 주제 2: 박스 ===================== -->
+<section id="t-box" class="topic-box">
+  <h2 class="sec"><span class="topic-bar"></span>박스 들기·운반 <span class="claim">고무 손 실기 사례는 모두 세 묶음 보상</span></h2>
+  <p class="sec-lead">손가락 없는 손으로 실기까지 간 사례 (Digit 2 편, G1 고무 손 4 편)는 모두 <b>양손 위치 목표 + 접촉/힘 항 + 상자 높이 항</b>을 쓴다.</p>
+  <ul class="takeaways">
+    <li>평균·합 꼴 접촉 보상은 한 손만 닿아도 절반을 준다 → <b>min(왼, 오른) 힘 / 20 N</b> (약한 쪽) + <b>L∧R 게이트</b>. 다만 min-힘 대 합 보상을 같은 조건에서 비교한 절제 실험은 없다.</li>
+    <li>바닥(0 cm)은 모든 실기 논문에서 가장 어렵다. 해법은 보상보다 <b>분포</b>(학습 높이 0–0.6 m, 낮은 높이 데이터 집계)와 <b>자세 제약</b>(pitch 상한, 내릴 때 앞쏠림 벌점이 "결정적", Hanoi).</li>
+    <li>조임 힘 어림: 2 kg 을 두 손 마찰로만 들려면 손당 법선력 ≥ m·g / (2μ) → μ 0.6 에서 <b>약 16 N</b>, μ 1.0 에서 <b>약 10 N</b>. SplitAdapter 의 20 N 포화가 우리 범위와 맞다 <span class="inf">계산, 인용 아님</span></li>
+    <li>대표 수치: Hanoi Pickup 96.92 %, Digit 박스 PickUp 96.15 %, PhysHSI 실기 집기 8/10 (4.5 kg 0/3), SplitAdapter 실기 16/27 → 26/27, HULK 실기 12.25 kg.</li>
+    <li>성공 정의 제안: 상자 바닥 ≥ 시작 높이 + Δh, 수평 기울기 노름 &lt; 0.1, 두 손 접촉 N 초 유지, 넘어짐 없음. 평가는 질량 × 크기 × 마찰 격자를 학습 시뮬과 MuJoCo 둘 다에서.</li>
+  </ul>
+
+  <details class="more">
+    <summary>한 손 밀기를 막는 보상 순서 (6 단계)</summary>
+    <div class="body">
+      <ol>
+        <li>접촉 보상 = min(min<sub>k</sub> f<sub>hand,k</sub> / 20 N, 1) (두 손 중 약한 쪽, <a href="https://arxiv.org/abs/2606.03297" target="_blank" rel="noopener">SplitAdapter</a>).</li>
+        <li>상자 자세·받침 하중 보상은 L∧R 접촉일 때만, 잘못된 손 접촉이면 종료 (<a href="https://arxiv.org/abs/2602.13850" target="_blank" rel="noopener">Hanoi</a>).</li>
+        <li>손 목표 = 상자 좌우 옆면 중심, 두 거리를 한 exp 안에 (<a href="https://arxiv.org/abs/2306.09532" target="_blank" rel="noopener">Xie</a>); HDMI 는 상자 기준 ±0.17 m 옆면.</li>
+        <li>접촉 보상은 t<sub>contact</sub> 이후에만, 접촉 마감 0.5 s 뒤 미접촉·들기 마감 0.5 s 뒤 받침 접촉이면 종료 (<a href="https://arxiv.org/abs/2310.03191" target="_blank" rel="noopener">Dao</a>).</li>
+        <li>좌우 대칭 손실 (PPO 에 추가, <a href="https://arxiv.org/abs/2602.14363" target="_blank" rel="noopener">AdaptManip</a>).</li>
+        <li>과도한 조임: 합 접촉력 30 N 초과분 e 에 e/(e + 50 N) 벌점 −0.5 (<a href="https://arxiv.org/abs/2610.08970" target="_blank" rel="noopener">HULK</a>).</li>
+      </ol>
+      <p class="muted">min-힘 대 합 보상을 같은 조건에서 비교한 절제 실험은 없다.</p>
+    </div>
+  </details>
+
+  <details class="more">
+    <summary>바닥 · 자세 · 유지 · 미끄럼 수치</summary>
+    <div class="body">
+      <ul>
+        <li>바닥(0 cm)은 모든 실기 논문에서 가장 어렵고, 해법은 보상보다 분포(학습 높이 0–0.6 m, 낮은 높이 데이터 집계)와 자세 제약(pitch 상한, 내릴 때 앞쏠림 벌점이 "결정적", <a href="https://arxiv.org/abs/2602.13850" target="_blank" rel="noopener">Hanoi</a>).</li>
+        <li>Hanoi 접근 시간 = 100 × (0.9 − 상자 높이) + 30 스텝, 접촉 45 스텝 뒤 받침 제거, 끝에 120 스텝 서기 연장.</li>
+        <li>머뭇거림: 상자 근처에서 상자가 낮은 채 2.0 s 넘으면 벌점; hold = exp(−0.3 e<sub>stand</sub>) − 0.05‖ω<sub>pelvis,xy</sub>‖² − 0.02‖ω<sub>torso,xy</sub>‖² (<a href="https://arxiv.org/abs/2606.03297" target="_blank" rel="noopener">SplitAdapter</a>).</li>
+        <li>미끄럼: 손–상자 수직 속도 차 벌점 (<a href="https://arxiv.org/abs/2602.14363" target="_blank" rel="noopener">AdaptManip</a>), 몸통 기준 물체 미끄럼 −2·떨어짐 −250 (<a href="https://arxiv.org/abs/2610.08970" target="_blank" rel="noopener">HULK</a>).</li>
+        <li>쪼그림 대 숙임을 같은 로봇에서 정량 비교한 연구는 없다.</li>
+        <li><b>성공 정의 출처</b>: LessMimic 은 지면 0.3 m 위·3 s 유지 (<a href="https://arxiv.org/abs/2602.21723" target="_blank" rel="noopener">LessMimic</a>); 수평 기울기 노름 &lt; 0.1 (<a href="https://arxiv.org/abs/2606.03297" target="_blank" rel="noopener">SplitAdapter</a>); 질량 × 크기 × 마찰 격자 평가는 AdaptManip 방식.</li>
+        <li><b>조임 힘</b>: 팔 kp 로 손당 16–20 N 을 내려면 관절 목표를 상자 안쪽으로 얼마나 넣어야 하는지는 K1 팔 기하로 따로 재야 한다.</li>
+      </ul>
+    </div>
+  </details>
+
+  <details class="more">
+    <summary>연구 9 개 비교 (로봇·구조·상자 조건·결과)<span class="cnt">표</span></summary>
+    <div class="body">
+      <div class="tbl-wrap">
+        <table class="t-wide">
+          <thead><tr><th>연구</th><th>로봇·손</th><th>구조</th><th>상자 조건</th><th>결과</th><th>가져올 것</th></tr></thead>
+          <tbody>
+            <tr><td><b>Hanoi</b></td><td>Digit</td><td>기술 LSTM → 공유 WBC (MHC), Pickup 출력 = 팔 관절 + pitch + 높이 (10 차원)</td><td>0–3.5 kg, 변 0.15–0.5 m, 높이 0.085–0.95 m</td><td>Pickup 96.92 % (Extended), E2E 81.11 % (<a href="https://arxiv.org/abs/2602.13850" target="_blank" rel="noopener">Hanoi</a>)</td><td>L∧R 게이트, 받침 제거, 데이터 집계</td></tr>
+            <tr><td><b>AdaptManip</b></td><td>G1 고무 손</td><td>동결 보행 4 + 상체 잔차 17, LSTM 상자 추정</td><td>질량 가산 −0.88…+1.5 kg, 크기 ×0.75–1.25</td><td>Isaac 0.85 / MuJoCo 0.75, Pure RL 0.62 / 0.37 (<a href="https://arxiv.org/abs/2602.14363" target="_blank" rel="noopener">AdaptManip</a>)</td><td>대칭 손실, 미끄럼 벌점</td></tr>
+            <tr><td><b>PhysHSI</b></td><td>G1 고무 손</td><td>AMP 단일 PPO + RSI</td><td>높이 0–0.6 m</td><td>실기 집기 8/10, 4.5 kg 0/3 (<a href="https://arxiv.org/abs/2510.11072" target="_blank" rel="noopener">PhysHSI</a>)</td><td>양손 평균–상자 중심 보상, 스타일 가중 점증</td></tr>
+            <tr><td><b>SplitAdapter</b></td><td>G1 고무 손 (고마찰 장갑)</td><td>동결 PhysHSI + 하중 어댑터</td><td>0.5–5 kg, 0–0.6 m</td><td>실기 16/27 → 26/27 (<a href="https://arxiv.org/abs/2606.03297" target="_blank" rel="noopener">SplitAdapter</a>)</td><td>min-힘 접촉, hold 보상</td></tr>
+            <tr><td><b>Digit 박스</b></td><td>Digit</td><td>기술 5 개 연쇄</td><td>1–10 kg, 바닥–1.3 m</td><td>PickUp 96.15 %; 손 궤적 보상 빼면 표본 약 2배 (<a href="https://arxiv.org/abs/2310.03191" target="_blank" rel="noopener">Dao</a>)</td><td>시간 게이트 접촉, 마감 종료</td></tr>
+            <tr><td><b>HULK</b></td><td>G1</td><td>손목 하중 teacher → DAgger</td><td>질량 상한 0.5–5 kg, 성공 ×1.1·실패 ÷1.1</td><td>실기 12.25 kg (<a href="https://arxiv.org/abs/2610.08970" target="_blank" rel="noopener">HULK</a>)</td><td>과도한 조임 벌점, 질량 커리큘럼</td></tr>
+            <tr><td><b>HDMI</b></td><td>G1</td><td>참조 + 잔차</td><td>1.2–1.8 kg</td><td>손별 접촉 = 위치 × 힘 (10 N 임계) (<a href="https://github.com/LeCAR-Lab/HDMI/blob/main/cfg/task/base/hdmi-base.yaml" target="_blank" rel="noopener">config</a>)</td><td>접촉 상실 종료 규칙</td></tr>
+            <tr><td><b>ResMimic</b></td><td>G1</td><td>GMT + 잔차</td><td>–</td><td>Squat 80 % (GMT 40 %) (<a href="https://arxiv.org/html/2510.05070v1" target="_blank" rel="noopener">ResMimic</a>)</td><td>가상 물체 PD 커리큘럼</td></tr>
+            <tr><td><b>OmniContact</b></td><td>G1 고무 손</td><td>규칙 키프레임 + RL 추적</td><td>Carry Box 6 단계</td><td>시뮬 98.70 % (<a href="https://arxiv.org/abs/2606.26201" target="_blank" rel="noopener">OmniContact</a>)</td><td>단계 템플릿</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </details>
+</section>
+
+<!-- ===================== 주제 3: 시각 ===================== -->
+<section id="t-vision" class="topic-vision">
+  <h2 class="sec"><span class="topic-bar"></span>시각 teacher→student <span class="claim">DAgger 만으로는 50–70 % 에서 멈춘다</span></h2>
+  <p class="sec-lead">student 가 teacher 에 근접한 사례는 거의 모두 <b>DAgger 뒤(또는 함께) student RL</b> 을 붙였거나 <b>teacher actor 에서 추정 불가 정보를 뺐다</b>.</p>
+  <ul class="takeaways">
+    <li>DoorMan: teacher 80–90 → DAgger student <b>50–70</b> → GRPO <b>80.8–85.8 %</b>. DextrAH-G: 접촉력 critic 전용 → student ≈ teacher <b>약 99 %</b>.</li>
+    <li>순수 DAgger 는 손실이 크고 큰 물체일수록 격차가 크다: VBC 긴 상자 <b>0.93 → 0.42</b>. ViLoMan 은 BC 만 31.89 % (DAgger 77.55 %).</li>
+    <li>RL 형 증류가 증류만보다 낫다: SLIM 실기 <b>78.3 % vs 50.0 %</b>. 성긴 물체 위치를 명시 입력으로: 깊이만 <b>0/10</b> vs 깊이 + 위치 <b>10/10</b> (Lin et al.).</li>
+    <li>우리 6 프레임 26×64 + 고유감각은 ViLoMan (36×64, 4 프레임)·VBC (54×96) 와 같은 급 → 해상도·프레임보다 아래 대책 ①–③ 이 효과가 클 것 <span class="inf">추론</span></li>
+    <li>깊이 DR 출발점: PRISM 구멍 0.2 · 가산 잡음 0.03 m · 오프셋 0.03 m. K1 은 목 두 위치 (0°/47°)·D436 최근 프레임 나이 14–45 ms → 카메라 pitch DR 은 실측 장착 오차 이상, 지연은 50 Hz 기준 1–3 스텝.</li>
+  </ul>
+
+  <div class="ladder">
+    <div><b>① 싸다 · 재학습 한 번</b>teacher 를 흉내 가능하게: 접촉력·질량을 critic 전용으로</div>
+    <div><b>② 접촉 대리 신호</b>고유감각 이력 → 손 힘 추정 보조 헤드</div>
+    <div><b>③ student RL</b>PRISM λ 경사 (기존 DAgger 학습기에 PPO 항 추가)</div>
+    <div><b>④ 분포 요령</b>롤아웃 비율 0.5, 리플레이 1/3, 선형 전환, KL 증류</div>
+  </div>
+
+  <details class="more">
+    <summary>격차 대책, 싼 순서 (상세)</summary>
+    <div class="body">
+      <ol>
+        <li><b>teacher 를 흉내 가능하게</b> (재학습 한 번): 접촉력·질량을 critic 전용으로. SITT 는 teacher 보상에 student 와의 KL 벌점까지 넣어 서랍 열기 0.88 (DAgger 0.34, <a href="https://arxiv.org/html/2412.09149v2" target="_blank" rel="noopener">SITT</a>).</li>
+        <li><b>접촉 대리 신호</b>: 고유감각 이력 → 손 힘 추정. VIRAL 코드에 <code>left/right_hand_force_estimator</code> (긴 이력 입력, ONNX 래퍼)가 있으나 논문엔 설명 없음 (<a href="reference/viral/code/gr00t/rl/utils/inference_helpers.py">inference_helpers.py</a>). HORA 는 30 스텝 관절 + 행동으로 8 차원 extrinsics 회귀 (<a href="https://arxiv.org/pdf/2210.04887" target="_blank" rel="noopener">HORA</a>). Δτ = τ(t) − τ(t−1) 관측으로 sim–real 오프셋 제거 (<a href="https://arxiv.org/abs/2609.29031" target="_blank" rel="noopener">torque_align</a>). K1 고무 손 조이기는 접촉이 팔 토크·PD 오차로 드러나므로 다지 손보다 잘 맞을 것 <span class="inf">추론</span></li>
+        <li><b>student RL</b>: PRISM λ 경사가 가장 단순 (기존 DAgger 학습기에 PPO 항 추가). GRPO 는 가치 함수가 필요 없지만 공개 구현이 없다 (DoorMan 브랜치 grep 0 건).</li>
+        <li><b>분포 요령</b>: teacher 롤아웃 비율 0.5, 리플레이 1/3, 선형 전환 (ULTRA 500 → 1500 epoch), KL 증류가 L2 보다 4 시드 모두 우수 (<a href="https://arxiv.org/html/2412.01791" target="_blank" rel="noopener">DextrAH-RGB</a>).</li>
+      </ol>
+    </div>
+  </details>
+
+  <details class="more">
+    <summary>teacher → student 사례 9 개 (특권 · 입력 · 증류 · 격차)<span class="cnt">표</span></summary>
+    <div class="body">
+      <div class="tbl-wrap">
+        <table class="t-wide">
+          <thead><tr><th>연구</th><th>teacher 특권</th><th>student 입력</th><th>증류</th><th>teacher → student</th><th>가져올 것</th></tr></thead>
+          <tbody>
+            <tr><td><b>DoorMan</b></td><td>손 18 몸체 접촉 렌치, 손잡이 변환, 선속도</td><td>RGB + 고유감각, ResNet + LSTM 512</td><td>DAgger → GRPO (이진 성공, 가치 함수 없음)</td><td>80–90 → 50–70 → 80.8–85.8 % (<a href="https://arxiv.org/html/2512.01061v1" target="_blank" rel="noopener">DoorMan</a>)</td><td>우리와 같은 꼴의 격차를 student RL 로 메움</td></tr>
+            <tr><td><b>PRISM</b></td><td>물체 자세·크기·선속도</td><td>깊이 58×87 + 고유감각, 이력 없음</td><td>λ·PPO + (1−λ)·DAgger, λ 0.1 → 0.9 (500 반복마다 +0.1)</td><td>실기 상자 15/15 (<a href="https://arxiv.org/html/2609.38172v1" target="_blank" rel="noopener">PRISM</a>)</td><td>가장 단순한 혼합 손실</td></tr>
+            <tr><td><b>ULTRA</b></td><td>SDF·참조 (4052 차원)</td><td>점구름 64 + 이력 10</td><td>증류 → PPO (env 1/4 증류 유지, PG 100 epoch 에 걸쳐 켬)</td><td>teacher 97.57 % / student 67.30 % (ID); MuJoCo OOD 위치 4/20 → 12/20 (<a href="https://arxiv.org/html/2603.03279" target="_blank" rel="noopener">ULTRA</a>)</td><td>미세조정 일정</td></tr>
+            <tr><td><b>VBC</b></td><td>물체 형상 잠재·자세</td><td>분할 깊이 54×96, 3–4 프레임</td><td>DAgger</td><td>긴 상자 0.93 → 0.42 (<a href="https://arxiv.org/html/2403.16967v5" target="_blank" rel="noopener">VBC</a>)</td><td>"들렸는가" 보조 헤드, 상위 주기 무작위</td></tr>
+            <tr><td><b>VIRAL</b></td><td>손가락 끝 힘, 물체 변환</td><td>RGB 108×192 + 고유감각 이력</td><td>DAgger/BC 혼합 α 0.5</td><td>실기 54/59 (<a href="https://arxiv.org/html/2511.15200v1" target="_blank" rel="noopener">VIRAL</a>)</td><td>롤아웃 비율, 이력형 student</td></tr>
+            <tr><td><b>ViLoMan</b></td><td>단계·문 상태·접촉 목표</td><td>깊이 4 프레임 36×64 + 성긴 이력 9 점</td><td>DAgger + 리플레이 1/3</td><td>84.91 → 77.55 %, BC 만 31.89 % (<a href="https://arxiv.org/html/2609.19340v1" target="_blank" rel="noopener">ViLoMan</a>)</td><td>이력 오프셋 [0, 1, 2, 3, 4, 8, 12, 16, 20]</td></tr>
+            <tr><td><b>DextrAH-G</b></td><td>actor 는 잡음 물체 자세, 접촉력은 critic 만</td><td>깊이 160×120</td><td>DAgger + 위치 보조 헤드 (β 0.1)</td><td>student ≈ teacher 약 99 % (<a href="https://arxiv.org/html/2407.02274v3" target="_blank" rel="noopener">DextrAH-G</a>)</td><td>흉내 가능한 teacher</td></tr>
+            <tr><td><b>Lin et al.</b></td><td>actor 는 물체 위치 + 관절만</td><td>깊이 + 물체 위치</td><td>BC</td><td>깊이만 0/10 vs 깊이 + 위치 10/10 (<a href="https://arxiv.org/html/2502.20396v2" target="_blank" rel="noopener">Lin</a>)</td><td>성긴 물체 위치를 명시 입력으로</td></tr>
+            <tr><td><b>SLIM</b></td><td>–</td><td>RGB</td><td>KL-to-teacher SAC</td><td>실기 78.3 % vs 증류만 50.0 % (<a href="https://arxiv.org/html/2501.09905v1" target="_blank" rel="noopener">SLIM</a>)</td><td>RL 형 증류</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </details>
+
+  <details class="more">
+    <summary>깊이 sim2real 수치 (해상도 · 잡음 · 지연 · 카메라 무작위)<span class="cnt">표</span></summary>
+    <div class="body">
+      <div class="tbl-wrap">
+        <table class="t-wide">
+          <thead><tr><th>연구</th><th>해상도·범위</th><th>잡음·구멍</th><th>지연</th><th>카메라 무작위</th></tr></thead>
+          <tbody>
+            <tr><td><b>PRISM</b></td><td>106×60 → 58×87, 0.3–3.0 m</td><td>구멍 0.2, 가산 0.03 m, 오프셋 0.03 m</td><td>3–4 프레임 (단위 불명)</td><td>자세 무작위, 목 약 10° 어긋나면 OOD (<a href="https://arxiv.org/html/2609.38172v1" target="_blank" rel="noopener">PRISM</a>)</td></tr>
+            <tr><td><b>Now You See That</b></td><td>30×40 → 24×32, 0.3–2.0 m</td><td>스테레오 불일치 τ 0.05–0.20 → 0, 깊이² 비례 계수 ±0.03, Perlin ±0.02</td><td>2–4 프레임</td><td>위치 ±0.05 m, 각도 ±0.10 rad (<a href="https://arxiv.org/html/2602.06382" target="_blank" rel="noopener">NYST</a>)</td></tr>
+            <tr><td><b>VisualMimic</b></td><td>80×45</td><td>사각 마스크 최대 6 개 (30×30 px, 화면 25 %까지)</td><td>미보고</td><td>방향 ±5° (<a href="https://arxiv.org/html/2509.20322v2" target="_blank" rel="noopener">VisualMimic</a>)</td></tr>
+            <tr><td><b>VBC</b></td><td>54×96</td><td>하한 0.18–0.25 m 자르기, Erasing·Blur·Noise</td><td>실측 카메라 지연, 행동 1 스텝</td><td>소폭 (<a href="https://arxiv.org/html/2403.16967v5" target="_blank" rel="noopener">VBC</a>)</td></tr>
+            <tr><td><b>ULTRA</b> (점구름)</td><td>64 점</td><td>가우시안 0.02 m, 드롭 15 %, 이상점 5 %</td><td>미보고</td><td>회전 0.05 rad, 위치 0.02 m (<a href="https://arxiv.org/html/2603.03279" target="_blank" rel="noopener">ULTRA</a>)</td></tr>
+            <tr><td><b>VIRAL</b> (RGB)</td><td>108×192</td><td>영상 품질 무작위</td><td>카메라 2–3 스텝</td><td>x·z ±2 cm, y ±5 cm, pitch ±0.1 rad (<a href="https://arxiv.org/html/2511.15200v1" target="_blank" rel="noopener">VIRAL</a>)</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <ul>
+        <li>K1 목은 손으로 두 위치 (0°/47°)만 고정되고, D436 가장 최근 프레임 나이는 14–45 ms (내부 기록) → 카메라 pitch DR 은 실측 장착 오차 이상, 지연은 50 Hz 기준 1–3 스텝 무작위가 같은 급.</li>
+        <li>잡음 모형은 표현 (픽셀 깊이 대 점구름)이 바뀌면 다시 재야 하므로 위 수치는 출발점이고 실기 bag 으로 재확인이 필요하다.</li>
+      </ul>
+    </div>
+  </details>
+</section>
+
+<!-- ===================== 주제 4: 고정 하위 ===================== -->
+<section id="t-frozen" class="topic-frozen">
+  <h2 class="sec"><span class="topic-bar"></span>고정 하위 위 상위 학습 기법 <span class="claim">하위는 고정, 출력은 하위 분포 안, 분포는 유계</span></h2>
+  <ul class="takeaways" style="margin-top:14px">
+    <li><b>하위는 고정이 1순위</b>: GMT 미세조정 <b>7.5 %</b> vs 고정 + 잔차 <b>92.5 %</b> (ResMimic); 추적기 미세조정 89.3 % vs 플래너 96.5 % (DiPLO); 상위만 미세조정하면 "overcommand" 로 추종 저하, 하위 최적화 +18 % (REFINE-DP).</li>
+    <li><b>출력은 하위 분포 안으로</b>: μ±1.64σ 자르기 없으면 return 후반 붕괴 (VisualMimic). 하위 학습 때 명령 잡음이 없으면 Push Box <b>151 → 2</b>, 명령 증강 빼면 밀림 하 성공 64 → 52 % (Workhorse) → dev12 재학습 시 넣을 항목.</li>
+    <li><b>분포는 유계</b>: tanh 가 clip 보다 약간 우수, 초기 std 0.5, 마지막 층 100배 축소 (What Matters); rsl_rl Beta (PR #202)·std clamp (PR #201). 환경 clip 은 안전용으로만.</li>
+    <li><b>bang-bang</b>: 행동 비용이 없으면 경계를 선호 (Seyde) → 델타 + 원 행동 변화율 벌점.</li>
+    <li><b>추적기 의존</b>: 추적기를 바꾸면 평균 <b>36.0–39.9 %</b> 하락 (HumanoidArena) → dev12 를 재학습하면 상위도 다시 맞춰야 함.</li>
+    <li><b>체크포인트</b>: 고정 평가셋 결정적 평가, 하위 10 % 지표, 이웃 3–5 개 평균.</li>
+  </ul>
+
+  <details class="more">
+    <summary>질문별 근거 8 개 (하위 미세조정 · 출력 묶기 · 유계 분포 · 주기 · 체크포인트 …)<span class="cnt">표</span></summary>
+    <div class="body">
+      <div class="tbl-wrap">
+        <table class="t-wide">
+          <thead><tr><th>질문</th><th>근거</th><th>우리에게</th></tr></thead>
+          <tbody>
+            <tr><td><b>하위를 미세조정할까</b></td><td>GMT 미세조정 7.5 % vs 고정 + 잔차 92.5 % (<a href="https://arxiv.org/html/2510.05070v1" target="_blank" rel="noopener">ResMimic</a>); 추적기 미세조정 89.3 % vs 플래너 96.5 % (<a href="https://arxiv.org/html/2610.24847v1" target="_blank" rel="noopener">DiPLO</a>); 상위만 미세조정 시 "overcommand" 로 추종 저하, 하위 최적화 +18 % (<a href="https://arxiv.org/html/2603.13707v2" target="_blank" rel="noopener">REFINE-DP</a>)</td><td>1순위 고정. 고칠 땐 원래 추종 보상 + 상위 명령 분포로 (<a href="https://arxiv.org/abs/2410.03441" target="_blank" rel="noopener">CLoSD</a>)</td></tr>
+            <tr><td><b>상위 출력 묶기</b></td><td>μ±1.64σ 자르기 없으면 return 후반 붕괴 (<a href="https://arxiv.org/html/2509.20322v1" target="_blank" rel="noopener">VisualMimic</a>); 행동 (−2, 2) 제한 (<a href="https://arxiv.org/abs/1911.06636" target="_blank" rel="noopener">Catch &amp; Carry</a>); 초구면 정규화 (<a href="https://arxiv.org/abs/2205.01906" target="_blank" rel="noopener">ASE</a>); prior 평균 잔차 + 고정 σ 0.22 (<a href="https://arxiv.org/abs/2310.04582" target="_blank" rel="noopener">PULSE</a>)</td><td>dev12 실측 도달 영역으로 자르고 명목 + 잔차</td></tr>
+            <tr><td><b>하위의 명령 잡음 내성</b></td><td>없으면 Push Box 151 → 2 (<a href="https://arxiv.org/html/2509.20322v1" target="_blank" rel="noopener">VisualMimic</a>); 명령 증강 빼면 밀림 하 성공 64 → 52 % (<a href="https://arxiv.org/html/2610.09117" target="_blank" rel="noopener">Workhorse</a>)</td><td>dev12 재학습 시 넣을 항목</td></tr>
+            <tr><td><b>유계 분포</b></td><td>tanh 가 clip 보다 약간 우수, 초기 std 0.5, 마지막 층 100배 축소 (<a href="https://arxiv.org/abs/2006.05990" target="_blank" rel="noopener">What Matters</a>); Beta α, β &gt; 1 (PR #202), std clamp (PR #201) (<a href="https://github.com/leggedrobotics/rsl_rl/blob/main/rsl_rl/modules/distribution.py" target="_blank" rel="noopener">rsl_rl</a>); 잘린 행동 log-prob 보정 (<a href="https://arxiv.org/abs/1802.07564" target="_blank" rel="noopener">CAPG</a>)</td><td>환경 clip 은 안전용으로만</td></tr>
+            <tr><td><b>bang-bang</b></td><td>행동 비용 없으면 경계 선호 (<a href="https://arxiv.org/abs/2111.02552" target="_blank" rel="noopener">Seyde</a>); 시간·공간 평활 정규화 (<a href="https://arxiv.org/abs/2012.06644" target="_blank" rel="noopener">CAPS</a>)</td><td>델타 + 원 행동 변화율 벌점</td></tr>
+            <tr><td><b>인터페이스</b></td><td>관절 대 키포인트: Push Box 152 → 10, Kick Ball 189 → 0 (<a href="https://arxiv.org/html/2509.20322v1" target="_blank" rel="noopener">VisualMimic</a>); 참조 추적은 정밀 접촉에 30 mm 오차 (<a href="https://arxiv.org/abs/2407.11385" target="_blank" rel="noopener">Omnigrasp</a>); 잠재 + 손목 관절 덮어쓰기 혼합 (<a href="https://research.nvidia.com/labs/toronto-ai/vid2player3d" target="_blank" rel="noopener">Vid2Player3D</a>)</td><td>명시 골반 명령 + 관절 보정 혼합형은 선례 있음; 잠재로 바꿀 근거는 약함</td></tr>
+            <tr><td><b>주기</b></td><td>상위 6 Hz / 하위 30 Hz, 고정 판별기 스타일 보상 0.1 없으면 떨림 (<a href="https://arxiv.org/abs/2205.01906" target="_blank" rel="noopener">ASE</a>); 플래너 10 Hz / 정책 50 Hz (<a href="https://arxiv.org/html/2511.07820v2" target="_blank" rel="noopener">SONIC</a>)</td><td>50 Hz 델타로 시작, 떨림이 크면 낮추기</td></tr>
+            <tr><td><b>추적기 의존</b></td><td>추적기를 바꾸면 평균 36.0–39.9 % 하락 (<a href="https://arxiv.org/html/2606.17833v1" target="_blank" rel="noopener">HumanoidArena</a>)</td><td>dev12 를 재학습하면 상위도 다시 맞춰야 함</td></tr>
+            <tr><td><b>체크포인트</b></td><td>성능 붕괴 시 이전 최상으로 되돌림 (<a href="https://arxiv.org/abs/1910.03732" target="_blank" rel="noopener">Ctrl-Z</a>); 시간 분산·CVaR 지표 (<a href="https://arxiv.org/abs/1912.05663" target="_blank" rel="noopener">Chan</a>); 시드 차이만으로 결과 크게 달라짐 (<a href="https://arxiv.org/abs/1709.06560" target="_blank" rel="noopener">Henderson</a>)</td><td>고정 평가셋 결정적 평가, 하위 10 % 지표, 이웃 3–5 개 평균</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </details>
+
+  <details class="more">
+    <summary>추론 3 개: 저역 필터와 bang-bang · std 발산 메커니즘 · critic 재초기화</summary>
+    <div class="body">
+      <ul>
+        <li><b>저역 필터와 bang-bang</b> <span class="inf">추론</span>: 상위 원출력이 저역 필터를 거치면 필터된 목표를 빨리 옮기려 원출력을 끝까지 미는 것이 최적이 된다. 행동을 "목표 변화율"로 정의하고 그 한계를 dev12 학습 때 목표 변화율 분위수로 맞추면 포화 = 최대 변화율이라 무해하다. dev12 가 "필터된 상체 목표 + 변화율"을 관측하므로 하위 OOD 도 함께 막는다.</li>
+        <li><b>std 발산 메커니즘</b> <span class="inf">추론</span>: 환경에서 자른 뒤에는 경계 밖 행동이 보상 차이를 안 만들어 평균이 밖으로 흘러도 비용이 없고, 엔트로피는 std 를 키우는 방향으로만 작용한다. 큰 std 는 잘린 뒤 양 끝 값이 되므로 bang-bang 과 같이 나타난다. v2 의 포화·발산·비단조 성공률은 같은 원인일 가능성이 높다.</li>
+        <li><b>하위를 PPO 로 다시 만질 때</b> critic 을 새로 만들면 actor 가 한 번의 갱신으로 망가질 수 있다 (내부 기록).</li>
+      </ul>
+    </div>
+  </details>
+</section>
+
+<!-- ===================== 자료 목록 ===================== -->
+<section id="catalog">
+  <h2 class="sec">자료 목록 <span class="claim">네 노트 중복 제거 113 항목</span></h2>
+  <div class="grid2" style="margin-top:12px">
+    <div class="panel small">
+      <b>읽는 법</b>
+      <ul style="margin:6px 0 0; padding-left:18px">
+        <li><b>제목</b>에 밑줄이 있으면 누를 수 있습니다. 그 논문의 상세 설명 페이지(<code>papers/</code>)로 갑니다. 원문을 받은 논문만 해당합니다.</li>
+        <li><b>유사도</b>: 5 = 구조·학습·실기까지 거의 같음, 1 = 주변 참고. 노트마다 관점(인터페이스·박스·시각·학습 기법)이 달라 점수가 다르면 범위로 적었다.</li>
+        <li><b>로컬</b>: <a href="reference/"><code>reference/</code></a> 기준, 2026-10-23 <code>ls</code> 로 확인 (폴더 44, paper.pdf 44, code/ 22). <span class="badge only">링크만</span> = 로컬 없음.</li>
+        <li><span class="badge lfs">LFS</span> = Git LFS 포인터 (132–133 바이트)만 있어 <code>git lfs pull</code> 필요. <span class="badge wt">가중치</span> = 받은 사본에 가중치 파일이 실제로 있음.</li>
+      </ul>
+    </div>
+    <div class="panel small">
+      <b>라이선스 · LFS</b>
+      <ul style="margin:6px 0 0; padding-left:18px">
+        <li><b>코드 복사 안전</b>: Apache-2.0 (VIRAL, DoorMan, AGILE, PRISM, ULTRA, ResMimic, AMO) · MIT (CLoSD, Puppeteer, FALCON 등).</li>
+        <li><b>비상업</b>: PhysHSI (NC-SA), VBC·HOMIE·Extreme Parkour (NC), ASE·DEXTRAH (NVIDIA License).</li>
+        <li><b>LICENSE 파일 없음</b> (로컬 확인): demohlm, hdmi, humanoid_hanoi, lessmimic, omnicontact, pulse, visualmimic → 수치·아이디어 참고만.</li>
+        <li><b>LFS 포인터만</b>: agile (하체 정책 11 개), viral (HOMIE 모델 6 개·시연 npz 295·로봇 메시 442), doorman (모델·시연 npz 56·메시 165), maskedmimic (pretrained_models), dextrah_g (USD 447). VIRAL 시연 RSI 를 재현하려면 npz 도 LFS 로 받아야 한다.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="controls">
+    <input id="cat-q" class="search" type="search" placeholder="검색: 이름, 제목, 학회, 라이선스, 메모…" aria-label="자료 검색">
+    <div class="fchips" role="group" aria-label="주제 거르기">
+      <button type="button" class="fchip" data-topic="all" aria-pressed="true">전체</button>
+      <button type="button" class="fchip" data-topic="iface" aria-pressed="false"><span class="tdot t-iface"></span> 인터페이스</button>
+      <button type="button" class="fchip" data-topic="box" aria-pressed="false"><span class="tdot t-box"></span> 박스</button>
+      <button type="button" class="fchip" data-topic="vision" aria-pressed="false"><span class="tdot t-vision"></span> 시각</button>
+      <button type="button" class="fchip" data-topic="frozen" aria-pressed="false"><span class="tdot t-frozen"></span> 학습 기법</button>
+    </div>
+    <label class="toggle"><input id="cat-local" type="checkbox"> 받은 것만</label>
+    <span id="cat-count" class="count" aria-live="polite">113 항목</span>
+  </div>
+  <p class="legend">
+    <span><span class="tdot t-iface"></span>인터페이스 노트</span>
+    <span><span class="tdot t-box"></span>박스 노트</span>
+    <span><span class="tdot t-vision"></span>시각 노트</span>
+    <span><span class="tdot t-frozen"></span>학습 기법 노트</span>
+    <span>· 점 = 그 항목을 다룬 조사 노트</span>
+  </p>
+
+  <div class="tbl-wrap" style="margin-top:10px">
+    <table id="cat-table">
+      <thead><tr>
+        <th>short_id</th><th>제목</th><th>발표처·연도</th>
+        <th aria-sort="none"><button type="button" id="sort-sim" class="sortbtn" title="눌러서 정렬: 높은 순 → 낮은 순 → 원래 순서">유사도 <span id="sort-ind">⇅</span></button></th>
+        <th>라이선스</th><th>링크</th>
+      </tr></thead>
+      <tbody id="cat-body">
+<tr data-idx="0" data-smin="5" data-smax="5" data-topics="iface vision" data-local="1"><td class="sid"><code>viral</code><div class="tdots"><span class="tdot t-iface" title="인터페이스"></span><span class="tdot t-vision" title="시각"></span></div></td><td><a class="plink" href="papers/viral.html">VIRAL: Visual Sim-to-Real at Scale for Humanoid Loco-Manipulation</a></td><td class="venue">CVPR 2026</td><td class="sim"><span class="simv s5">5</span></td><td class="lic">Apache-2.0</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2511.15200" target="_blank" rel="noopener">arXiv 2511.15200</a><a class="chip gh" href="https://github.com/NVlabs/GR00T-VisualSim2Real" target="_blank" rel="noopener">NVlabs/GR00T-VisualSim2Real</a><a class="chip loc" href="reference/viral/paper.pdf">로컬 PDF</a><a class="chip loc" href="reference/viral/code/">로컬 코드</a><span class="badge lfs" title="Git LFS 포인터만 있음: git lfs pull 필요">LFS</span></div><div class="cnote">코드: (main) · 로컬: <strong>LFS</strong>: models/(HOMIE model_walk·model_stand·dec_loco onnx), 시연 npz 295, 로봇 USD/STL 442</div></td></tr>
+<tr data-idx="1" data-smin="5" data-smax="5" data-topics="iface vision" data-local="1"><td class="sid"><code>doorman</code><div class="tdots"><span class="tdot t-iface" title="인터페이스"></span><span class="tdot t-vision" title="시각"></span></div></td><td><a class="plink" href="papers/doorman.html">Opening the Sim-to-Real Door for Humanoid Pixel-to-Action Policy Transfer</a></td><td class="venue">CVPR 2026 (NVIDIA Research 표기)</td><td class="sim"><span class="simv s5">5</span></td><td class="lic">Apache-2.0</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2512.01061" target="_blank" rel="noopener">arXiv 2512.01061</a><a class="chip loc" href="reference/doorman/paper.pdf">로컬 PDF</a><a class="chip loc" href="reference/doorman/code/">로컬 코드</a><span class="badge lfs" title="Git LFS 포인터만 있음: git lfs pull 필요">LFS</span></div><div class="cnote">코드: 같은 저장소 doorman 브랜치 (GRPO 없음) · 로컬: (doorman 브랜치); <strong>LFS</strong>: models/, 시연 npz 56, USD/STL 165</div></td></tr>
+<tr data-idx="2" data-smin="5" data-smax="5" data-topics="box" data-local="1"><td class="sid"><code>humanoid_hanoi</code><div class="tdots"><span class="tdot t-box" title="박스"></span></div></td><td><a class="plink" href="papers/humanoid_hanoi.html">Humanoid Hanoi: Shared Whole-Body Control for Skill-Based Box Rearrangement</a></td><td class="venue">CoRL 2026 (논문 머리글)</td><td class="sim"><span class="simv s5">5</span></td><td class="lic">LICENSE 없음</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2602.13850" target="_blank" rel="noopener">arXiv 2602.13850</a><a class="chip gh" href="https://github.com/osudrl/Humanoid_Hanoi" target="_blank" rel="noopener">osudrl/Humanoid_Hanoi</a><a class="chip loc" href="reference/humanoid_hanoi/paper.pdf">로컬 PDF</a><a class="chip loc" href="reference/humanoid_hanoi/code/">로컬 코드</a></div><div class="cnote">코드: (MuJoCo)</div></td></tr>
+<tr data-idx="3" data-smin="5" data-smax="5" data-topics="box" data-local="1"><td class="sid"><code>adaptmanip</code><div class="tdots"><span class="tdot t-box" title="박스"></span></div></td><td><a class="plink" href="papers/adaptmanip.html">AdaptManip: Adaptive Whole-Body Object Lifting and Delivery</a></td><td class="venue">arXiv 2026 (RA-L 여부 미확인)</td><td class="sim"><span class="simv s5">5</span></td><td class="lic">–</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2602.14363" target="_blank" rel="noopener">arXiv 2602.14363</a><a class="chip loc" href="reference/adaptmanip/paper.pdf">로컬 PDF</a></div><div class="cnote">코드: 없음(프로젝트 페이지만)</div></td></tr>
+<tr data-idx="4" data-smin="5" data-smax="5" data-topics="vision" data-local="1"><td class="sid"><code>prism</code><div class="tdots"><span class="tdot t-vision" title="시각"></span></div></td><td><a class="plink" href="papers/prism.html">PRISM: Counterfactual Video Generation Enables Scalable Humanoid Loco-Manipulation</a></td><td class="venue">CoRL 2026 (PDF 머리말)</td><td class="sim"><span class="simv s5">5</span></td><td class="lic">Apache-2.0</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2609.38172" target="_blank" rel="noopener">arXiv 2609.38172</a><a class="chip gh" href="https://github.com/amazon-far/PRISM" target="_blank" rel="noopener">amazon-far/PRISM</a><a class="chip loc" href="reference/prism/paper.pdf">로컬 PDF</a><a class="chip loc" href="reference/prism/code/">로컬 코드</a><span class="badge wt" title="받은 사본에 가중치 파일이 실제로 있음">가중치</span></div><div class="cnote">로컬: <strong>실제 가중치</strong> _ckpts/ box_23000·teacher_40000·student_28000</div></td></tr>
+<tr data-idx="5" data-smin="4" data-smax="5" data-topics="frozen iface vision" data-local="1"><td class="sid"><code>visualmimic</code><div class="tdots"><span class="tdot t-iface" title="인터페이스"></span><span class="tdot t-vision" title="시각"></span><span class="tdot t-frozen" title="학습 기법"></span></div></td><td><a class="plink" href="papers/visualmimic.html">VisualMimic: Visual Humanoid Loco-Manipulation via Motion Tracking and Generation</a></td><td class="venue">프리프린트 2025-09</td><td class="sim"><span class="simv s5">4–5</span></td><td class="lic">LICENSE 없음</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2509.20322" target="_blank" rel="noopener">arXiv 2509.20322</a><a class="chip gh" href="https://github.com/visualmimic/VisualMimic" target="_blank" rel="noopener">visualmimic/VisualMimic</a><a class="chip loc" href="reference/visualmimic/paper.pdf">로컬 PDF</a><a class="chip loc" href="reference/visualmimic/code/">로컬 코드</a><span class="badge wt" title="받은 사본에 가중치 파일이 실제로 있음">가중치</span></div><div class="cnote">코드: (sim2sim·체크포인트만) · 로컬: <strong>실제 가중치</strong> checkpoints/lift_box 등 4 개</div></td></tr>
+<tr data-idx="6" data-smin="2" data-smax="5" data-topics="frozen vision" data-local="1"><td class="sid"><code>vbc</code><div class="tdots"><span class="tdot t-vision" title="시각"></span><span class="tdot t-frozen" title="학습 기법"></span></div></td><td><a class="plink" href="papers/vbc.html">Visual Whole-Body Control for Legged Loco-Manipulation</a></td><td class="venue">CoRL 2024 Oral</td><td class="sim"><span class="simv s5">2–5</span></td><td class="lic">CC BY-NC 4.0</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2403.16967" target="_blank" rel="noopener">arXiv 2403.16967</a><a class="chip gh" href="https://github.com/Ericonaldo/visual_wholebody" target="_blank" rel="noopener">Ericonaldo/visual_wholebody</a><a class="chip loc" href="reference/vbc/paper.pdf">로컬 PDF</a><a class="chip loc" href="reference/vbc/code/">로컬 코드</a></div><div class="cnote">로컬: (동봉 isaacgym 사본 삭제)</div></td></tr>
+<tr data-idx="7" data-smin="2" data-smax="5" data-topics="box frozen iface" data-local="1"><td class="sid"><code>resmimic</code><div class="tdots"><span class="tdot t-iface" title="인터페이스"></span><span class="tdot t-box" title="박스"></span><span class="tdot t-frozen" title="학습 기법"></span></div></td><td><a class="plink" href="papers/resmimic.html">ResMimic: Residual Learning on General Motion Tracking</a></td><td class="venue">프리프린트 2025-10</td><td class="sim"><span class="simv s5">2–5</span></td><td class="lic">Apache-2.0</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2510.05070" target="_blank" rel="noopener">arXiv 2510.05070</a><a class="chip gh" href="https://github.com/amazon-far/ResMimic" target="_blank" rel="noopener">amazon-far/ResMimic</a><a class="chip loc" href="reference/resmimic/paper.pdf">로컬 PDF</a><a class="chip loc" href="reference/resmimic/code/">로컬 코드</a><span class="badge wt" title="받은 사본에 가중치 파일이 실제로 있음">가중치</span></div><div class="cnote">로컬: <strong>실제 가중치</strong> base_policy.pt</div></td></tr>
+<tr data-idx="8" data-smin="4" data-smax="4" data-topics="iface" data-local="1"><td class="sid"><code>agile</code><div class="tdots"><span class="tdot t-iface" title="인터페이스"></span></div></td><td><a class="plink" href="papers/agile.html">AGILE: A Comprehensive Workflow for Humanoid Loco-Manipulation Learning</a></td><td class="venue">프리프린트 2026-03</td><td class="sim"><span class="simv s4">4</span></td><td class="lic">Apache-2.0 + BSD-3(RSL_RL)</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2603.20147" target="_blank" rel="noopener">arXiv 2603.20147</a><a class="chip gh" href="https://github.com/nvidia-isaac/WBC-AGILE" target="_blank" rel="noopener">nvidia-isaac/WBC-AGILE</a><a class="chip loc" href="reference/agile/paper.pdf">로컬 PDF</a><a class="chip loc" href="reference/agile/code/">로컬 코드</a><span class="badge lfs" title="Git LFS 포인터만 있음: git lfs pull 필요">LFS</span></div><div class="cnote">로컬: <strong>LFS</strong>: data/policy/ 하체 .pt·.onnx 11 개(velocity_height_g1 teacher 포함)</div></td></tr>
+<tr data-idx="9" data-smin="4" data-smax="4" data-topics="iface" data-local="1"><td class="sid"><code>homie</code><div class="tdots"><span class="tdot t-iface" title="인터페이스"></span></div></td><td><a class="plink" href="papers/homie.html">HOMIE: Humanoid Loco-Manipulation with Isomorphic Exoskeleton Cockpit</a></td><td class="venue">RSS 2025</td><td class="sim"><span class="simv s4">4</span></td><td class="lic">CC BY-NC 4.0 (README 는 BY-NC-SA)</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2502.13013" target="_blank" rel="noopener">arXiv 2502.13013</a><a class="chip gh" href="https://github.com/InternRobotics/OpenHomie" target="_blank" rel="noopener">InternRobotics/OpenHomie</a><a class="chip loc" href="reference/homie/paper.pdf">로컬 PDF</a><a class="chip loc" href="reference/homie/code/">로컬 코드</a><span class="badge wt" title="받은 사본에 가중치 파일이 실제로 있음">가중치</span></div><div class="cnote">로컬: <strong>실제 가중치</strong> HomieDeploy/deploy.onnx</div></td></tr>
+<tr data-idx="10" data-smin="4" data-smax="4" data-topics="iface" data-local="1"><td class="sid"><code>amo</code><div class="tdots"><span class="tdot t-iface" title="인터페이스"></span></div></td><td><a class="plink" href="papers/amo.html">AMO: Adaptive Motion Optimization for Hyper-Dexterous Humanoid WBC</a></td><td class="venue">RSS 2025 (README 인용 확인)</td><td class="sim"><span class="simv s4">4</span></td><td class="lic">Apache-2.0</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2505.03738" target="_blank" rel="noopener">arXiv 2505.03738</a><a class="chip gh" href="https://github.com/OpenTeleVision/AMO" target="_blank" rel="noopener">OpenTeleVision/AMO</a><a class="chip loc" href="reference/amo/paper.pdf">로컬 PDF</a><a class="chip loc" href="reference/amo/code/">로컬 코드</a><span class="badge wt" title="받은 사본에 가중치 파일이 실제로 있음">가중치</span></div><div class="cnote">코드: (추론만) · 로컬: <strong>실제 가중치</strong> amo_jit.pt, adapter_jit.pt</div></td></tr>
+<tr data-idx="11" data-smin="2" data-smax="4" data-topics="frozen iface" data-local="1"><td class="sid"><code>hiwet</code><div class="tdots"><span class="tdot t-iface" title="인터페이스"></span><span class="tdot t-frozen" title="학습 기법"></span></div></td><td><a class="plink" href="papers/hiwet.html">HiWET: Hierarchical World-Frame End-Effector Tracking</a></td><td class="venue">프리프린트 2026-02</td><td class="sim"><span class="simv s4">2–4</span></td><td class="lic">–</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2602.06341" target="_blank" rel="noopener">arXiv 2602.06341</a><a class="chip loc" href="reference/hiwet/paper.pdf">로컬 PDF</a></div></td></tr>
+<tr data-idx="12" data-smin="3" data-smax="4" data-topics="frozen iface" data-local="1"><td class="sid"><code>refine_dp</code><div class="tdots"><span class="tdot t-iface" title="인터페이스"></span><span class="tdot t-frozen" title="학습 기법"></span></div></td><td><a class="plink" href="papers/refine_dp.html">REFINE-DP: Diffusion Policy Fine-tuning for Humanoid Loco-manipulation via RL</a></td><td class="venue">RA-L 2026 (PDF 머리말, arXiv 페이지엔 없음)</td><td class="sim"><span class="simv s4">3–4</span></td><td class="lic">–</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2603.13707" target="_blank" rel="noopener">arXiv 2603.13707</a><a class="chip loc" href="reference/refine_dp/paper.pdf">로컬 PDF</a></div><div class="cnote">코드: 없음(<a href="https://refine-dp.github.io/REFINE-DP/" target="_blank" rel="noopener">프로젝트</a>)</div></td></tr>
+<tr data-idx="13" data-smin="4" data-smax="4" data-topics="iface" data-local="1"><td class="sid"><code>oil</code><div class="tdots"><span class="tdot t-iface" title="인터페이스"></span></div></td><td><a class="plink" href="papers/oil.html">OIL: An Object Interaction Layer for Humanoid Whole-Body Control</a></td><td class="venue">프리프린트 2026-10</td><td class="sim"><span class="simv s4">4</span></td><td class="lic">–</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2610.14033" target="_blank" rel="noopener">arXiv 2610.14033</a><a class="chip loc" href="reference/oil/paper.pdf">로컬 PDF</a></div><div class="cnote">코드: 없음(하위 <a href="https://github.com/osudrl/masked-humanoid-controller" target="_blank" rel="noopener">MHC</a>)</div></td></tr>
+<tr data-idx="14" data-smin="4" data-smax="4" data-topics="box" data-local="1"><td class="sid"><code>physhsi</code><div class="tdots"><span class="tdot t-box" title="박스"></span></div></td><td><a class="plink" href="papers/physhsi.html">PhysHSI: Real-World Generalizable and Natural Humanoid-Scene Interaction</a></td><td class="venue">프리프린트 2025</td><td class="sim"><span class="simv s4">4</span></td><td class="lic">CC BY-NC-SA 4.0</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2510.11072" target="_blank" rel="noopener">arXiv 2510.11072</a><a class="chip gh" href="https://github.com/InternRobotics/PhysHSI" target="_blank" rel="noopener">InternRobotics/PhysHSI</a><a class="chip loc" href="reference/physhsi/paper.pdf">로컬 PDF</a><a class="chip loc" href="reference/physhsi/code/">로컬 코드</a><span class="badge wt" title="받은 사본에 가중치 파일이 실제로 있음">가중치</span></div><div class="cnote">로컬: <strong>실제 가중치</strong> resources/ckpt/carrybox.pt 등</div></td></tr>
+<tr data-idx="15" data-smin="2" data-smax="4" data-topics="box iface" data-local="1"><td class="sid"><code>splitadapter</code><div class="tdots"><span class="tdot t-iface" title="인터페이스"></span><span class="tdot t-box" title="박스"></span></div></td><td><a class="plink" href="papers/splitadapter.html">SplitAdapter: Load-Aware Humanoid Loco-Manipulation via Factorized Adaptation</a></td><td class="venue">프리프린트 2026-06</td><td class="sim"><span class="simv s4">2–4</span></td><td class="lic">–</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2606.03297" target="_blank" rel="noopener">arXiv 2606.03297</a><a class="chip loc" href="reference/splitadapter/paper.pdf">로컬 PDF</a></div></td></tr>
+<tr data-idx="16" data-smin="4" data-smax="4" data-topics="box" data-local="1"><td class="sid"><code>digitbox</code><div class="tdots"><span class="tdot t-box" title="박스"></span></div></td><td><a class="plink" href="papers/digitbox.html">Sim-to-Real Learning for Humanoid Box Loco-Manipulation (Dao et al.)</a></td><td class="venue">ICRA 2024</td><td class="sim"><span class="simv s4">4</span></td><td class="lic">–</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2310.03191" target="_blank" rel="noopener">arXiv 2310.03191</a><a class="chip loc" href="reference/digitbox/paper.pdf">로컬 PDF</a></div></td></tr>
+<tr data-idx="17" data-smin="4" data-smax="4" data-topics="vision" data-local="1"><td class="sid"><code>ultra</code><div class="tdots"><span class="tdot t-vision" title="시각"></span></div></td><td><a class="plink" href="papers/ultra.html">ULTRA: Unified Multimodal Control for Humanoid Whole-Body Loco-Manipulation</a></td><td class="venue">IROS 2026</td><td class="sim"><span class="simv s4">4</span></td><td class="lic">Apache-2.0</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2603.03279" target="_blank" rel="noopener">arXiv 2603.03279</a><a class="chip gh" href="https://github.com/Sirui-Xu/ULTRA" target="_blank" rel="noopener">Sirui-Xu/ULTRA</a><a class="chip loc" href="reference/ultra/paper.pdf">로컬 PDF</a><a class="chip loc" href="reference/ultra/code/">로컬 코드</a><span class="badge wt" title="받은 사본에 가중치 파일이 실제로 있음">가중치</span></div><div class="cnote">로컬: <strong>실제 가중치</strong> weights/teacher_ultra_inference.pth</div></td></tr>
+<tr data-idx="18" data-smin="4" data-smax="4" data-topics="vision" data-local="1"><td class="sid"><code>viloman</code><div class="tdots"><span class="tdot t-vision" title="시각"></span></div></td><td><a class="plink" href="papers/viloman.html">ViLoMan: Visual-Proprioceptive Whole-Body Loco-Manipulation</a></td><td class="venue">프리프린트 2026-09</td><td class="sim"><span class="simv s4">4</span></td><td class="lic">–</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2609.19340" target="_blank" rel="noopener">arXiv 2609.19340</a><a class="chip loc" href="reference/viloman/paper.pdf">로컬 PDF</a></div></td></tr>
+<tr data-idx="19" data-smin="3" data-smax="3" data-topics="vision" data-local="1"><td class="sid"><code>dextrah_g</code><div class="tdots"><span class="tdot t-vision" title="시각"></span></div></td><td><a class="plink" href="papers/dextrah_g.html">DextrAH-G: Pixels-to-Action Dexterous Grasping with Geometric Fabrics</a></td><td class="venue">arXiv 2024 (학회 미확인)</td><td class="sim"><span class="simv s3">3</span></td><td class="lic">NVIDIA License</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2407.02274" target="_blank" rel="noopener">arXiv 2407.02274</a><a class="chip gh" href="https://github.com/NVlabs/DEXTRAH" target="_blank" rel="noopener">NVlabs/DEXTRAH</a><a class="chip loc" href="reference/dextrah_g/paper.pdf">로컬 PDF</a><a class="chip loc" href="reference/dextrah_g/code/">로컬 코드</a><span class="badge lfs" title="Git LFS 포인터만 있음: git lfs pull 필요">LFS</span></div><div class="cnote">로컬: <strong>LFS</strong>: USD 자산 447 개</div></td></tr>
+<tr data-idx="20" data-smin="4" data-smax="4" data-topics="frozen" data-local="0"><td class="sid"><code>diplo</code><div class="tdots"><span class="tdot t-frozen" title="학습 기법"></span></div></td><td>DiPLO: Self-distilled Diffusion Planning for Loco-manipulation</td><td class="venue">프리프린트 2026-10</td><td class="sim"><span class="simv s4">4</span></td><td class="lic">–</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2610.24847" target="_blank" rel="noopener">arXiv 2610.24847</a><span class="badge only">링크만</span></div></td></tr>
+<tr data-idx="21" data-smin="4" data-smax="4" data-topics="frozen" data-local="0"><td class="sid"><code>omniinteract</code><div class="tdots"><span class="tdot t-frozen" title="학습 기법"></span></div></td><td>OmniInteract: Unified Whole-Body Interaction Control for Dual Humanoids</td><td class="venue">프리프린트 2026-10</td><td class="sim"><span class="simv s4">4</span></td><td class="lic">–</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2610.26043" target="_blank" rel="noopener">arXiv 2610.26043</a><span class="badge only">링크만</span></div><div class="cnote">코드: 확인 못함</div></td></tr>
+<tr data-idx="22" data-smin="4" data-smax="4" data-topics="frozen" data-local="1"><td class="sid"><code>catchcarry</code><div class="tdots"><span class="tdot t-frozen" title="학습 기법"></span></div></td><td><a class="plink" href="papers/catchcarry.html">Catch &amp; Carry: Reusable Neural Controllers for Vision-Guided Whole-Body Tasks</a></td><td class="venue">SIGGRAPH 2020</td><td class="sim"><span class="simv s4">4</span></td><td class="lic">–</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/1911.06636" target="_blank" rel="noopener">arXiv 1911.06636</a><a class="chip loc" href="reference/catchcarry/paper.pdf">로컬 PDF</a></div><div class="cnote">코드: 확인 못함</div></td></tr>
+<tr data-idx="23" data-smin="4" data-smax="4" data-topics="frozen" data-local="1"><td class="sid"><code>pulse</code><div class="tdots"><span class="tdot t-frozen" title="학습 기법"></span></div></td><td><a class="plink" href="papers/pulse.html">PULSE: Universal Humanoid Motion Representations</a></td><td class="venue">ICLR 2024</td><td class="sim"><span class="simv s4">4</span></td><td class="lic">LICENSE 없음</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2310.04582" target="_blank" rel="noopener">arXiv 2310.04582</a><a class="chip gh" href="https://github.com/ZhengyiLuo/PULSE" target="_blank" rel="noopener">ZhengyiLuo/PULSE</a><a class="chip loc" href="reference/pulse/paper.pdf">로컬 PDF</a><a class="chip loc" href="reference/pulse/code/">로컬 코드</a></div></td></tr>
+<tr data-idx="24" data-smin="4" data-smax="4" data-topics="frozen" data-local="1"><td class="sid"><code>omnigrasp</code><div class="tdots"><span class="tdot t-frozen" title="학습 기법"></span></div></td><td><a class="plink" href="papers/omnigrasp.html">Omnigrasp: Grasping Diverse Objects with Simulated Humanoids</a></td><td class="venue">NeurIPS 2024</td><td class="sim"><span class="simv s4">4</span></td><td class="lic">명시 없음</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2407.11385" target="_blank" rel="noopener">arXiv 2407.11385</a><a class="chip gh" href="https://github.com/ZhengyiLuo/Omnigrasp" target="_blank" rel="noopener">ZhengyiLuo/Omnigrasp</a><a class="chip loc" href="reference/omnigrasp/paper.pdf">로컬 PDF</a></div><div class="cnote">로컬: (코드 1.4 GB 라 지움)</div></td></tr>
+<tr data-idx="25" data-smin="4" data-smax="4" data-topics="frozen" data-local="1"><td class="sid"><code>ase</code><div class="tdots"><span class="tdot t-frozen" title="학습 기법"></span></div></td><td><a class="plink" href="papers/ase.html">ASE: Large-Scale Reusable Adversarial Skill Embeddings</a></td><td class="venue">SIGGRAPH 2022</td><td class="sim"><span class="simv s4">4</span></td><td class="lic">NVIDIA License(비상업)</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2205.01906" target="_blank" rel="noopener">arXiv 2205.01906</a><a class="chip gh" href="https://github.com/nv-tlabs/ASE" target="_blank" rel="noopener">nv-tlabs/ASE</a><a class="chip loc" href="reference/ase/paper.pdf">로컬 PDF</a><a class="chip loc" href="reference/ase/code/">로컬 코드</a><span class="badge wt" title="받은 사본에 가중치 파일이 실제로 있음">가중치</span></div><div class="cnote">로컬: <strong>실제 가중치</strong> data/models/</div></td></tr>
+<tr data-idx="26" data-smin="4" data-smax="4" data-topics="frozen" data-local="1"><td class="sid"><code>closd</code><div class="tdots"><span class="tdot t-frozen" title="학습 기법"></span></div></td><td><a class="plink" href="papers/closd.html">CLoSD: Closing the Loop between Simulation and Diffusion</a></td><td class="venue">ICLR 2025</td><td class="sim"><span class="simv s4">4</span></td><td class="lic">MIT</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2410.03441" target="_blank" rel="noopener">arXiv 2410.03441</a><a class="chip gh" href="https://github.com/GuyTevet/CLoSD" target="_blank" rel="noopener">GuyTevet/CLoSD</a><a class="chip loc" href="reference/closd/paper.pdf">로컬 PDF</a><a class="chip loc" href="reference/closd/code/">로컬 코드</a></div></td></tr>
+<tr data-idx="27" data-smin="2" data-smax="4" data-topics="frozen iface" data-local="0"><td class="sid"><code>sonic (+gr00t_wbc)</code><div class="tdots"><span class="tdot t-iface" title="인터페이스"></span><span class="tdot t-frozen" title="학습 기법"></span></div></td><td>SONIC: Supersizing Motion Tracking / GR00T-WholeBodyControl</td><td class="venue">프리프린트 2025-11</td><td class="sim"><span class="simv s4">2–4</span></td><td class="lic">코드 Apache-2.0, 가중치 NVIDIA Open Model License</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2511.07820" target="_blank" rel="noopener">arXiv 2511.07820</a><a class="chip gh" href="https://github.com/NVlabs/GR00T-WholeBodyControl" target="_blank" rel="noopener">NVlabs/GR00T-WholeBodyControl</a><span class="badge only">링크만</span></div><div class="cnote">로컬: (팀에서 이미 사용)</div></td></tr>
+<tr data-idx="28" data-smin="4" data-smax="4" data-topics="frozen" data-local="1"><td class="sid"><code>whatmatters</code><div class="tdots"><span class="tdot t-frozen" title="학습 기법"></span></div></td><td><a class="plink" href="papers/whatmatters.html">What Matters In On-Policy RL? A Large-Scale Empirical Study</a></td><td class="venue">ICLR 2021</td><td class="sim"><span class="simv s4">4</span></td><td class="lic">–</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2006.05990" target="_blank" rel="noopener">arXiv 2006.05990</a><a class="chip loc" href="reference/whatmatters/paper.pdf">로컬 PDF</a></div></td></tr>
+<tr data-idx="29" data-smin="4" data-smax="4" data-topics="frozen" data-local="0"><td class="sid"><code>rslrl_beta</code><div class="tdots"><span class="tdot t-frozen" title="학습 기법"></span></div></td><td>rsl_rl <code>BetaDistribution</code> (PR #202)</td><td class="venue">코드 2026-05</td><td class="sim"><span class="simv s4">4</span></td><td class="lic">NOASSERTION 표시</td><td class="links"><div class="chips"><a class="chip gh" href="https://github.com/leggedrobotics/rsl_rl/blob/main/rsl_rl/modules/distribution.py" target="_blank" rel="noopener">leggedrobotics/rsl_rl</a><span class="badge only">링크만</span></div></td></tr>
+<tr data-idx="30" data-smin="3" data-smax="3" data-topics="iface" data-local="1"><td class="sid"><code>hugo</code><div class="tdots"><span class="tdot t-iface" title="인터페이스"></span></div></td><td><a class="plink" href="papers/hugo.html">HuGo: LLMs as Whole-Body Policy Code Designers</a></td><td class="venue">프리프린트 2026-09</td><td class="sim"><span class="simv s3">3</span></td><td class="lic">–</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2609.30594" target="_blank" rel="noopener">arXiv 2609.30594</a><a class="chip loc" href="reference/hugo/paper.pdf">로컬 PDF</a></div></td></tr>
+<tr data-idx="31" data-smin="3" data-smax="3" data-topics="iface" data-local="1"><td class="sid"><code>r2s2</code><div class="tdots"><span class="tdot t-iface" title="인터페이스"></span></div></td><td><a class="plink" href="papers/r2s2.html">Unleashing Humanoid Reaching Potential via Real-world-Ready Skill Space</a></td><td class="venue">RA-L 2025</td><td class="sim"><span class="simv s3">3</span></td><td class="lic">Apache-2.0</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2505.10918" target="_blank" rel="noopener">arXiv 2505.10918</a><a class="chip gh" href="https://github.com/GalaxyGeneralRobotics/OpenWBT" target="_blank" rel="noopener">OpenWBT</a><a class="chip loc" href="reference/r2s2/paper.pdf">로컬 PDF</a></div><div class="cnote">코드: (잠재 공간 미공개)</div></td></tr>
+<tr data-idx="32" data-smin="2" data-smax="3" data-topics="box iface vision" data-local="1"><td class="sid"><code>demohlm</code><div class="tdots"><span class="tdot t-iface" title="인터페이스"></span><span class="tdot t-box" title="박스"></span><span class="tdot t-vision" title="시각"></span></div></td><td><a class="plink" href="papers/demohlm.html">DemoHLM: From One Demonstration to Generalizable Humanoid Loco-Manipulation</a></td><td class="venue">RSS 2026 (<a href="https://roboticsproceedings.org/rss22/p204.html" target="_blank" rel="noopener">rss22 p204</a>)</td><td class="sim"><span class="simv s3">2–3</span></td><td class="lic">MIT 배지, LICENSE 파일 없음</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2510.11258" target="_blank" rel="noopener">arXiv 2510.11258</a><a class="chip gh" href="https://github.com/BeingBeyond/DemoHLM" target="_blank" rel="noopener">BeingBeyond/DemoHLM</a><a class="chip loc" href="reference/demohlm/paper.pdf">로컬 PDF</a><a class="chip loc" href="reference/demohlm/code/">로컬 코드</a></div><div class="cnote">코드: (README·그림만) · 로컬: (README 뿐)</div></td></tr>
+<tr data-idx="33" data-smin="3" data-smax="3" data-topics="iface" data-local="0"><td class="sid"><code>ulc</code><div class="tdots"><span class="tdot t-iface" title="인터페이스"></span></div></td><td>ULC: Unified and Fine-Grained Controller for Humanoid Loco-Manipulation</td><td class="venue">프리프린트 2025-07</td><td class="sim"><span class="simv s3">3</span></td><td class="lic">미확인</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2507.06905" target="_blank" rel="noopener">arXiv 2507.06905</a><span class="badge only">링크만</span></div><div class="cnote">코드: 저장소 확인 못함</div></td></tr>
+<tr data-idx="34" data-smin="3" data-smax="3" data-topics="iface" data-local="0"><td class="sid"><code>falcon</code><div class="tdots"><span class="tdot t-iface" title="인터페이스"></span></div></td><td>FALCON: Force-Adaptive Humanoid Loco-Manipulation</td><td class="venue">L4DC 2026</td><td class="sim"><span class="simv s3">3</span></td><td class="lic">MIT</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2505.06776" target="_blank" rel="noopener">arXiv 2505.06776</a><a class="chip gh" href="https://github.com/LeCAR-Lab/FALCON" target="_blank" rel="noopener">LeCAR-Lab/FALCON</a><span class="badge only">링크만</span></div></td></tr>
+<tr data-idx="35" data-smin="3" data-smax="3" data-topics="iface" data-local="0"><td class="sid"><code>twist2</code><div class="tdots"><span class="tdot t-iface" title="인터페이스"></span></div></td><td>TWIST2: Scalable, Portable, Holistic Humanoid Data Collection</td><td class="venue">프리프린트 2025-11</td><td class="sim"><span class="simv s3">3</span></td><td class="lic">MIT</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2511.02832" target="_blank" rel="noopener">arXiv 2511.02832</a><a class="chip gh" href="https://github.com/amazon-far/TWIST2" target="_blank" rel="noopener">amazon-far/TWIST2</a><span class="badge only">링크만</span></div></td></tr>
+<tr data-idx="36" data-smin="3" data-smax="3" data-topics="iface" data-local="0"><td class="sid"><code>wholebodyvla</code><div class="tdots"><span class="tdot t-iface" title="인터페이스"></span></div></td><td>WholeBodyVLA: Unified Latent VLA for Whole-Body Loco-Manipulation</td><td class="venue">ICLR 2026</td><td class="sim"><span class="simv s3">3</span></td><td class="lic">MIT</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2512.11047" target="_blank" rel="noopener">arXiv 2512.11047</a><a class="chip gh" href="https://github.com/OpenDriveLab/WholebodyVLA" target="_blank" rel="noopener">OpenDriveLab/WholebodyVLA</a><span class="badge only">링크만</span></div></td></tr>
+<tr data-idx="37" data-smin="2" data-smax="3" data-topics="box iface" data-local="0"><td class="sid"><code>skillblender</code><div class="tdots"><span class="tdot t-iface" title="인터페이스"></span><span class="tdot t-box" title="박스"></span></div></td><td>SkillBlender: Versatile Humanoid Loco-Manipulation via Skill Blending</td><td class="venue">프리프린트 2025-06</td><td class="sim"><span class="simv s3">2–3</span></td><td class="lic">NOASSERTION</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2506.09366" target="_blank" rel="noopener">arXiv 2506.09366</a><a class="chip gh" href="https://github.com/Humanoid-SkillBlender/SkillBlender" target="_blank" rel="noopener">Humanoid-SkillBlender/SkillBlender</a><span class="badge only">링크만</span></div></td></tr>
+<tr data-idx="38" data-smin="3" data-smax="3" data-topics="iface" data-local="0"><td class="sid"><code>anymal_pnp</code><div class="tdots"><span class="tdot t-iface" title="인터페이스"></span></div></td><td>Collaborative Loco-Manipulation for Pick-and-Place with Dynamic Reward Curriculum (사족)</td><td class="venue">프리프린트 2025-09</td><td class="sim"><span class="simv s3">3</span></td><td class="lic">–</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2509.13239" target="_blank" rel="noopener">arXiv 2509.13239</a><span class="badge only">링크만</span></div></td></tr>
+<tr data-idx="39" data-smin="1" data-smax="3" data-topics="box vision" data-local="1"><td class="sid"><code>hdmi</code><div class="tdots"><span class="tdot t-box" title="박스"></span><span class="tdot t-vision" title="시각"></span></div></td><td><a class="plink" href="papers/hdmi.html">HDMI: Interactive Humanoid Whole-Body Control from Human Videos</a></td><td class="venue">프리프린트 2025</td><td class="sim"><span class="simv s3">1–3</span></td><td class="lic">LICENSE 없음</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2509.16757" target="_blank" rel="noopener">arXiv 2509.16757</a><a class="chip gh" href="https://github.com/LeCAR-Lab/HDMI" target="_blank" rel="noopener">LeCAR-Lab/HDMI</a><a class="chip loc" href="reference/hdmi/paper.pdf">로컬 PDF</a><a class="chip loc" href="reference/hdmi/code/">로컬 코드</a></div></td></tr>
+<tr data-idx="40" data-smin="2" data-smax="3" data-topics="box iface" data-local="1"><td class="sid"><code>hulk</code><div class="tdots"><span class="tdot t-iface" title="인터페이스"></span><span class="tdot t-box" title="박스"></span></div></td><td><a class="plink" href="papers/hulk.html">HULK: Whole-Body Forceful Loco-Manipulation for Humanoids</a></td><td class="venue">프리프린트 2026-10</td><td class="sim"><span class="simv s3">2–3</span></td><td class="lic">–</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2610.08970" target="_blank" rel="noopener">arXiv 2610.08970</a><a class="chip loc" href="reference/hulk/paper.pdf">로컬 PDF</a></div></td></tr>
+<tr data-idx="41" data-smin="3" data-smax="3" data-topics="box" data-local="1"><td class="sid"><code>lessmimic</code><div class="tdots"><span class="tdot t-box" title="박스"></span></div></td><td><a class="plink" href="papers/lessmimic.html">LessMimic: Long-Horizon Humanoid Interaction with Distance Fields</a></td><td class="venue">프리프린트 2026</td><td class="sim"><span class="simv s3">3</span></td><td class="lic">LICENSE 없음</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2602.21723" target="_blank" rel="noopener">arXiv 2602.21723</a><a class="chip gh" href="https://github.com/Yutang-Lin/LessMimic" target="_blank" rel="noopener">Yutang-Lin/LessMimic</a><a class="chip loc" href="reference/lessmimic/paper.pdf">로컬 PDF</a><a class="chip loc" href="reference/lessmimic/code/">로컬 코드</a></div><div class="cnote">코드: (README 만) · 로컬: (README 뿐)</div></td></tr>
+<tr data-idx="42" data-smin="3" data-smax="3" data-topics="box" data-local="1"><td class="sid"><code>omnicontact</code><div class="tdots"><span class="tdot t-box" title="박스"></span></div></td><td><a class="plink" href="papers/omnicontact.html">OmniContact: Chaining Meta-Skills via Contact Flow</a></td><td class="venue">CoRL 2026 (README)</td><td class="sim"><span class="simv s3">3</span></td><td class="lic">LICENSE 없음</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2606.26201" target="_blank" rel="noopener">arXiv 2606.26201</a><a class="chip gh" href="https://github.com/Ingrid789/OmniContact" target="_blank" rel="noopener">Ingrid789/OmniContact</a><a class="chip loc" href="reference/omnicontact/paper.pdf">로컬 PDF</a><a class="chip loc" href="reference/omnicontact/code/">로컬 코드</a></div><div class="cnote">코드: (Isaac Lab)</div></td></tr>
+<tr data-idx="43" data-smin="3" data-smax="3" data-topics="box" data-local="1"><td class="sid"><code>hotice</code><div class="tdots"><span class="tdot t-box" title="박스"></span></div></td><td><a class="plink" href="papers/hotice.html">HOTICE: Whole-Body Humanoid Object Transportation in Clutter</a></td><td class="venue">프리프린트 2026</td><td class="sim"><span class="simv s3">3</span></td><td class="lic">–</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2609.25363" target="_blank" rel="noopener">arXiv 2609.25363</a><a class="chip loc" href="reference/hotice/paper.pdf">로컬 PDF</a></div></td></tr>
+<tr data-idx="44" data-smin="3" data-smax="3" data-topics="box" data-local="1"><td class="sid"><code>embrace</code><div class="tdots"><span class="tdot t-box" title="박스"></span></div></td><td><a class="plink" href="papers/embrace.html">Embracing Bulky Objects with Humanoid Robots</a></td><td class="venue">ICRA 2026 (HOTICE 참고문헌)</td><td class="sim"><span class="simv s3">3</span></td><td class="lic">–</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2509.13534" target="_blank" rel="noopener">arXiv 2509.13534</a><a class="chip loc" href="reference/embrace/paper.pdf">로컬 PDF</a></div></td></tr>
+<tr data-idx="45" data-smin="3" data-smax="3" data-topics="box" data-local="1"><td class="sid"><code>boxlocomanip</code><div class="tdots"><span class="tdot t-box" title="박스"></span></div></td><td><a class="plink" href="papers/boxlocomanip.html">Hierarchical Planning and Control for Box Loco-Manipulation (Xie et al.)</a></td><td class="venue">Proc. ACM CGIT 2023</td><td class="sim"><span class="simv s3">3</span></td><td class="lic">–</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2306.09532" target="_blank" rel="noopener">arXiv 2306.09532</a><a class="chip loc" href="reference/boxlocomanip/paper.pdf">로컬 PDF</a></div></td></tr>
+<tr data-idx="46" data-smin="2" data-smax="3" data-topics="box vision" data-local="1"><td class="sid"><code>dexhumanoid_recipe</code><div class="tdots"><span class="tdot t-box" title="박스"></span><span class="tdot t-vision" title="시각"></span></div></td><td><a class="plink" href="papers/dexhumanoid_recipe.html">Sim-to-Real RL for Vision-Based Dexterous Manipulation on Humanoids (Lin et al.)</a></td><td class="venue">CoRL 2025</td><td class="sim"><span class="simv s3">2–3</span></td><td class="lic">–</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2502.20396" target="_blank" rel="noopener">arXiv 2502.20396</a><a class="chip loc" href="reference/dexhumanoid_recipe/paper.pdf">로컬 PDF</a></div></td></tr>
+<tr data-idx="47" data-smin="3" data-smax="3" data-topics="vision" data-local="1"><td class="sid"><code>nowyouseethat</code><div class="tdots"><span class="tdot t-vision" title="시각"></span></div></td><td><a class="plink" href="papers/nowyouseethat.html">Now You See That: End-to-End Humanoid Locomotion from Raw Pixels</a></td><td class="venue">프리프린트 2026</td><td class="sim"><span class="simv s3">3</span></td><td class="lic">표기 없음</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2602.06382" target="_blank" rel="noopener">arXiv 2602.06382</a><a class="chip gh" href="https://github.com/Hellod035/Now_You_See_That" target="_blank" rel="noopener">Hellod035/Now_You_See_That</a><a class="chip loc" href="reference/nowyouseethat/paper.pdf">로컬 PDF</a></div><div class="cnote">코드: (README 만)</div></td></tr>
+<tr data-idx="48" data-smin="3" data-smax="3" data-topics="vision" data-local="1"><td class="sid"><code>dextrah_rgb</code><div class="tdots"><span class="tdot t-vision" title="시각"></span></div></td><td><a class="plink" href="papers/dextrah_rgb.html">DextrAH-RGB: Visuomotor Policies to Grasp Anything</a></td><td class="venue">프리프린트 2024</td><td class="sim"><span class="simv s3">3</span></td><td class="lic">NVIDIA License</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2412.01791" target="_blank" rel="noopener">arXiv 2412.01791</a><a class="chip loc" href="reference/dextrah_rgb/paper.pdf">로컬 PDF</a></div><div class="cnote">코드: DEXTRAH 저장소에 포함</div></td></tr>
+<tr data-idx="49" data-smin="3" data-smax="3" data-topics="vision" data-local="1"><td class="sid"><code>slim</code><div class="tdots"><span class="tdot t-vision" title="시각"></span></div></td><td><a class="plink" href="papers/slim.html">SLIM: Sim-to-Real Legged Instructive Manipulation</a></td><td class="venue">프리프린트 2025</td><td class="sim"><span class="simv s3">3</span></td><td class="lic">–</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2501.09905" target="_blank" rel="noopener">arXiv 2501.09905</a><a class="chip loc" href="reference/slim/paper.pdf">로컬 PDF</a></div></td></tr>
+<tr data-idx="50" data-smin="3" data-smax="3" data-topics="vision" data-local="1"><td class="sid"><code>student_informed_teacher</code><div class="tdots"><span class="tdot t-vision" title="시각"></span></div></td><td><a class="plink" href="papers/student_informed_teacher.html">Student-Informed Teacher Training (SITT)</a></td><td class="venue">ICLR 2025</td><td class="sim"><span class="simv s3">3</span></td><td class="lic">–</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2412.09149" target="_blank" rel="noopener">arXiv 2412.09149</a><a class="chip loc" href="reference/student_informed_teacher/paper.pdf">로컬 PDF</a></div></td></tr>
+<tr data-idx="51" data-smin="3" data-smax="3" data-topics="vision" data-local="0"><td class="sid"><code>torque_align</code><div class="tdots"><span class="tdot t-vision" title="시각"></span></div></td><td>Simple Torque-Observation Alignment for Zero-Shot Sim-to-Real Grasping</td><td class="venue">프리프린트 2026-09</td><td class="sim"><span class="simv s3">3</span></td><td class="lic">–</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2609.29031" target="_blank" rel="noopener">arXiv 2609.29031</a><span class="badge only">링크만</span></div></td></tr>
+<tr data-idx="52" data-smin="3" data-smax="3" data-topics="frozen" data-local="1"><td class="sid"><code>hilmares</code><div class="tdots"><span class="tdot t-frozen" title="학습 기법"></span></div></td><td><a class="plink" href="papers/hilmares.html">HiLMa-Res: Hierarchical Residual RL for Quadrupedal Loco-Manipulation</a></td><td class="venue">IROS 2024</td><td class="sim"><span class="simv s3">3</span></td><td class="lic">–</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2407.06584" target="_blank" rel="noopener">arXiv 2407.06584</a><a class="chip loc" href="reference/hilmares/paper.pdf">로컬 PDF</a></div><div class="cnote">코드: 확인 못함</div></td></tr>
+<tr data-idx="53" data-smin="3" data-smax="3" data-topics="frozen" data-local="1"><td class="sid"><code>maskedmimic</code><div class="tdots"><span class="tdot t-frozen" title="학습 기법"></span></div></td><td><a class="plink" href="papers/maskedmimic.html">MaskedMimic: Unified Physics-Based Character Control</a></td><td class="venue">SIGGRAPH Asia 2024</td><td class="sim"><span class="simv s3">3</span></td><td class="lic">Apache-2.0</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2409.14393" target="_blank" rel="noopener">arXiv 2409.14393</a><a class="chip gh" href="https://github.com/NVlabs/ProtoMotions" target="_blank" rel="noopener">NVlabs/ProtoMotions</a><a class="chip loc" href="reference/maskedmimic/paper.pdf">로컬 PDF</a><a class="chip loc" href="reference/maskedmimic/code/">로컬 코드</a><span class="badge lfs" title="Git LFS 포인터만 있음: git lfs pull 필요">LFS</span></div><div class="cnote">로컬: <strong>LFS</strong>: data/pretrained_models/</div></td></tr>
+<tr data-idx="54" data-smin="3" data-smax="3" data-topics="frozen" data-local="1"><td class="sid"><code>puppeteer</code><div class="tdots"><span class="tdot t-frozen" title="학습 기법"></span></div></td><td><a class="plink" href="papers/puppeteer.html">Hierarchical World Models as Visual Whole-Body Humanoid Controllers</a></td><td class="venue">ICLR 2025</td><td class="sim"><span class="simv s3">3</span></td><td class="lic">MIT</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2405.18418" target="_blank" rel="noopener">arXiv 2405.18418</a><a class="chip gh" href="https://github.com/nicklashansen/puppeteer" target="_blank" rel="noopener">nicklashansen/puppeteer</a><a class="chip loc" href="reference/puppeteer/paper.pdf">로컬 PDF</a><a class="chip loc" href="reference/puppeteer/code/">로컬 코드</a></div></td></tr>
+<tr data-idx="55" data-smin="3" data-smax="3" data-topics="frozen" data-local="0"><td class="sid"><code>tennis</code><div class="tdots"><span class="tdot t-frozen" title="학습 기법"></span></div></td><td>Learning Physically Simulated Tennis Skills from Broadcast Videos</td><td class="venue">SIGGRAPH 2023</td><td class="sim"><span class="simv s3">3</span></td><td class="lic">–</td><td class="links"><div class="chips"><a class="chip ext" href="https://research.nvidia.com/labs/toronto-ai/vid2player3d" target="_blank" rel="noopener">프로젝트</a><span class="badge only">링크만</span></div></td></tr>
+<tr data-idx="56" data-smin="3" data-smax="3" data-topics="frozen" data-local="0"><td class="sid"><code>humanoidarena</code><div class="tdots"><span class="tdot t-frozen" title="학습 기법"></span></div></td><td>HumanoidArena: Egocentric Hierarchical Whole-body Learning</td><td class="venue">프리프린트 2026-06</td><td class="sim"><span class="simv s3">3</span></td><td class="lic">미기재</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2606.17833" target="_blank" rel="noopener">arXiv 2606.17833</a><a class="chip ext" href="https://humanoidarena.github.io" target="_blank" rel="noopener">humanoidarena.github.io</a><span class="badge only">링크만</span></div></td></tr>
+<tr data-idx="57" data-smin="3" data-smax="3" data-topics="frozen" data-local="0"><td class="sid"><code>swap</code><div class="tdots"><span class="tdot t-frozen" title="학습 기법"></span></div></td><td>SWAP: Test-Time Steerable Humanoid Collision Avoidance</td><td class="venue">프리프린트 2026-10</td><td class="sim"><span class="simv s3">3</span></td><td class="lic">–</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2610.25711" target="_blank" rel="noopener">arXiv 2610.25711</a><span class="badge only">링크만</span></div><div class="cnote">코드: 미기재</div></td></tr>
+<tr data-idx="58" data-smin="1" data-smax="3" data-topics="frozen iface" data-local="0"><td class="sid"><code>humanoidbench</code><div class="tdots"><span class="tdot t-iface" title="인터페이스"></span><span class="tdot t-frozen" title="학습 기법"></span></div></td><td>HumanoidBench</td><td class="venue">RSS 2024</td><td class="sim"><span class="simv s3">1–3</span></td><td class="lic">NOASSERTION</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2403.10506" target="_blank" rel="noopener">arXiv 2403.10506</a><a class="chip gh" href="https://github.com/carlosferrazza/humanoid-bench" target="_blank" rel="noopener">carlosferrazza/humanoid-bench</a><span class="badge only">링크만</span></div></td></tr>
+<tr data-idx="59" data-smin="3" data-smax="3" data-topics="frozen" data-local="0"><td class="sid"><code>bangbang</code><div class="tdots"><span class="tdot t-frozen" title="학습 기법"></span></div></td><td>Is Bang-Bang Control All You Need?</td><td class="venue">NeurIPS 2021</td><td class="sim"><span class="simv s3">3</span></td><td class="lic">–</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2111.02552" target="_blank" rel="noopener">arXiv 2111.02552</a><span class="badge only">링크만</span></div></td></tr>
+<tr data-idx="60" data-smin="3" data-smax="3" data-topics="frozen" data-local="0"><td class="sid"><code>capg</code><div class="tdots"><span class="tdot t-frozen" title="학습 기법"></span></div></td><td>Clipped Action Policy Gradient</td><td class="venue">ICML 2018</td><td class="sim"><span class="simv s3">3</span></td><td class="lic">–</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/1802.07564" target="_blank" rel="noopener">arXiv 1802.07564</a><span class="badge only">링크만</span></div></td></tr>
+<tr data-idx="61" data-smin="3" data-smax="3" data-topics="frozen" data-local="0"><td class="sid"><code>caps</code><div class="tdots"><span class="tdot t-frozen" title="학습 기법"></span></div></td><td>Regularizing Action Policies for Smooth Control (CAPS)</td><td class="venue">ICRA 2021</td><td class="sim"><span class="simv s3">3</span></td><td class="lic">–</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2012.06644" target="_blank" rel="noopener">arXiv 2012.06644</a><span class="badge only">링크만</span></div></td></tr>
+<tr data-idx="62" data-smin="3" data-smax="3" data-topics="frozen" data-local="0"><td class="sid"><code>chou_beta</code><div class="tdots"><span class="tdot t-frozen" title="학습 기법"></span></div></td><td>Stochastic Policy Gradients with the Beta Distribution</td><td class="venue">ICML 2017</td><td class="sim"><span class="simv s3">3</span></td><td class="lic">–</td><td class="links"><div class="chips"><a class="chip ext" href="http://proceedings.mlr.press/v70/chou17a.html" target="_blank" rel="noopener">PMLR</a><span class="badge only">링크만</span></div></td></tr>
+<tr data-idx="63" data-smin="2" data-smax="2" data-topics="iface" data-local="0"><td class="sid"><code>humanoidmimicgen</code><div class="tdots"><span class="tdot t-iface" title="인터페이스"></span></div></td><td>HumanoidMimicGen: Data Generation via Whole-Body Planning</td><td class="venue">프리프린트 2026-05</td><td class="sim"><span class="simv s2">2</span></td><td class="lic">–</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2605.27724" target="_blank" rel="noopener">arXiv 2605.27724</a><span class="badge only">링크만</span></div></td></tr>
+<tr data-idx="64" data-smin="2" data-smax="2" data-topics="iface" data-local="0"><td class="sid"><code>openhlm</code><div class="tdots"><span class="tdot t-iface" title="인터페이스"></span></div></td><td>OpenHLM: An Empirical Recipe for Whole-Body Humanoid Loco-Manipulation</td><td class="venue">프리프린트 2026-06</td><td class="sim"><span class="simv s2">2</span></td><td class="lic">Apache-2.0</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2606.22174" target="_blank" rel="noopener">arXiv 2606.22174</a><a class="chip gh" href="https://github.com/OpenHLM-project/OpenHLM" target="_blank" rel="noopener">OpenHLM-project/OpenHLM</a><span class="badge only">링크만</span></div></td></tr>
+<tr data-idx="65" data-smin="2" data-smax="2" data-topics="iface" data-local="0"><td class="sid"><code>workhorse</code><div class="tdots"><span class="tdot t-iface" title="인터페이스"></span></div></td><td>Workhorse: Robust Whole-Body Loco-Manipulation from Human Data</td><td class="venue">프리프린트 2026-10</td><td class="sim"><span class="simv s2">2</span></td><td class="lic">–</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2610.09117" target="_blank" rel="noopener">arXiv 2610.09117</a><span class="badge only">링크만</span></div></td></tr>
+<tr data-idx="66" data-smin="2" data-smax="2" data-topics="iface" data-local="0"><td class="sid"><code>cwi</code><div class="tdots"><span class="tdot t-iface" title="인터페이스"></span></div></td><td>CWI: Composite Humanoid Whole-Body Imitation</td><td class="venue">프리프린트 2026-06</td><td class="sim"><span class="simv s2">2</span></td><td class="lic">–</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2606.27676" target="_blank" rel="noopener">arXiv 2606.27676</a><span class="badge only">링크만</span></div></td></tr>
+<tr data-idx="67" data-smin="2" data-smax="2" data-topics="iface" data-local="0"><td class="sid"><code>ceer</code><div class="tdots"><span class="tdot t-iface" title="인터페이스"></span></div></td><td>CEER: Compliant End-Effector and Root Control</td><td class="venue">프리프린트 2026-05</td><td class="sim"><span class="simv s2">2</span></td><td class="lic">–</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2605.19981" target="_blank" rel="noopener">arXiv 2605.19981</a><span class="badge only">링크만</span></div></td></tr>
+<tr data-idx="68" data-smin="2" data-smax="2" data-topics="iface" data-local="0"><td class="sid"><code>leverb</code><div class="tdots"><span class="tdot t-iface" title="인터페이스"></span></div></td><td>LeVERB: Latent Vision-Language Instruction</td><td class="venue">프리프린트 2025-06</td><td class="sim"><span class="simv s2">2</span></td><td class="lic">–</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2506.13751" target="_blank" rel="noopener">arXiv 2506.13751</a><span class="badge only">링크만</span></div></td></tr>
+<tr data-idx="69" data-smin="2" data-smax="2" data-topics="iface" data-local="0"><td class="sid"><code>mobile_tv</code><div class="tdots"><span class="tdot t-iface" title="인터페이스"></span></div></td><td>Mobile-TeleVision: Predictive Motion Priors</td><td class="venue">프리프린트 2024-12</td><td class="sim"><span class="simv s2">2</span></td><td class="lic">–</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2412.07773" target="_blank" rel="noopener">arXiv 2412.07773</a><span class="badge only">링크만</span></div></td></tr>
+<tr data-idx="70" data-smin="2" data-smax="2" data-topics="iface" data-local="0"><td class="sid"><code>hover</code><div class="tdots"><span class="tdot t-iface" title="인터페이스"></span></div></td><td>HOVER: Versatile Neural Whole-Body Controller</td><td class="venue">ICRA 2025</td><td class="sim"><span class="simv s2">2</span></td><td class="lic">Apache-2.0</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2410.21229" target="_blank" rel="noopener">arXiv 2410.21229</a><a class="chip gh" href="https://github.com/NVlabs/HOVER" target="_blank" rel="noopener">NVlabs/HOVER</a><span class="badge only">링크만</span></div></td></tr>
+<tr data-idx="71" data-smin="2" data-smax="2" data-topics="iface" data-local="0"><td class="sid"><code>hex</code><div class="tdots"><span class="tdot t-iface" title="인터페이스"></span></div></td><td>HEX: Humanoid-Aligned Experts for Cross-Embodiment Manipulation</td><td class="venue">프리프린트 2026-04</td><td class="sim"><span class="simv s2">2</span></td><td class="lic">LICENSE 없음</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2604.07993" target="_blank" rel="noopener">arXiv 2604.07993</a><a class="chip gh" href="https://github.com/Open-X-Humanoid/HEX" target="_blank" rel="noopener">Open-X-Humanoid/HEX</a><span class="badge only">링크만</span></div></td></tr>
+<tr data-idx="72" data-smin="2" data-smax="2" data-topics="iface" data-local="0"><td class="sid"><code>haf</code><div class="tdots"><span class="tdot t-iface" title="인터페이스"></span></div></td><td>HAF: Hierarchical Action Flow and Spectral Latent RL</td><td class="venue">프리프린트 2026-08</td><td class="sim"><span class="simv s2">2</span></td><td class="lic">–</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2608.16837" target="_blank" rel="noopener">arXiv 2608.16837</a><span class="badge only">링크만</span></div></td></tr>
+<tr data-idx="73" data-smin="2" data-smax="2" data-topics="box" data-local="0"><td class="sid"><code>omniretarget</code><div class="tdots"><span class="tdot t-box" title="박스"></span></div></td><td>OmniRetarget</td><td class="venue">프리프린트 2025</td><td class="sim"><span class="simv s2">2</span></td><td class="lic">Apache-2.0</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2509.26633" target="_blank" rel="noopener">arXiv 2509.26633</a><a class="chip gh" href="https://github.com/amazon-far/holosoma" target="_blank" rel="noopener">amazon-far/holosoma</a><span class="badge only">링크만</span></div><div class="cnote">코드: (내용 미확인)</div></td></tr>
+<tr data-idx="74" data-smin="2" data-smax="2" data-topics="box" data-local="0"><td class="sid"><code>dreamcontrol</code><div class="tdots"><span class="tdot t-box" title="박스"></span></div></td><td>DreamControl (확산 사전 + RL)</td><td class="venue">프리프린트 2025</td><td class="sim"><span class="simv s2">2</span></td><td class="lic">–</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2509.14353" target="_blank" rel="noopener">arXiv 2509.14353</a><span class="badge only">링크만</span></div><div class="cnote">코드: 미확인</div></td></tr>
+<tr data-idx="75" data-smin="2" data-smax="2" data-topics="box" data-local="0"><td class="sid"><code>coohoi</code><div class="tdots"><span class="tdot t-box" title="박스"></span></div></td><td>CooHOI: Cooperative HOI with Manipulated Object Dynamics</td><td class="venue">NeurIPS 2024</td><td class="sim"><span class="simv s2">2</span></td><td class="lic">LICENSE 없음</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2406.14558" target="_blank" rel="noopener">arXiv 2406.14558</a><a class="chip gh" href="https://github.com/Winston-Gu/CooHOI" target="_blank" rel="noopener">Winston-Gu/CooHOI</a><span class="badge only">링크만</span></div></td></tr>
+<tr data-idx="76" data-smin="2" data-smax="2" data-topics="box" data-local="0"><td class="sid"><code>tokenhsi</code><div class="tdots"><span class="tdot t-box" title="박스"></span></div></td><td>TokenHSI</td><td class="venue">CVPR 2025</td><td class="sim"><span class="simv s2">2</span></td><td class="lic">LICENSE 없음</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2503.19901" target="_blank" rel="noopener">arXiv 2503.19901</a><a class="chip gh" href="https://github.com/liangpan99/TokenHSI" target="_blank" rel="noopener">liangpan99/TokenHSI</a><span class="badge only">링크만</span></div></td></tr>
+<tr data-idx="77" data-smin="2" data-smax="2" data-topics="box" data-local="0"><td class="sid"><code>ibfm</code><div class="tdots"><span class="tdot t-box" title="박스"></span></div></td><td>I-BFM: Reward-Conditioned Behavior Foundation Model</td><td class="venue">프리프린트 2026</td><td class="sim"><span class="simv s2">2</span></td><td class="lic">–</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2610.06129" target="_blank" rel="noopener">arXiv 2610.06129</a><span class="badge only">링크만</span></div></td></tr>
+<tr data-idx="78" data-smin="2" data-smax="2" data-topics="box" data-local="0"><td class="sid"><code>contactmimic</code><div class="tdots"><span class="tdot t-box" title="박스"></span></div></td><td>ContactMimic</td><td class="venue">프리프린트 2026</td><td class="sim"><span class="simv s2">2</span></td><td class="lic">논문 CC BY 4.0</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2607.08742" target="_blank" rel="noopener">arXiv 2607.08742</a><span class="badge only">링크만</span></div></td></tr>
+<tr data-idx="79" data-smin="2" data-smax="2" data-topics="box" data-local="0"><td class="sid"><code>opt2skill</code><div class="tdots"><span class="tdot t-box" title="박스"></span></div></td><td>Opt2Skill</td><td class="venue">프리프린트 2024</td><td class="sim"><span class="simv s2">2</span></td><td class="lic">–</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2409.20514" target="_blank" rel="noopener">arXiv 2409.20514</a><span class="badge only">링크만</span></div><div class="cnote">코드: 미확인</div></td></tr>
+<tr data-idx="80" data-smin="2" data-smax="2" data-topics="box" data-local="0"><td class="sid"><code>softa</code><div class="tdots"><span class="tdot t-box" title="박스"></span></div></td><td>Hold My Beer (SoFTA)</td><td class="venue">CoRL 2025</td><td class="sim"><span class="simv s2">2</span></td><td class="lic">MIT</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2505.24198" target="_blank" rel="noopener">arXiv 2505.24198</a><a class="chip gh" href="https://github.com/LeCAR-Lab/SoFTA" target="_blank" rel="noopener">LeCAR-Lab/SoFTA</a><span class="badge only">링크만</span></div></td></tr>
+<tr data-idx="81" data-smin="2" data-smax="2" data-topics="box" data-local="0"><td class="sid"><code>interphys</code><div class="tdots"><span class="tdot t-box" title="박스"></span></div></td><td>Synthesizing Physical Character-Scene Interactions</td><td class="venue">프리프린트 2023</td><td class="sim"><span class="simv s2">2</span></td><td class="lic">–</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2302.00883" target="_blank" rel="noopener">arXiv 2302.00883</a><span class="badge only">링크만</span></div></td></tr>
+<tr data-idx="82" data-smin="2" data-smax="2" data-topics="vision" data-local="0"><td class="sid"><code>robot_parkour</code><div class="tdots"><span class="tdot t-vision" title="시각"></span></div></td><td>Robot Parkour Learning</td><td class="venue">CoRL 2023 Oral</td><td class="sim"><span class="simv s2">2</span></td><td class="lic">MIT</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2309.05665" target="_blank" rel="noopener">arXiv 2309.05665</a><a class="chip gh" href="https://github.com/ZiwenZhuang/parkour" target="_blank" rel="noopener">ZiwenZhuang/parkour</a><span class="badge only">링크만</span></div></td></tr>
+<tr data-idx="83" data-smin="2" data-smax="2" data-topics="vision" data-local="0"><td class="sid"><code>extreme_parkour</code><div class="tdots"><span class="tdot t-vision" title="시각"></span></div></td><td>Extreme Parkour with Legged Robots</td><td class="venue">ICRA 2024 (저장소 표기)</td><td class="sim"><span class="simv s2">2</span></td><td class="lic">CC BY-NC 4.0</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2309.14341" target="_blank" rel="noopener">arXiv 2309.14341</a><a class="chip gh" href="https://github.com/chengxuxin/extreme-parkour" target="_blank" rel="noopener">chengxuxin/extreme-parkour</a><span class="badge only">링크만</span></div></td></tr>
+<tr data-idx="84" data-smin="2" data-smax="2" data-topics="vision" data-local="0"><td class="sid"><code>hora</code><div class="tdots"><span class="tdot t-vision" title="시각"></span></div></td><td>In-Hand Object Rotation via Rapid Motor Adaptation</td><td class="venue">CoRL 2022</td><td class="sim"><span class="simv s2">2</span></td><td class="lic">MIT 문안</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2210.04887" target="_blank" rel="noopener">arXiv 2210.04887</a><a class="chip gh" href="https://github.com/HaozhiQi/hora" target="_blank" rel="noopener">HaozhiQi/hora</a><span class="badge only">링크만</span></div></td></tr>
+<tr data-idx="85" data-smin="2" data-smax="2" data-topics="vision" data-local="0"><td class="sid"><code>visual_dexterity</code><div class="tdots"><span class="tdot t-vision" title="시각"></span></div></td><td>Visual Dexterity</td><td class="venue">Science Robotics 2023</td><td class="sim"><span class="simv s2">2</span></td><td class="lic">MIT</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2211.11744" target="_blank" rel="noopener">arXiv 2211.11744</a><a class="chip gh" href="https://github.com/Improbable-AI/dexenv" target="_blank" rel="noopener">Improbable-AI/dexenv</a><span class="badge only">링크만</span></div></td></tr>
+<tr data-idx="86" data-smin="2" data-smax="2" data-topics="vision" data-local="0"><td class="sid"><code>videomimic</code><div class="tdots"><span class="tdot t-vision" title="시각"></span></div></td><td>VideoMimic: Visual Imitation Enables Contextual Humanoid Control</td><td class="venue">프리프린트 2025</td><td class="sim"><span class="simv s2">2</span></td><td class="lic">MIT</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2505.03729" target="_blank" rel="noopener">arXiv 2505.03729</a><a class="chip gh" href="https://github.com/hongsukchoi/VideoMimic" target="_blank" rel="noopener">hongsukchoi/VideoMimic</a><span class="badge only">링크만</span></div></td></tr>
+<tr data-idx="87" data-smin="2" data-smax="2" data-topics="vision" data-local="0"><td class="sid"><code>vml</code><div class="tdots"><span class="tdot t-vision" title="시각"></span></div></td><td>Visual Manipulation with Legs</td><td class="venue">프리프린트 2024</td><td class="sim"><span class="simv s2">2</span></td><td class="lic">–</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2410.11345" target="_blank" rel="noopener">arXiv 2410.11345</a><span class="badge only">링크만</span></div></td></tr>
+<tr data-idx="88" data-smin="2" data-smax="2" data-topics="frozen" data-local="0"><td class="sid"><code>calm</code><div class="tdots"><span class="tdot t-frozen" title="학습 기법"></span></div></td><td>CALM: Conditional Adversarial Latent Models</td><td class="venue">SIGGRAPH 2023</td><td class="sim"><span class="simv s2">2</span></td><td class="lic">NOASSERTION</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2305.02195" target="_blank" rel="noopener">arXiv 2305.02195</a><a class="chip gh" href="https://github.com/NVlabs/CALM" target="_blank" rel="noopener">NVlabs/CALM</a><span class="badge only">링크만</span></div></td></tr>
+<tr data-idx="89" data-smin="2" data-smax="2" data-topics="frozen" data-local="0"><td class="sid"><code>beyondmimic</code><div class="tdots"><span class="tdot t-frozen" title="학습 기법"></span></div></td><td>BeyondMimic</td><td class="venue">프리프린트 2025-08</td><td class="sim"><span class="simv s2">2</span></td><td class="lic">MIT</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2508.08241" target="_blank" rel="noopener">arXiv 2508.08241</a><a class="chip gh" href="https://github.com/HybridRobotics/whole_body_tracking" target="_blank" rel="noopener">HybridRobotics/whole_body_tracking</a><span class="badge only">링크만</span></div></td></tr>
+<tr data-idx="90" data-smin="2" data-smax="2" data-topics="frozen" data-local="0"><td class="sid"><code>pdp</code><div class="tdots"><span class="tdot t-frozen" title="학습 기법"></span></div></td><td>PDP: Physics-Based Character Animation via Diffusion Policy</td><td class="venue">SIGGRAPH Asia 2024</td><td class="sim"><span class="simv s2">2</span></td><td class="lic">–</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2406.00960" target="_blank" rel="noopener">arXiv 2406.00960</a><span class="badge only">링크만</span></div></td></tr>
+<tr data-idx="91" data-smin="2" data-smax="2" data-topics="frozen" data-local="0"><td class="sid"><code>unihsi</code><div class="tdots"><span class="tdot t-frozen" title="학습 기법"></span></div></td><td>UniHSI: Prompted Chain-of-Contacts</td><td class="venue">ICLR 2024</td><td class="sim"><span class="simv s2">2</span></td><td class="lic">–</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2309.07918" target="_blank" rel="noopener">arXiv 2309.07918</a><span class="badge only">링크만</span></div></td></tr>
+<tr data-idx="92" data-smin="2" data-smax="2" data-topics="frozen" data-local="0"><td class="sid"><code>lucid</code><div class="tdots"><span class="tdot t-frozen" title="학습 기법"></span></div></td><td>LUCID: Latent-Skill Unified Control via Imagined Dynamics</td><td class="venue">프리프린트 2026-08</td><td class="sim"><span class="simv s2">2</span></td><td class="lic">–</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2608.07746" target="_blank" rel="noopener">arXiv 2608.07746</a><span class="badge only">링크만</span></div></td></tr>
+<tr data-idx="93" data-smin="1" data-smax="2" data-topics="box frozen" data-local="0"><td class="sid"><code>imagine2real</code><div class="tdots"><span class="tdot t-box" title="박스"></span><span class="tdot t-frozen" title="학습 기법"></span></div></td><td>Imagine2Real</td><td class="venue">프리프린트 2026</td><td class="sim"><span class="simv s2">1–2</span></td><td class="lic">–</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2605.22272" target="_blank" rel="noopener">arXiv 2605.22272</a><span class="badge only">링크만</span></div></td></tr>
+<tr data-idx="94" data-smin="2" data-smax="2" data-topics="frozen" data-local="0"><td class="sid"><code>asc</code><div class="tdots"><span class="tdot t-frozen" title="학습 기법"></span></div></td><td>ASC: Adaptive Skill Coordination for Mobile Manipulation</td><td class="venue">프리프린트 2023</td><td class="sim"><span class="simv s2">2</span></td><td class="lic">–</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2304.00410" target="_blank" rel="noopener">arXiv 2304.00410</a><span class="badge only">링크만</span></div></td></tr>
+<tr data-idx="95" data-smin="2" data-smax="2" data-topics="frozen" data-local="0"><td class="sid"><code>hippo</code><div class="tdots"><span class="tdot t-frozen" title="학습 기법"></span></div></td><td>Sub-policy Adaptation for Hierarchical RL (HiPPO)</td><td class="venue">ICLR 2020</td><td class="sim"><span class="simv s2">2</span></td><td class="lic">–</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/1906.05862" target="_blank" rel="noopener">arXiv 1906.05862</a><span class="badge only">링크만</span></div></td></tr>
+<tr data-idx="96" data-smin="2" data-smax="2" data-topics="frozen" data-local="0"><td class="sid"><code>ctrlz</code><div class="tdots"><span class="tdot t-frozen" title="학습 기법"></span></div></td><td>Ctrl-Z: Recovering from Instability in RL</td><td class="venue">프리프린트 2019</td><td class="sim"><span class="simv s2">2</span></td><td class="lic">–</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/1910.03732" target="_blank" rel="noopener">arXiv 1910.03732</a><span class="badge only">링크만</span></div></td></tr>
+<tr data-idx="97" data-smin="2" data-smax="2" data-topics="frozen" data-local="0"><td class="sid"><code>reliability</code><div class="tdots"><span class="tdot t-frozen" title="학습 기법"></span></div></td><td>Measuring the Reliability of RL Algorithms</td><td class="venue">ICLR 2020</td><td class="sim"><span class="simv s2">2</span></td><td class="lic">–</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/1912.05663" target="_blank" rel="noopener">arXiv 1912.05663</a><span class="badge only">링크만</span></div></td></tr>
+<tr data-idx="98" data-smin="2" data-smax="2" data-topics="frozen" data-local="0"><td class="sid"><code>rlmatters</code><div class="tdots"><span class="tdot t-frozen" title="학습 기법"></span></div></td><td>Deep RL that Matters</td><td class="venue">AAAI 2018</td><td class="sim"><span class="simv s2">2</span></td><td class="lic">–</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/1709.06560" target="_blank" rel="noopener">arXiv 1709.06560</a><span class="badge only">링크만</span></div></td></tr>
+<tr data-idx="99" data-smin="1" data-smax="2" data-topics="box" data-local="0"><td class="sid"><code>intermimic</code><div class="tdots"><span class="tdot t-box" title="박스"></span></div></td><td>InterMimic</td><td class="venue">CVPR 2025</td><td class="sim"><span class="simv s2">1–2</span></td><td class="lic">MIT</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2502.20390" target="_blank" rel="noopener">arXiv 2502.20390</a><a class="chip gh" href="https://github.com/Sirui-Xu/InterMimic" target="_blank" rel="noopener">Sirui-Xu/InterMimic</a><span class="badge only">링크만</span></div></td></tr>
+<tr data-idx="100" data-smin="1" data-smax="2" data-topics="box" data-local="0"><td class="sid"><code>genhoi</code><div class="tdots"><span class="tdot t-box" title="박스"></span></div></td><td>생성 영상 기반 HOI</td><td class="venue">프리프린트 2026</td><td class="sim"><span class="simv s2">1–2</span></td><td class="lic">–</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2606.12995" target="_blank" rel="noopener">arXiv 2606.12995</a><span class="badge only">링크만</span></div><div class="cnote">코드: 없음/예정</div></td></tr>
+<tr data-idx="101" data-smin="1" data-smax="2" data-topics="box" data-local="0"><td class="sid"><code>scenebot</code><div class="tdots"><span class="tdot t-box" title="박스"></span></div></td><td>장면 접촉 기반 HOI</td><td class="venue">프리프린트 2026</td><td class="sim"><span class="simv s2">1–2</span></td><td class="lic">–</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2606.27581" target="_blank" rel="noopener">arXiv 2606.27581</a><span class="badge only">링크만</span></div><div class="cnote">코드: 없음/예정</div></td></tr>
+<tr data-idx="102" data-smin="1" data-smax="1" data-topics="iface" data-local="0"><td class="sid"><code>being0</code><div class="tdots"><span class="tdot t-iface" title="인터페이스"></span></div></td><td>Being-0: Humanoid Agent with VLMs and Modular Skills</td><td class="venue">프리프린트 2025-03</td><td class="sim"><span class="simv s1">1</span></td><td class="lic">LICENSE 없음</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2503.12533" target="_blank" rel="noopener">arXiv 2503.12533</a><a class="chip gh" href="https://github.com/BeingBeyond/Being-0" target="_blank" rel="noopener">BeingBeyond/Being-0</a><span class="badge only">링크만</span></div></td></tr>
+<tr data-idx="103" data-smin="1" data-smax="1" data-topics="iface" data-local="0"><td class="sid"><code>trajbooster</code><div class="tdots"><span class="tdot t-iface" title="인터페이스"></span></div></td><td>TrajBooster</td><td class="venue">프리프린트 2025-09</td><td class="sim"><span class="simv s1">1</span></td><td class="lic">–</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2509.11839" target="_blank" rel="noopener">arXiv 2509.11839</a><span class="badge only">링크만</span></div><div class="cnote">코드: 공식 여부 미확인</div></td></tr>
+<tr data-idx="104" data-smin="1" data-smax="1" data-topics="iface" data-local="0"><td class="sid"><code>omnih2o</code><div class="tdots"><span class="tdot t-iface" title="인터페이스"></span></div></td><td>OmniH2O</td><td class="venue">프리프린트 2024-06</td><td class="sim"><span class="simv s1">1</span></td><td class="lic">LICENSE 없음</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2406.08858" target="_blank" rel="noopener">arXiv 2406.08858</a><a class="chip gh" href="https://github.com/LeCAR-Lab/human2humanoid" target="_blank" rel="noopener">LeCAR-Lab/human2humanoid</a><span class="badge only">링크만</span></div></td></tr>
+<tr data-idx="105" data-smin="1" data-smax="1" data-topics="iface" data-local="0"><td class="sid"><code>halomi</code><div class="tdots"><span class="tdot t-iface" title="인터페이스"></span></div></td><td>HALOMI: Active Perception from Human Demonstrations</td><td class="venue">프리프린트 2026-06</td><td class="sim"><span class="simv s1">1</span></td><td class="lic">–</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2606.18772" target="_blank" rel="noopener">arXiv 2606.18772</a><span class="badge only">링크만</span></div></td></tr>
+<tr data-idx="106" data-smin="1" data-smax="1" data-topics="iface" data-local="0"><td class="sid"><code>clone</code><div class="tdots"><span class="tdot t-iface" title="인터페이스"></span></div></td><td>CLONE: Closed-Loop Whole-Body Teleoperation</td><td class="venue">프리프린트 2025-06</td><td class="sim"><span class="simv s1">1</span></td><td class="lic">–</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2506.08931" target="_blank" rel="noopener">arXiv 2506.08931</a><span class="badge only">링크만</span></div></td></tr>
+<tr data-idx="107" data-smin="1" data-smax="1" data-topics="vision" data-local="0"><td class="sid"><code>helpful_doggybot</code><div class="tdots"><span class="tdot t-vision" title="시각"></span></div></td><td>Helpful DoggyBot</td><td class="venue">프리프린트 2024</td><td class="sim"><span class="simv s1">1</span></td><td class="lic">–</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2410.00231" target="_blank" rel="noopener">arXiv 2410.00231</a><span class="badge only">링크만</span></div></td></tr>
+<tr data-idx="108" data-smin="1" data-smax="1" data-topics="vision" data-local="0"><td class="sid"><code>umi_on_legs</code><div class="tdots"><span class="tdot t-vision" title="시각"></span></div></td><td>UMI on Legs</td><td class="venue">프리프린트 2024</td><td class="sim"><span class="simv s1">1</span></td><td class="lic">MIT</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2407.10353" target="_blank" rel="noopener">arXiv 2407.10353</a><a class="chip gh" href="https://github.com/real-stanford/umi-on-legs" target="_blank" rel="noopener">real-stanford/umi-on-legs</a><span class="badge only">링크만</span></div></td></tr>
+<tr data-idx="109" data-smin="1" data-smax="1" data-topics="vision" data-local="0"><td class="sid"><code>pedipulate</code><div class="tdots"><span class="tdot t-vision" title="시각"></span></div></td><td>Pedipulate</td><td class="venue">프리프린트 2024</td><td class="sim"><span class="simv s1">1</span></td><td class="lic">–</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2402.10837" target="_blank" rel="noopener">arXiv 2402.10837</a><span class="badge only">링크만</span></div><div class="cnote">코드: 확인 못함</div></td></tr>
+<tr data-idx="110" data-smin="1" data-smax="1" data-topics="vision" data-local="0"><td class="sid"><code>roboduet</code><div class="tdots"><span class="tdot t-vision" title="시각"></span></div></td><td>RoboDuet</td><td class="venue">letter(학술지 미확인)</td><td class="sim"><span class="simv s1">1</span></td><td class="lic">–</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2403.17367" target="_blank" rel="noopener">arXiv 2403.17367</a><span class="badge only">링크만</span></div><div class="cnote">코드: 공식 여부 미확인</div></td></tr>
+<tr data-idx="111" data-smin="1" data-smax="1" data-topics="vision" data-local="0"><td class="sid"><code>hitter</code><div class="tdots"><span class="tdot t-vision" title="시각"></span></div></td><td>HITTER (휴머노이드 탁구)</td><td class="venue">프리프린트 2025</td><td class="sim"><span class="simv s1">1</span></td><td class="lic">–</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2508.21043" target="_blank" rel="noopener">arXiv 2508.21043</a><span class="badge only">링크만</span></div></td></tr>
+<tr data-idx="112" data-smin="1" data-smax="1" data-topics="vision" data-local="0"><td class="sid"><code>asmp</code><div class="tdots"><span class="tdot t-vision" title="시각"></span></div></td><td>Learning to See Physical Properties with Active Sensing Motor Policies</td><td class="venue">CoRL 2023</td><td class="sim"><span class="simv s1">1</span></td><td class="lic">–</td><td class="links"><div class="chips"><a class="chip ext" href="https://arxiv.org/abs/2311.01405" target="_blank" rel="noopener">arXiv 2311.01405</a><span class="badge only">링크만</span></div></td></tr>
+      </tbody>
+    </table>
+    <div id="cat-empty" class="empty" hidden>조건에 맞는 항목이 없습니다.</div>
+  </div>
+
+  <details class="more">
+    <summary>카탈로그 밖에서 본문 기법 근거로만 쓴 것 (11, 모두 링크만)</summary>
+    <div class="body">
+      <div class="chips">
+        <a class="chip" href="https://arxiv.org/abs/2403.12203" target="_blank" rel="noopener">Bootstrapping RL with Imitation · 2403.12203</a>
+        <a class="chip" href="https://arxiv.org/abs/2503.08299" target="_blank" rel="noopener">D-PPO · 2503.08299</a>
+        <a class="chip" href="https://arxiv.org/abs/2405.10830" target="_blank" rel="noopener">CTS · 2405.10830</a>
+        <a class="chip" href="https://arxiv.org/abs/2605.28372" target="_blank" rel="noopener">Teacher-Student Representational Alignment · 2605.28372</a>
+        <a class="chip" href="https://arxiv.org/abs/2505.09546" target="_blank" rel="noopener">Realizable Students · 2505.09546</a>
+        <a class="chip" href="https://arxiv.org/pdf/2007.12173" target="_blank" rel="noopener">ADVISOR · 2007.12173</a>
+        <a class="chip" href="https://arxiv.org/abs/2307.03186" target="_blank" rel="noopener">TGRL · 2307.03186</a>
+        <a class="chip" href="https://arxiv.org/pdf/2603.16806" target="_blank" rel="noopener">DexGrasp-Zero · 2603.16806</a>
+        <a class="chip" href="https://arxiv.org/abs/2111.02202" target="_blank" rel="noopener">Beta PPO · 2111.02202</a>
+        <a class="chip" href="https://arxiv.org/abs/2410.11825" target="_blank" rel="noopener">LCP · 2410.11825</a>
+        <a class="chip" href="https://arxiv.org/abs/2209.12827" target="_blank" rel="noopener">Rudin et al. · 2209.12827</a>
+      </div>
+    </div>
+  </details>
+</section>
+
+<!-- ===================== 확인 못 한 것 ===================== -->
+<section id="gaps" class="gaps">
+  <h2 class="sec">확인 못 한 것</h2>
+  <div class="grid2" style="margin-top:12px">
+    <div class="panel">
+      <h3>우리 쪽에서 재야 할 것</h3>
+      <ul>
+        <li>dev12 의 실제 도달 영역 (높이 × pitch × 상체 자세)과 추종 오차 → 권고 3 의 자르기 범위가 여기서 나온다.</li>
+        <li>dev12 손 외력 표본의 방향 분포 (손목 벌림 방향 포함 여부). 이번 조사에서 dev12 설정을 열지 않았다.</li>
+        <li>K1 팔로 손당 16–20 N 조임을 내는 관절 목표 깊이.</li>
+        <li>우리 rsl_rl 버전에 <code>BetaDistribution</code>·<code>std_range</code> 가 있는지.</li>
+      </ul>
+    </div>
+    <div class="panel">
+      <h3>공개 선례가 없는 것</h3>
+      <ul>
+        <li>동결 골반 명령 하위 + 상체 관절 목표 + 깊이 student + 두 손 조이기 + 바닥 상자 조합, 그 설정의 teacher–student 격차 원인 (접촉 대 위치) 분석.</li>
+        <li>상위가 하위 추종 오차를 명시 관측으로 받는 휴머노이드 사례, 명령 변화율을 하드 제한한 사례 (모두 벌점·델타·보간).</li>
+        <li>Newton 물리 또는 mjlab 기반 "동결 하위 + 상위 RL" 공개 코드 (AGILE 의 Newton 사용 여부는 README 에서 확인 못 함).</li>
+        <li>같은 조건 절제: min-힘 대 합, teacher actor 접촉 제거 전후 격차, 손 힘 보조 헤드, GRPO 대 PPO, tanh 대 Beta 대 clip, 쪼그림 대 숙임, 명시 명령 대 잠재.</li>
+        <li>바닥 상자에서 무릎·발목 한계와 손 도달의 관계 수치, D436 (D435 계열) 전용 구멍·가장자리 잡음 모형.</li>
+      </ul>
+    </div>
+  </div>
+
+  <details class="more">
+    <summary>출처 쪽 불확실 (7)</summary>
+    <div class="body">
+      <ul>
+        <li><b>VIRAL</b>: 논문은 DINOv3 인코더, 공개 코드 설정은 ResNet-18. <code>hand_force_estimator</code> 가 teacher·student 중 어디에 쓰였는지 미확인. VIRAL·DoorMan 의 HOMIE 손 하중 학습 범위 미확인 (원본 기준 −0.1–0.3 kg 으로 추정). HOMIE·AMO·DemoHLM·DoorMan 은 상위 학습 중 하위 동결 여부를 논문에 명시하지 않음 (VIRAL 만 코드로 확인).</li>
+        <li><b>DoorMan</b>: RGB 해상도·GRPO 그룹 크기·클리핑 값 미기재, GRPO 코드 미공개.</li>
+        <li><b>PRISM</b>: 지연 "3–4 프레임"의 단위 (30 Hz 카메라 대 50 Hz 정책) 불명, 학회 미확인.</li>
+        <li><b>ULTRA</b>: 97.57 % / 67.30 % / 85.03 % 가 각각 어느 단계 수치인지 노트 표기가 모호해 본문에서는 앞의 두 수치만 썼다.</li>
+        <li><b>실기 규모</b>: PhysHSI 논문 내부 수치 불일치 (91.34 / 81.34 / 79.34 %). AdaptManip·HDMI·ResMimic·PhysHSI 실기는 2–10 회 또는 정성 시연.</li>
+        <li><b>학회 표기</b>: AdaptManip (RA-L?), REFINE-DP (RA-L 2026 은 PDF 머리말만), VisualMimic·TWIST2·ULC·HiWET 등 프리프린트 표기, DextrAH-G·Extreme Parkour 미확인. DemoHLM 은 RSS 2026, DoorMan 은 CVPR 2026 으로 노트 간 표기를 통일했다.</li>
+        <li><b>코드 미확인</b>: ULC, OIL, HiWET, REFINE-DP, HuGo, AdaptManip, SplitAdapter, HULK, HOTICE, Embrace, Digit 박스. holosoma (OmniRetarget)·SkillBlender·DemoHLM 저장소 안 상자 과제는 열지 않았다. BumbleBee (2506.12779)·Humanoid-VLA (2502.14795) 미조회.</li>
+      </ul>
+    </div>
+  </details>
+
+  <details class="more">
+    <summary>받은 자료 상태 · 노트 간 정정</summary>
+    <div class="body">
+      <ul>
+        <li>코드는 읽기만 했고 실행·설치·import 하지 않았다.</li>
+        <li>LFS 포인터만 있는 것과 라이선스 제약은 <a href="#catalog">자료 목록</a> 위 상자에 정리했다.</li>
+        <li><b>노트 간 정정</b>: resmimic 은 "논문만"으로 적힌 노트가 있었으나 code/ 가 실제로 있다 (base_policy.pt 포함). hiwet·vbc·refine_dp 는 "링크만"으로 적힌 노트가 있었으나 로컬 paper.pdf 가 있다. VIRAL 은 <code>no_delta_vel: True</code> 설정이 있지만 해당 처리가 코드에서 주석 처리돼 속도도 델타로 누적된다.</li>
+      </ul>
+    </div>
+  </details>
+</section>
+</main>
+</div>
+
+<script>
+(function () {
+  /* ---- table of contents: open on wide screens, collapsible on phones ---- */
+  var toc = document.getElementById('toc');
+  var wide = window.matchMedia('(min-width: 961px)');
+  function syncToc() { toc.open = wide.matches; }
+  syncToc();
+  if (wide.addEventListener) wide.addEventListener('change', syncToc); else wide.addListener(syncToc);
+  toc.querySelectorAll('nav a').forEach(function (a) {
+    a.addEventListener('click', function () { if (!wide.matches) toc.open = false; });
+  });
+  if ('IntersectionObserver' in window) {
+    var links = {};
+    toc.querySelectorAll('nav a').forEach(function (a) { links[a.getAttribute('href').slice(1)] = a; });
+    var visible = {};
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) { visible[e.target.id] = e.isIntersecting; });
+      var ids = Object.keys(links), cur = null;
+      for (var i = 0; i < ids.length; i++) { if (visible[ids[i]]) { cur = ids[i]; break; } }
+      if (!cur) return;
+      ids.forEach(function (id) { links[id].classList.toggle('active', id === cur); });
+    }, { rootMargin: '-15% 0px -70% 0px' });
+    Object.keys(links).forEach(function (id) { var s = document.getElementById(id); if (s) io.observe(s); });
+  }
+
+  /* ---- catalogue: search, topic filter, local-only, similarity sort ---- */
+  var tbody = document.getElementById('cat-body');
+  var rows = Array.prototype.slice.call(tbody.rows);
+  var q = document.getElementById('cat-q');
+  var localOnly = document.getElementById('cat-local');
+  var count = document.getElementById('cat-count');
+  var empty = document.getElementById('cat-empty');
+  var chips = document.querySelectorAll('.fchip');
+  var sortBtn = document.getElementById('sort-sim');
+  var sortInd = document.getElementById('sort-ind');
+  var topic = 'all', sortDir = 0;
+  var text = rows.map(function (r) { return r.textContent.toLowerCase(); });
+
+  function apply() {
+    var terms = q.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    var n = 0;
+    rows.forEach(function (r, i) {
+      var ok = (topic === 'all' || r.dataset.topics.split(' ').indexOf(topic) >= 0) &&
+               (!localOnly.checked || r.dataset.local === '1') &&
+               terms.every(function (t) { return text[i].indexOf(t) >= 0; });
+      r.hidden = !ok;
+      if (ok) n++;
+    });
+    count.textContent = rows.length + ' 항목 중 ' + n + ' 개 표시';
+    empty.hidden = n !== 0;
+  }
+  function sortRows() {
+    var order = rows.map(function (r, i) { return i; });
+    if (sortDir !== 0) {
+      order.sort(function (a, b) {
+        var ra = rows[a].dataset, rb = rows[b].dataset;
+        var d = (ra.smax - rb.smax) || (ra.smin - rb.smin);
+        return sortDir * d || (a - b);
+      });
+    }
+    var frag = document.createDocumentFragment();
+    order.forEach(function (i) { frag.appendChild(rows[i]); });
+    tbody.appendChild(frag);
+    var th = sortBtn.parentNode;
+    th.setAttribute('aria-sort', sortDir === -1 ? 'descending' : sortDir === 1 ? 'ascending' : 'none');
+    sortInd.textContent = sortDir === -1 ? '↓' : sortDir === 1 ? '↑' : '⇅';
+  }
+  q.addEventListener('input', apply);
+  localOnly.addEventListener('change', apply);
+  chips.forEach(function (c) {
+    c.addEventListener('click', function () {
+      topic = c.dataset.topic;
+      chips.forEach(function (o) { o.setAttribute('aria-pressed', o === c ? 'true' : 'false'); });
+      apply();
+    });
+  });
+  sortBtn.addEventListener('click', function () {
+    sortDir = sortDir === 0 ? -1 : sortDir === -1 ? 1 : 0;
+    sortRows();
+  });
+  apply();
+})();
+</script>
+</body>
+</html>

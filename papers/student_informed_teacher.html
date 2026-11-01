@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SITT — 논문 상세</title>
+<link rel="stylesheet" href="paper.css">
+</head>
+<body>
+<main class="wrap">
+<a class="back" href="../index.html#catalog">← 자료 목록으로</a>
+
+<header class="ph">
+  <h1>SITT: student 가 흉내 낼 수 있는 행동을 teacher 가 배우게 함께 학습시키기</h1>
+  <p class="orig">Student-Informed Teacher Training</p>
+  <p class="meta">Nico Messikommer, Jiaxu Xing (공동 1저자), Elie Aljalbout, Davide Scaramuzza · Robotics and Perception Group, University of Zurich · ICLR 2025 · 표 미로, 쿼드로터(Flightmare), Franka 팔(Omniverse Isaac Gym Envs) · 시뮬만</p>
+  <div class="chips">
+    <a class="chip loc" href="../reference/student_informed_teacher/paper.pdf">로컬 PDF</a>
+    <a class="chip" href="https://arxiv.org/abs/2412.09149" target="_blank" rel="noopener">arXiv 2412.09149</a>
+    <a class="chip" href="https://rpg.ifi.uzh.ch/sitt/" target="_blank" rel="noopener">프로젝트 페이지</a>
+    <span class="simv s3">유사도 3</span>
+    <span class="badge">코드 없음</span>
+  </div>
+</header>
+
+<div class="callout blue tldr">teacher 보상에 "teacher 와 (대리) student 의 행동 분포 KL" 벌점을 넣고, PPO 손실에도 같은 KL 의 기울기를 더하며, 세 망(teacher·student·대리 student)이 행동 디코더 하나를 공유하게 해 teacher 가 student 가 볼 수 있는 행동을 고르게 만든다. 팔이 카메라를 가리는 Franka 서랍 열기 student 성공률 DAgger 0.34 → 0.88, 쿼드로터 장애물 회피 0.08 → 0.46. 실기 실험 없음.</div>
+
+<p>평가 배경: <a href="../reports/%EB%B0%95%EC%8A%A4%20%EC%A7%91%EA%B8%B0%20%EC%83%81%EC%9C%84%20%EC%A0%95%EC%B1%85%20%EC%B0%B8%EA%B3%A0%20%EC%97%B0%EA%B5%AC.md">보고서</a> 의 "격차 대책 1. teacher 를 흉내 가능하게"에서 인용, 유사도 3. 노트는 <a href="../research_notes/%EB%B0%95%EC%8A%A4%20%EC%A7%91%EA%B8%B0%20%EC%83%81%EC%9C%84%20%EC%A0%95%EC%B1%85%20%EC%B0%B8%EA%B3%A0%20%EC%97%B0%EA%B5%AC/vision_teacher_student.md">vision_teacher_student.md</a>. 같은 문제를 더 싸게 다루는 <a href="dextrah_g.html">DextrAH-G</a>(접촉 정보를 critic 전용으로) 페이지와 함께 볼 것. 아래 내용은 논문에서만 옮겼다(로컬 코드 없음).</p>
+
+<h2 class="ps">우리와 무엇이 같고 다른가</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>이 논문</th><th>우리 (dev10 pelvis_pick)</th></tr></thead>
+  <tbody>
+    <tr><td>하위 제어기</td><td>없음. teacher·student 가 직접 행동(미로 이산 4 방향, Franka 다단 적분 관절 위치) (p.13, p.15)</td><td>dev12 하체 RL(동결), 골반 vx ±0.8 m/s, vy ±0.4 m/s, ωz ±1.0 rad/s, 높이 0.335–0.77 m, pitch ±45°, roll ±10°(서기). 상체 11 외부 PD(팔 kp 22.3·kd 1.42, 허리 76.45·4.87)</td></tr>
+    <tr><td>상위 출력</td><td>미로 4 방향, Franka 관절 9(팔 7 + 손가락 2). 쿼드로터 행동 정의는 논문에 없음</td><td>상체 11 관절 목표 + 골반 명령 6</td></tr>
+    <tr><td>과제·물체</td><td>표 미로, 기둥 4 개 피하며 속도 명령 따르기, 서랍 열기(손잡이를 팔이 가리도록 배치)</td><td>바닥·받침대 0–0.3 m 상자 37×40.5×29 cm, 0.5–2 kg, 두 공 손으로 옆면 조이기</td></tr>
+    <tr><td>지각·증류</td><td>teacher·대리 student = 특권 상태 MLP 3 층, student = 동결 DINOv2 RGB + 상태 MLP, 디코더 공유, teacher 학습과 동시에 특징 L1 정렬 (p.7)</td><td>특권 teacher → D436 깊이 crop 26×64 × 6 프레임 + 고유감각 student, DAgger(teacher 학습 뒤)</td></tr>
+    <tr><td>비대칭의 원인</td><td>student 가 못 보는 것: 미로의 용암·길 구분, 시야 밖 장애물, 팔에 가린 손잡이</td><td>손–상자 접촉, 상자 질량, 숙이고 팔을 넣을 때 crop 밖으로 나가거나 팔에 가린 상자 모서리(추론)</td></tr>
+    <tr><td>격차</td><td>teacher 성공률: 쿼드로터 98 % 넘음, 서랍 100 %. student: DAgger 0.08 · 0.34 (p.8, p.9)</td><td>v2 teacher 90 % → student Isaac 69 % → MuJoCo 50 %</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">1. 문제와 과제</h2>
+<ul>
+  <li><b>특권 모방 학습의 함정</b>: teacher 는 student 가 흉내 낼 수 있는지 모른 채 학습되어, student 관측으로는 추론할 수 없는 목표 행동을 준다 (p.2).</li>
+  <li><b>이론 근거</b>: 보상이 |r| ≤ r<sub>max</sub> 일 때 J(π<sub>T</sub>) − J(π<sub>S</sub>) ≤ 2√2 r<sub>max</sub> √ε / (1 − γ)², 여기서 E<sub>s∼d<sub>πT</sub></sub>[D<sub>KL</sub>(π<sub>T</sub>(·|s), π<sub>S</sub>(·|s))] ≤ ε (식 1–2, p.3). 격차의 상한은 teacher 상태 분포에서의 행동 차이로 정해진다.</li>
+  <li><b>관점 전환</b>: 보통은 student 를 고쳐 이 KL 을 줄이지만, 여기서는 <b>teacher 를 고쳐</b> 과제 보상과 student 정렬을 함께 최적화한다 (p.3).</li>
+</ul>
+<p>목표 함수 (식 3–5, p.3):</p>
+<pre>J̃(π_T) = E_{s∼d_πT, a∼π_T}[ r(s, a) − D_KL(π_T(·|s), π_S(·|s)) ]
+        ∝ E_{τ∼p_θ}[ R(τ) − D_θ(τ) ],  D_θ(τ) = Σ_t γ^t D_KL(π_T(·|s_t), π_S(·|s_t))</pre>
+<p>기울기 (식 6–8, p.4):</p>
+<pre>∇_θ J̃ = ∫ ∇_θ p_θ(τ) (R(τ) − D_θ(τ)) dτ   ← 정책 기울기: KL 이 보상 벌점으로 들어감
+       − ∫ p_θ(τ) ∇_θ D_θ(τ) dτ             ← KL 기울기: teacher 가중치를 student 쪽으로 직접 당김</pre>
+<ul>
+  <li>첫 항: 정렬이 나쁜 상태를 피하도록 <b>탐색과 경로</b>를 바꾼다.</li>
+  <li>둘째 항: teacher 상태에서 teacher 행동 분포를 student 에 맞추는 <b>직접 지도</b>.</li>
+</ul>
+
+<h2 class="ps">2. 시스템 구조</h2>
+<p>critic 을 빼고 망 셋 + 공유 디코더 하나 (p.4).</p>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>망</th><th>입력</th><th>역할</th></tr></thead>
+  <tbody>
+    <tr><td>teacher 인코더 F<sub>T</sub></td><td>특권 관측</td><td>잠재 h<sub>T</sub> → 디코더 → a<sub>T</sub></td></tr>
+    <tr><td>student 인코더 F<sub>S</sub></td><td>student 관측(영상 + 상태)</td><td>잠재 h<sub>S</sub> → 디코더 → a<sub>S</sub></td></tr>
+    <tr><td>대리 student F̂<sub>S</sub></td><td>teacher 관측</td><td>현재 student 가 낼 행동을 영상 렌더링 없이 흉내 → â<sub>S</sub></td></tr>
+    <tr><td>공유 행동 디코더 A</td><td>공통 잠재 공간</td><td>평균 행동 출력. <b>과제 보상의 정책 기울기로만</b> 갱신. σ 는 상태 무관 변수로 디코더와 함께 학습 → Σ<sub>T</sub> = Σ<sub>S</sub></td></tr>
+  </tbody>
+</table></div>
+<div class="fig">
+  <p><b>① 롤아웃 (그림 1b)</b></p>
+  <div class="flow">
+    <span class="node">teacher 관측</span><span class="arr">→</span>
+    <span class="node frozen">F<sub>T</sub> → A → a<sub>T</sub></span>
+    <span class="node frozen">F̂<sub>S</sub> → A → â<sub>S</sub></span><span class="arr">→</span>
+    <span class="node">r' = r − λ<sub>1</sub>·KL(π<sub>T</sub> ‖ π̂<sub>S</sub>)</span><span class="arr">→</span>
+    <span class="node">경험 버퍼 + 일부 env 의 student 관측 렌더 → 정렬 버퍼</span>
+  </div>
+  <p style="margin-top:12px"><b>② 정책 갱신 (그림 1c)</b></p>
+  <div class="flow">
+    <span class="node">경험 버퍼</span><span class="arr">→</span>
+    <span class="node">L = L<sub>PPO</sub> + λ<sub>2</sub>·KL(π<sub>T</sub> ‖ π̂<sub>S</sub>)</span><span class="arr">→</span>
+    <span class="node">F<sub>T</sub> 갱신(PPO + KL), A 갱신(PPO 만)</span>
+    <span class="node frozen">F̂<sub>S</sub> 고정</span>
+  </div>
+  <p style="margin-top:12px"><b>③ 정렬 (그림 1d)</b></p>
+  <div class="flow">
+    <span class="node">(teacher 관측, student 관측) 짝</span><span class="arr">→</span>
+    <span class="node">F<sub>S</sub> 갱신: L1(h<sub>S</sub>, h<sub>T</sub>) + L1(디코더 활성 둘)</span><span class="arr">→</span>
+    <span class="node">F̂<sub>S</sub> 갱신: L1(ĥ<sub>S</sub>, h<sub>S</sub>)</span>
+    <span class="node frozen">F<sub>T</sub>·A 고정</span>
+  </div>
+  <p class="src">그림 1 (p.1), 4.2 절 (p.5–6), 알고리즘 1 (p.15). 점선 = 그 단계에서 갱신하지 않는 것.</p>
+</div>
+<ul>
+  <li>정렬 단계는 기울기를 student 쪽(F<sub>S</sub>)에만 흘린다. 양쪽으로 흘리면 상수 출력으로 무너지기 때문 (p.6).</li>
+  <li>teacher 는 정렬 단계에서 변하지 않고, 정책 갱신 단계에서만 바뀐다 (p.6).</li>
+  <li>대리 student 덕분에 student 관측(영상)은 <b>일부 env·일부 스텝에서만</b> 렌더링하면 된다 (p.4, p.5).</li>
+  <li>공유 디코더 이유: teacher 가 많은 상호작용으로 배운 고수준 특징 상관을 student 도 쓰고, 정렬 데이터가 적어도 디코더는 넓은 teacher 상태에서 학습돼 더 강건 (p.4–5).</li>
+</ul>
+
+<h2 class="ps">3. 관측과 행동</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>과제</th><th>teacher 관측</th><th>student 관측</th><th>행동</th></tr></thead>
+  <tbody>
+    <tr><td>색 미로 (p.7, p.13)</td><td>목표까지 거리, 이웃 칸 종류(빈 칸·용암·길), 직전 이동</td><td>같음, 단 칸 종류가 빈 칸·막힘 둘뿐(용암과 길을 구분 못 함)</td><td>상하좌우 이산 4</td></tr>
+    <tr><td>쿼드로터 (p.7, p.14)</td><td>회전 행렬 앞 두 열 6, 명령 속도, 선속도 3, 각속도 3, 직전 행동, 장애물 4 개까지 상대 위치</td><td>장애물 위치 대신 시야가 제한된 RGB 카메라</td><td>논문에 없음</td></tr>
+    <tr><td>Franka 서랍 (p.7–8, p.15)</td><td>관절 위치·속도, 그리퍼–손잡이 상대 3D 거리, 서랍 관절의 3D 위치·속도</td><td>관절 위치·속도 + 영상(팔 가까운 시점, 팔이 가릴 수 있음)</td><td>관절 9(팔 7 + 손가락 2), "다단 적분 관절 위치"</td></tr>
+  </tbody>
+</table></div>
+<p>Franka 장면은 가림을 일부러 키웠다: 캐비닛 갈색·손잡이 빨강, 아래 문 손잡이·아래 서랍 손잡이 제거(다른 시각 단서 제거), 팔을 0.4 m 올리고 캐비닛을 z 축으로 60° 회전, 캐비닛 x·y 를 [−0.15, 0.15] × [−0.1, 0.1] m 에서 균일 표집. 초기 팔 자세는 기본 teacher 가 늘 카메라를 가리도록 골랐다 (p.14).</p>
+
+<h2 class="ps">4. 보상 · 종료 · 커리큘럼</h2>
+<h3 class="ps">정렬 벌점 (모든 과제 공통)</h3>
+<p>롤아웃 때 r'<sub>t</sub> = r<sub>t</sub> − λ<sub>1</sub> D<sub>KL</sub>(π<sub>T</sub>(s<sub>t</sub>) ‖ π̂<sub>S</sub>(s<sub>t</sub>)) (알고리즘 1, p.15). 보상에 들어가므로 "그 행동이 나중에 student 와 얼마나 어긋나는 상태로 이어지는가"까지 가치에 반영된다 (p.5).</p>
+<h3 class="ps">과제 보상</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>과제</th><th>보상</th><th>출처</th></tr></thead>
+  <tbody>
+    <tr><td>미로</td><td>r = 10 r<sub>success</sub> + 0.5 r<sub>path</sub> − 0.5 r<sub>revisit</sub> − 0.1 r<sub>fail</sub> − 1.9 r<sub>KL</sub>. 길 칸 첫 방문 +0.5, 재방문 −0.5, 용암 −0.1 + 즉시 종료, 목표 +10 + 종료</td><td>식 11 (p.14), p.7</td></tr>
+    <tr><td>쿼드로터</td><td>r<sub>prog</sub> = 2.0 Σ δp<sub>i</sub>(명령 속도 방향 진척), r<sub>act</sub> = 0.15‖a<sub>t</sub> − a<sub>t−1</sub>‖, r<sub>br</sub> = 0.05‖ω<sub>B</sub>‖, 장애물 충돌 −10‖v‖, 천장·바닥·영역 이탈 −5‖v‖. 행동 변화·각속도 항은 벌점이라 설명하지만 식에 부호가 없음</td><td>식 12–13 (p.14)</td></tr>
+    <tr><td>Franka</td><td>Isaac Gym 기본 캐비닛 보상(그리퍼–손잡이 거리, 그리퍼 방향, "엄지" 위치 등) + KL 벌점 가중 0.05</td><td>p.15</td></tr>
+  </tbody>
+</table></div>
+<p><b>종료</b>: 미로는 용암·목표에서 종료, 쿼드로터는 충돌·이탈. Franka 종료 조건은 기본값(논문에 없음). <b>커리큘럼</b>: 없음.</p>
+
+<h2 class="ps">5. 학습 설정 (알고리즘 · 망 · 무작위화)</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>미로</th><th>쿼드로터</th><th>Franka 서랍</th></tr></thead>
+  <tbody>
+    <tr><td>시뮬 · RL</td><td>Gym + Stable-Baselines3 PPO</td><td>Flightmare + Stable-Baselines3 PPO</td><td>Omniverse Isaac Gym Envs + rl_games PPO(나머지 기본값)</td></tr>
+    <tr><td>env</td><td>1,000, 각자 고정 미로(21×21 격자 가운데 15×15, 세로 3–5 칸·가로 1–4 칸 번갈아 길 생성)</td><td>100, 30×30×3 m 상자에 반지름 1.5 m 기둥 4 개</td><td>4,096, horizon 16</td></tr>
+    <tr><td>양</td><td>총 10<sup>8</sup> 상호작용, 롤아웃당 250 스텝 × 1,000 = 250,000 을 한 배치로</td><td>6,300 에폭, 미니배치 12,500</td><td>1,500 에폭 = 98,304,000 상호작용, 미니배치 8,192</td></tr>
+    <tr><td>student 관측 렌더</td><td>롤아웃 버퍼 전부 사용</td><td>100 env 중 64 가 매 스텝</td><td>4,096 중 128 이 매 스텝 → 3,072,000 짝, FIFO 버퍼 100,000</td></tr>
+    <tr><td>λ<sub>1</sub> (보상 KL)</td><td>1.9 (식 11)</td><td>논문에 없음</td><td>0.05 (기본)</td></tr>
+    <tr><td>λ<sub>2</sub> (손실 KL 기울기)</td><td>0.001</td><td>논문에 없음</td><td>0.01</td></tr>
+    <tr><td>기타</td><td>엔트로피 0.3, 정렬은 버퍼 전체를 한 배치로 20 반복, L1, Adam</td><td>평가 256 회 × 1,000 스텝</td><td></td></tr>
+  </tbody>
+</table></div>
+<p class="src">부록 A.1 (p.13–15), p.7.</p>
+<h3 class="ps">망 (시각 과제, p.7)</h3>
+<ul>
+  <li>teacher·대리 student: MLP 3 층, ELU.</li>
+  <li>공유 행동 디코더: 완전연결 한 층.</li>
+  <li>student: <b>동결</b> DINOv2 영상 특징 + 상태 관측 → MLP → 공유 디코더.</li>
+  <li>모든 비교 방법이 같은 student·teacher 구조, 같은 렌더 영상 수·상호작용 수 (p.6).</li>
+</ul>
+<h3 class="ps">비교 방법 (p.6)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>방법</th><th>설정</th></tr></thead>
+  <tbody>
+    <tr><td>BC</td><td>고정 스텝 수의 teacher 데이터(특권 상태 + 렌더 영상)로 행동 손실</td></tr>
+    <tr><td>DAgger</td><td>teacher/student 행동 선택 임계 β<sub>0</sub> 0.98 지수 감소</td></tr>
+    <tr><td>HLRL (Radosavovic 2024)</td><td>BC 손실과 시각 RL 손실 가중을 β<sub>0</sub> 0.9998 로 지수 감소, 공유 디코더가 있어야 학습됨</td></tr>
+    <tr><td>DWBC / DHBC (Fu 2022)</td><td>특권 인코더 = teacher, 적응 모듈 = student 인코더, 통합 정책 = 공유 디코더, 두 인코더를 특징 L1 로. 본문은 "DHBC", 표는 "DWBC"</td></tr>
+    <tr><td>COSIL (Nguyen 2023)</td><td>student–teacher L1 을 보상에, RL·IL 가중을 목표 거리 0.5 로 학습</td></tr>
+    <tr><td>w/o Align (Ours)</td><td>KL 을 보상·정책 갱신에서 모두 뺌, 공유 디코더 + 짝 L1 정렬은 유지 → student 가 teacher 에 영향 없음</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">6. teacher → student / 증류</h2>
+<p>이 논문은 증류를 "teacher 학습 뒤 단계"로 두지 않고 teacher 학습 루프 안의 정렬 단계로 넣는다.</p>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>장치</th><th>무엇을</th><th>근거·값</th></tr></thead>
+  <tbody>
+    <tr><td>보상 벌점 λ<sub>1</sub></td><td>student 가 같은 행동을 못 내는 상태를 teacher 가 피하게</td><td>Franka 0.05, 감도 0.025–0.1 (표 2)</td></tr>
+    <tr><td>KL 기울기 λ<sub>2</sub></td><td>teacher 의 행동 분포를 대리 student 쪽으로 직접 당김</td><td>Franka 0.01, 미로 0.001</td></tr>
+    <tr><td>공유 디코더</td><td>teacher·student 가 같은 잠재 공간에 사상</td><td>디코더는 과제 정책 기울기로만 학습</td></tr>
+    <tr><td>짝 L1 정렬</td><td>F<sub>S</sub> 를 F<sub>T</sub> 특징과 디코더 활성에, F̂<sub>S</sub> 를 F<sub>S</sub> 특징에</td><td>기울기는 받는 쪽에만</td></tr>
+  </tbody>
+</table></div>
+<h3 class="ps">KL 을 풀어 쓰면 (식 9–10, p.5)</h3>
+<pre>D_KL = ½ [ log(|Σ_S| / |Σ_T|) − d + Tr(Σ_S⁻¹ Σ_T) + (μ_T − μ_S)ᵀ Σ_S⁻¹ (μ_T − μ_S) ]
+Σ_T = Σ_S (공유 디코더의 상태 무관 σ)  →  D_KL = ½ [ const + (μ_T − μ_S)ᵀ Σ_T⁻¹ (μ_T − μ_S) ]</pre>
+<ul>
+  <li>teacher 가 확신(σ 작음)하는데 student 와 어긋나면 손실이 커진다.</li>
+  <li>저자 설명: 그 결과 기울기가 공분산을 키워 탐색이 늘고, student 가 배울 수 있는 행동을 찾을 확률이 오른다 (p.5). 즉 이 항은 <b>σ 를 키우는 방향</b>으로도 작용한다.</li>
+</ul>
+
+<h2 class="ps">7. 결과</h2>
+<h3 class="ps">색 미로 (그림 2, p.6, p.8)</h3>
+<ul>
+  <li>정렬 없는 teacher: 용암 사이 지름길(미로 안). BC·DAgger·정렬 없는 student 는 용암과 길을 구분 못 해 실패.</li>
+  <li>정렬 있는 teacher: 미로를 돌아가는 바깥 경로(테두리 3 칸). student 가 모든 시험(5 학습 × 15 평가 env)에서 목표 도달.</li>
+  <li>돌아가는 경로는 보상이 희소한데도 찾아냈다 → 벌점이 필요한 탐색을 막지 않았다.</li>
+</ul>
+<h3 class="ps">쿼드로터 장애물 회피 (표 1, p.8) · 3 학습 평균</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>방법</th><th>성공률</th><th>속도–시선 각 (°) ↓</th><th>시야 안 장애물 수 ↑</th></tr></thead>
+  <tbody>
+    <tr><td>BC</td><td>0.05 ± 0.04</td><td>75.5</td><td>1.92</td></tr>
+    <tr><td>DAgger</td><td>0.08 ± 0.03</td><td>78.6</td><td>2.42</td></tr>
+    <tr><td>HLRL</td><td>0.31 ± 0.11</td><td>61.9</td><td>2.09</td></tr>
+    <tr><td>DWBC</td><td>0.35 ± 0.07</td><td>46.7</td><td>2.33</td></tr>
+    <tr><td>COSIL</td><td>0.30 ± 0.07</td><td>69.3</td><td>2.24</td></tr>
+    <tr><td>w/o Align (Ours)</td><td>0.38 ± 0.11</td><td>63.2</td><td>2.61</td></tr>
+    <tr class="ours"><td><b>w Align (Ours)</b></td><td><b>0.46 ± 0.04</b></td><td><b>32.2</b></td><td><b>3.51</b></td></tr>
+  </tbody>
+</table></div>
+<p class="src">성공률 표 1 (p.8), 지각 지표 부록 A.3 표 (p.16).</p>
+<ul>
+  <li>모든 teacher 는 성공률 98 % 넘음. 시선이 진행 방향을 안 보면 student 는 장애물을 못 봐 0.1 아래 (p.8).</li>
+  <li>정렬한 teacher 는 카메라를 진행 방향으로 돌리며 난다 → "지각을 의식한 비행"이 보상 조정 없이 생김 (그림 3, p.8).</li>
+</ul>
+<h3 class="ps">Franka 서랍 열기 (표 3, p.10) · 5 학습 평균</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>방법</th><th>성공률</th></tr></thead>
+  <tbody>
+    <tr><td>BC</td><td>0.16 ± 0.15</td></tr>
+    <tr><td>DAgger</td><td>0.34 ± 0.31</td></tr>
+    <tr><td>HLRL</td><td>0.61 ± 0.22</td></tr>
+    <tr><td>DWBC</td><td>0.63 ± 0.18</td></tr>
+    <tr><td>COSIL</td><td>0.56 ± 0.21</td></tr>
+    <tr><td>w/o Align (Ours)</td><td>0.61 ± 0.18</td></tr>
+    <tr class="ours"><td><b>w Align (Ours)</b></td><td><b>0.88 ± 0.07</b></td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>teacher 는 정렬 여부와 관계없이 100 %. 정렬한 teacher 의 return 이 오히려 늘 높았다(그림 6): 손잡이를 여러 번 더듬지 않는 강건한 그리퍼 움직임을 배운 것으로 저자 추정 (p.9).</li>
+  <li>나타난 행동(그림 5): 위에서 내려 잡기, 또는 앞 두 링크를 낮춰 빨간 손잡이를 보이게 하기. 두 경우 모두 그리퍼가 닿기 직전 손잡이가 보인다 (p.9).</li>
+  <li>정렬 없는 student 가 0 이 아닌 이유: 캐비닛 위치 표집 폭이 좁아 영상 없이 외워서 (p.9).</li>
+  <li><b>본문과 표가 다르다</b>: 본문은 "최대 0.77 vs DAgger 0.47, BC 0.27", "정렬이 17 % 향상"이라 쓰지만 표 3 은 0.88 / 0.34 / 0.16, 0.61 → 0.88 (+0.27). 이 페이지는 표를 따른다.</li>
+</ul>
+<h3 class="ps">절제 (표 2, p.10) · Franka, 5 학습</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>설정</th><th>성공률</th></tr></thead>
+  <tbody>
+    <tr><td>벌점만 (KL 기울기 없음)</td><td>0.47 ± 0.37</td></tr>
+    <tr><td>KL 기울기만 (벌점 없음)</td><td>0.74 ± 0.08</td></tr>
+    <tr><td>공유 디코더 없음</td><td>0.62 ± 0.27</td></tr>
+    <tr><td>λ<sub>1</sub> = 0.1</td><td>0.81 ± 0.20</td></tr>
+    <tr><td>λ<sub>1</sub> = 0.075</td><td>0.77 ± 0.18</td></tr>
+    <tr class="ours"><td>λ<sub>1</sub> = 0.05 (기본)</td><td>0.88 ± 0.07</td></tr>
+    <tr><td>λ<sub>1</sub> = 0.025</td><td>0.95 ± 0.03</td></tr>
+  </tbody>
+</table></div>
+<p>읽는 법: KL 기울기와 공유 디코더가 큰 몫, 벌점을 빼면 0.88 → 0.74 (본문 "14 %" 하락). λ<sub>1</sub> 에는 둔감하고 가장 작은 0.025 가 최고. 표 3 과 함께 보면 DAgger 0.34 → 0.61 은 공유 디코더 + 특징 정렬(teacher 는 안 바꿈) 몫이고, teacher 를 바꾸는 KL 두 항의 몫은 0.61 → 0.88 이다(계산).</p>
+
+<h2 class="ps">8. 실기 · sim2real</h2>
+<p>해당 없음 — 세 과제 모두 시뮬 실험만 있고 실기 배포·sim2real 수치가 없다.</p>
+
+<h2 class="ps">9. 코드에서 확인한 것</h2>
+<p>해당 없음 — 로컬 <code>reference/student_informed_teacher/</code> 에는 PDF 만 있고, 연구 노트 기준 공개 코드도 없다(프로젝트 페이지만).</p>
+
+<h2 class="ps">10. 한계</h2>
+<ul>
+  <li>실기 검증 없음, 과제가 작다(표 미로, 기둥 4 개, 서랍 하나). 다리 로봇·접촉 많은 조작은 없음.</li>
+  <li>망이 작고 비순환(MLP 3 층, 동결 DINOv2). 이력·기억이 필요한 student 에서 대리 student 가 잘 흉내 내는지는 시험 안 됨.</li>
+  <li>teacher 를 student 와 함께 처음부터 학습해야 한다. 이미 학습된 teacher 를 재사용할 수 없고, student 구조를 바꾸면 teacher 도 다시.</li>
+  <li>KL 기울기가 σ 를 키운다(p.5). σ 가 커지면 벌점 자체도 줄어 teacher 가 "자신 없음"으로 벌점을 피할 여지가 있다(식 10 에서 추론).</li>
+  <li>본문과 표 3 의 숫자가 다르고(0.77/0.47/0.27 vs 0.88/0.34/0.16), 비교 방법 이름이 본문 DHBC·표 DWBC 로 엇갈린다. 쿼드로터 보상 식의 부호가 불분명하고 관측 차원 표기가 깨져 있다(p.14).</li>
+  <li>쿼드로터의 λ, 행동 정의, Franka 종료 조건 등 재현 값이 빠져 있다.</li>
+  <li>teacher 가 student 를 위해 덜 최적인 경로를 택한다(미로). 과제에 따라 teacher 성능 손해가 있을 수 있다.</li>
+</ul>
+
+<h2 class="ps">11. 우리에게 가져올 것</h2>
+<div class="take"><ol>
+  <li><b>먼저 비대칭의 정체를 잰다</b>: v2 격차 21 %p(90 → 69, Isaac)가 "student 가 못 보는 정보" 때문인지 확인. 후보는 손–상자 접촉, 상자 질량, 그리고 숙이며 두 팔을 상자 옆으로 넣을 때 상자 모서리가 26×64 crop 밖으로 나가거나 팔에 가리는 것. 서랍 과제(팔이 손잡이를 가림)와 같은 꼴이다. Isaac 에서 "상자 픽셀이 crop 안에 남은 비율"을 단계별로 기록하는 진단부터(추론).</li>
+  <li><b>싼 순서로</b>: ① 접촉·질량을 critic 전용으로(<a href="dextrah_g.html">DextrAH-G</a>) → ② 그래도 격차가 크면 SITT 의 공유 디코더 + 특징 L1 정렬(teacher 보상 불변, 서랍 0.34 → 0.61) → ③ 마지막으로 KL 두 항(0.61 → 0.88).</li>
+  <li><b>KL 벌점 크기</b>: λ<sub>1</sub> 은 0.025–0.1 에서 모두 0.77 이상, 0.025 가 최고(0.95)였다. 다만 보상 단위가 달라 숫자를 그대로 옮기지 말고, 스텝당 과제 보상 대비 KL 벌점 비율을 로그로 보며 작게 시작한다(추론). 손실 쪽 KL 기울기 λ<sub>2</sub> 출발점 0.01(서랍)·0.001(미로).</li>
+  <li><b>대리 student 는 필요할 때만</b>: 대리 망은 영상 렌더가 비쌀 때(4,096 중 128 env 만 렌더) 쓰는 장치다. 우리 깊이가 레이캐스트로 모든 env 에서 싸게 나온다면 진짜 student 행동으로 KL 을 계산하는 쪽이 단순하고 정확하다(추론).</li>
+  <li><b>σ 를 공유하고 상한을 둔다</b>: SITT 의 KL 은 Σ<sub>T</sub> = Σ<sub>S</sub> 일 때 σ<sup>−2</sup> 가중 평균 차가 된다. 우리 rsl_rl teacher 는 환경 안 자르기로 std 가 발산한 이력이 있으므로, KL 항을 넣기 전에 std 상한을 먼저 건다.</li>
+  <li><b>"지각 의식" 지표를 평가셋에 추가</b>: 쿼드로터의 속도–시선 각·시야 안 장애물 수처럼, 우리도 접촉 직전 0.5 s 동안 상자 가시 비율, 상자 중심의 crop 안 위치를 teacher·student 둘 다 측정해 체크포인트 비교 지표로 쓴다(추론).</li>
+</ol></div>
+
+<h3 class="ps">가져오지 말 것</h3>
+<ul>
+  <li><b>teacher·student 동시 학습을 첫 단계로</b>: teacher 를 다시 처음부터, 그것도 student 구조에 묶어 학습해야 한다. 구조가 아직 바뀌는 단계에서는 비용이 크다. 위 ①이 효과를 보면 필요 없을 수 있다.</li>
+  <li><b>동결 DINOv2 RGB student</b>: 우리는 깊이 26×64 × 6 프레임. 영상 인코더 선택은 이 논문 결과와 무관.</li>
+  <li><b>λ 숫자 그대로</b>(미로 1.9, 서랍 0.05): 보상 크기·행동 차원(우리 17)이 다르다.</li>
+  <li><b>Isaac → MuJoCo 격차(69 → 50 %) 해결책으로 기대하기</b>: SITT 는 정보 비대칭(같은 시뮬 안 teacher–student 차이)만 다룬다. 시뮬 간 물리 차이는 별도 문제.</li>
+  <li><b>본문 수치</b>(0.77, 0.47, 0.27, 17 %): 표와 어긋난다. 인용은 표 3 값으로.</li>
+</ul>
+
+<p class="src">출처 표기: (p.N), (표 N), (그림 N), (식 N), (부록 X). 논문에 없는 값은 "논문에 없음", 계산·추론은 그렇게 표시.</p>
+</main>
+</body>
+</html>

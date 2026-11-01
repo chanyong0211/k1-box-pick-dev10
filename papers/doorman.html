@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DoorMan — 논문 상세</title>
+<link rel="stylesheet" href="paper.css">
+</head>
+<body>
+<main class="wrap">
+<a class="back" href="../index.html#catalog">← 자료 목록으로</a>
+
+<header class="ph">
+  <h1>DoorMan: 단계 스냅숏 리셋 teacher → RGB DAgger student → GRPO 로 student 격차를 메운 휴머노이드 문 열기</h1>
+  <p class="orig">Opening the Sim-to-Real Door for Humanoid Pixel-to-Action Policy Transfer</p>
+  <p class="meta">Haoru Xue, Tairan He, Zi Wang (공동 1저자), Qingwei Ben, … Linxi “Jim” Fan, Yuke Zhu (project leads) et al. · NVIDIA, UC Berkeley, CMU, CUHK · CVPR 2026 (arXiv v1 2025-11-30) · Unitree G1 29 DoF + 3손가락 손 7 DoF×2 · Isaac Lab</p>
+  <div class="chips">
+    <a class="chip loc" href="../reference/doorman/paper.pdf">로컬 PDF</a>
+    <a class="chip loc" href="../reference/doorman/code/">로컬 코드</a>
+    <a class="chip" href="https://arxiv.org/abs/2512.01061" target="_blank" rel="noopener">arXiv 2512.01061</a>
+    <a class="chip gh" href="https://github.com/NVlabs/GR00T-VisualSim2Real/tree/doorman" target="_blank" rel="noopener">NVlabs/GR00T-VisualSim2Real (doorman 브랜치)</a>
+    <a class="chip" href="https://doorman-humanoid.github.io/" target="_blank" rel="noopener">프로젝트 페이지</a>
+    <span class="simv s5">유사도 5</span>
+    <span class="badge">Apache-2.0</span>
+    <span class="badge lfs" title="models/ HOMIE 가중치, 시연 npz, USD/STL 등 312 개 파일이 Git LFS 포인터만 있음: git lfs pull 필요">LFS</span>
+  </div>
+</header>
+
+<div class="callout blue tldr">VIRAL 과 같은 HOMIE 스택 위에서 문 열기를 6 단계로 쪼개 <b>단계 진입 스냅숏 리셋 버퍼</b>로 teacher 를 학습(80–90 %)하고, RGB student 를 DAgger 로 증류하면 <b>50–70 % 에서 정체</b>, 이를 이진 성공 보상 <b>GRPO 약 200 반복</b>으로 80.8–85.8 % 까지 끌어올려 실기 83 % (전문 텔레옵 80 %, 비전문 60 %), 완료 시간 15.40 s (전문 20.02 s).</div>
+
+<h2 class="ps">우리와 무엇이 같고 다른가</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>이 논문</th><th>우리 (dev10 pelvis_pick)</th></tr></thead>
+  <tbody>
+    <tr><td>하위 제어기</td><td>HOMIE (사전학습 WBC, 학습 중 고정), 걷기·서기 두 모델, 다리 + 허리 15 관절. 50 Hz (p.4)</td><td>dev12 하체 RL 하나, 다리 12, 골반 vx·vy·ωz·높이·pitch·roll 추종, 상체 11 외부 PD</td></tr>
+    <tr><td>상위 출력</td><td>19 차원 증분: 속도 3 + 양팔 14 + 손가락 기본 동작 2, 배율 0.3 누적 (<a href="../reference/doorman/code/gr00t/rl/config/env/door_open_homie.yaml">env yaml</a>). 높이·rpy 고정</td><td>상체 11 + 골반 명령 6 = 17</td></tr>
+    <tr><td>과제·물체</td><td>문 열고 통과 (6 단계), 문 5 종 (밀기·당기기 레버, 푸시바), 문 무게 80–120 kg, 경첩 스프링·래치</td><td>바닥·받침대 0–0.3 m 박스 37×40.5×29 cm, 0.5–2 kg, 두 손바닥 조이기 후 들기</td></tr>
+    <tr><td>지각·증류</td><td>teacher 는 문·손잡이 변환 + 손 접촉 힘 + 기저 선속도. student 는 RGB + 고유감각, <b>DAgger → GRPO</b></td><td>특권 teacher (접촉 포함) → D436 깊이 26×64 × 6 프레임 + 고유감각 student, DAgger (student RL 아직 없음)</td></tr>
+    <tr><td>격차</td><td>teacher 80–90 % / DAgger student 50–70 % / GRPO 후 80.8–85.8 % (p.9)</td><td>teacher 90 % / student 69 % (Isaac), 50 % (MuJoCo) — 거의 같은 모양</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li><b>가장 닮은 점</b>: "특권 teacher 는 잘하는데 시각 student 가 DAgger 만으로 20 %p 안팎 모자람" 이 그대로 나타났고, 이를 <b>student 자체 RL</b> 로 메웠다는 실증.</li>
+  <li><b>다른 점</b>: 논문은 격차 원인을 <b>시야 가림 (부분 관측)</b> 으로 설명하고, GRPO 가 "손잡이를 시야 가운데 두는" 보상 행동을 새로 배운다고 본다 (p.6). 접촉 힘 관측이 원인이라고 따로 분석하진 않았다.</li>
+</ul>
+
+<h2 class="ps">1. 문제와 과제</h2>
+<ul>
+  <li><b>왜 문인가</b>: 움직이는 1인칭 카메라로 잡을 곳 찾기, 스프링 손잡이 돌리기, 문짝의 원호 운동 따라가기, 경첩 힘 아래 균형 유지가 한꺼번에 필요한 "이동 조작 스트레스 시험" (p.2).</li>
+  <li><b>두 과제 제기</b> (p.3): (i) 부분 관측에 강하고 단순·확장 가능한 알고리즘, (ii) 넓고 이질적인 시각·물리 데이터.</li>
+  <li><b>평가 문 3 범주</b> (p.8): 밀기 레버 (가장 쉬움), 당기기 레버 (좁은 공간 + 긴 과제), 푸시바 (스프링 경첩을 힘으로 이겨야 함).</li>
+  <li><b>평가 조건</b> (p.8): 로봇을 문 앞 1 m, 문 중앙을 보게 두고 yaw ±0.3 rad 무작위. 문틀 반대편 1 m 지점 통과 = 성공.</li>
+  <li><b>6 단계</b> (p.16, 부록 A): (0) 문까지 걷기, (1) 잡기 전 자세, (2) 잡기, (3) 열기, (4) 문짝 밀어 젖히기, (5) 통과.</li>
+</ul>
+
+<h2 class="ps">2. 시스템 구조</h2>
+<div class="fig">
+  <div class="flow">
+    <span class="node">Phase 1: 특권 관측 → teacher PPO (단계 보상 + 스냅숏 리셋)</span><span class="arr">→</span>
+    <span class="node">Phase 2: RGB student DAgger</span><span class="arr">→</span>
+    <span class="node">Phase 3: student GRPO (이진 성공 신호)</span>
+  </div>
+  <div class="flow" style="margin-top:10px">
+    <span class="node">policy 출력 19 (증분)</span><span class="arr">→</span>
+    <span class="node">× 0.3 누적, ±15 자르기</span><span class="arr">→</span>
+    <span class="node">속도 × 0.25 → 자르기 vx·vy·ωz ±0.5</span><span class="arr">→</span>
+    <span class="node frozen">HOMIE 걷기/서기 (고정) → 다리+허리 15</span><span class="arr">→</span>
+    <span class="node">PD 200 Hz (팔 14·손가락은 명령 그대로)</span>
+  </div>
+  <p class="src">위: 세 단계 학습 (p.4, 그림 2). 아래: 한 제어 스텝의 흐름, 50 Hz (코드 <a href="../reference/doorman/code/gr00t/rl/config/env/door_open_homie.yaml">env yaml</a>, <a href="../reference/doorman/code/gr00t/rl/config/simulator/isaacsim.yaml">isaacsim.yaml</a> fps 200·decimation 4). 점선 = 고정.</p>
+</div>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>단계</th><th>학습되는 것</th><th>고정된 것</th><th>신호</th></tr></thead>
+  <tbody>
+    <tr><td>Phase 1 teacher</td><td>teacher (LSTM + MLP)</td><td>HOMIE</td><td>단계별 형성 보상 (표 2)</td></tr>
+    <tr><td>Phase 2 student</td><td>시각 인코더 + LSTM + MLP 전부 (인코더 같이 미세조정)</td><td>teacher, HOMIE</td><td>teacher 행동 (DAgger)</td></tr>
+    <tr><td>Phase 3 GRPO</td><td>student</td><td>HOMIE (가치 함수 없음)</td><td>이진 성공 + 관절 속도·가속·행동 변화 벌점</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">3. 관측과 행동</h2>
+<h3 class="ps">teacher 특권 관측</h3>
+<ul>
+  <li>논문 (p.4): 로봇 루트 → 문 변환 ξ<sub>RD</sub>, 왼손·오른손 → 손잡이 변환 ξ<sub>LD</sub>·ξ<sub>RD</sub>, <b>손 18 몸체의 순 접촉 렌치 τ<sub>H</sub> ∈ R<sup>18×6</sup></b>, 루트 선속도 v<sub>R</sub> ∈ R<sup>3</sup>.</li>
+  <li>공개 코드 actor 관측 (<a href="../reference/doorman/code/gr00t/rl/config/obs/wbmanip/door_open_homie.yaml">obs yaml</a>):</li>
+</ul>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>차원</th><th>항목</th><th>차원</th></tr></thead>
+  <tbody>
+    <tr><td>관절 위치 (손가락 포함)</td><td>43</td><td>손 힘 (손당 8 몸체 × 힘 3)</td><td>48</td></tr>
+    <tr><td>관절 속도</td><td>43</td><td>단계 one-hot</td><td>6</td></tr>
+    <tr><td>직전 행동</td><td>31</td><td>문 특권 정보</td><td>8</td></tr>
+    <tr><td>루트 → 문</td><td>9</td><td>직전 증분</td><td>19</td></tr>
+    <tr><td>문 관절 (경첩·손잡이)</td><td>2</td><td>손 → 손잡이 변환 (양손)</td><td>18</td></tr>
+    <tr><td>기저 선속도·각속도</td><td>3 + 3</td><td>변형 전 행동 (unwarped)</td><td>3</td></tr>
+    <tr><td>투영 중력</td><td>3</td><td>현재 HOMIE 명령</td><td>7</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>코드의 손 힘은 손당 8 몸체 × <b>힘 3 (렌치 아님)</b> = 48, 배율 0.01. 논문 "18 몸체 × 6" 과 다르다.</li>
+  <li>critic 은 위에 더해 단계 전환·완료 플래그, 단계 내 시간·실제 시간·총 시간을 본다 (비대칭 critic).</li>
+  <li>관측 잡음: 관절 위치 0.01, 관절 속도 0.2 (그 밖 0).</li>
+</ul>
+
+<h3 class="ps">student 관측</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>차원</th><th>근거</th></tr></thead>
+  <tbody>
+    <tr><td>기저 각속도, 투영 중력</td><td>3 + 3</td><td>p.4, <a href="../reference/doorman/code/gr00t/rl/config/obs/wbmanip/door_open_homie_dagger.yaml">dagger obs yaml</a></td></tr>
+    <tr><td>관절 위치·속도 (손가락 제외)</td><td>29 + 29</td><td>같음</td></tr>
+    <tr><td>직전 행동, 직전 증분</td><td>31 + 19</td><td>같음</td></tr>
+    <tr><td>현재 HOMIE 명령</td><td>7</td><td>같음</td></tr>
+    <tr><td>과제 완료 플래그</td><td>1</td><td>코드만 (시뮬 특권 신호로 보임)</td></tr>
+    <tr><td>RGB</td><td>코드 216×384 (논문에 없음) → ResNet-18 → 128</td><td><a href="../reference/doorman/code/gr00t/rl/config/exp/wbmanip/door_open_homie_dagger-lstm.yaml">dagger exp</a></td></tr>
+  </tbody>
+</table></div>
+
+<h3 class="ps">행동</h3>
+<ul>
+  <li>정책이 내는 것은 HOMIE 명령 (WBC 위에 구축, p.4). 코드: 증분 19 = HOMIE 속도 3 + 상체 관절 14 + 손가락 기본 동작 2. <code>delta_action_scale: 0.3</code>, 누적값 자르기 <code>delta_action_clip: 15.0</code>.</li>
+  <li>속도 명령 = 누적값 × <code>homie_command_scale: 0.25</code> 를 vx·vy ±0.5, ωz ±0.5 로 자름 (VIRAL 은 ωz ±1.0).</li>
+  <li>teacher 출력 차원 = 3 + 16 = 19 (<code>homie_command_dim</code> + <code>non_homie_command_actions_dim</code>).</li>
+  <li><code>warped_action</code> (속도 3 에 비선형 변형) 이 있지만 k = 0, s = 0 으로 꺼져 있다 (<a href="../reference/doorman/code/gr00t/rl/envs/base_task/warped_action_base.py"><code>warped_action_base.py</code></a>).</li>
+</ul>
+
+<h2 class="ps">4. 보상 · 종료 · 커리큘럼</h2>
+<p>Track(x, μ, σ) = exp(−(x − μ)²/(2σ²)). 단계 열은 그 항이 켜지는 단계. (p.18, 표 2)</p>
+<details class="more" open>
+  <summary>teacher 보상 전체 (논문 표 2) <span class="cnt">33 항</span></summary>
+  <div class="body">
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>항</th><th>식</th><th>가중치</th><th>단계</th></tr></thead>
+    <tbody>
+      <tr><td colspan="4"><b>종료·일반 벌점</b></td></tr>
+      <tr><td>종료</td><td>1{termination}</td><td>−1000.0</td><td>0–5</td></tr>
+      <tr><td>증분 행동 크기</td><td>‖Δa<sub>t</sub>‖²</td><td>−0.01</td><td>0–5</td></tr>
+      <tr><td>관절 속도 (상체, 손가락 제외)</td><td>‖q̇‖²</td><td>−1.0×10<sup>−3</sup></td><td>0–5</td></tr>
+      <tr><td>관절 가속도 (상체, 손가락 제외)</td><td>‖q̈‖²</td><td>−1.0×10<sup>−5</sup></td><td>0–5</td></tr>
+      <tr><td>관절 위치 한계</td><td>Σ max(0, |q<sub>i</sub> − q<sub>limit,i</sub>|)</td><td>−5.0</td><td>0–5</td></tr>
+      <tr><td>손가락 기본 동작 한계</td><td>|clip(u<sub>finger</sub>, [l, u]) − u<sub>finger</sub>|</td><td>−1.0</td><td>0–5</td></tr>
+      <tr><td>사람다운 관절 범위</td><td>Σ (clip(q − q<sub>lower</sub>, max = 0) + clip(q − q<sub>upper</sub>, min = 0))</td><td>−1.0</td><td>0–5</td></tr>
+      <tr><td>관절 과속</td><td>Σ max(0, |q̇<sub>i</sub>| − 2.0)²</td><td>−0.1</td><td>0–5</td></tr>
+      <tr><td>원치 않는 접촉</td><td>Σ 1{‖f<sub>contact,i</sub>‖ &gt; 1}</td><td>−0.2</td><td>0–5</td></tr>
+      <tr><td>문틀 접촉</td><td>Σ ‖f<sub>door frame</sub>‖²</td><td>−0.1</td><td>0–5</td></tr>
+      <tr><td>문짝 접촉</td><td>Σ ‖f<sub>door panel</sub>‖²</td><td>−0.1</td><td>0–5</td></tr>
+      <tr><td>몸통 직립</td><td>‖R<sub>torso</sub>[0,0,1]<sup>⊤</sup> − [0,0,1]<sup>⊤</sup>‖²</td><td>−1.0</td><td>0–5</td></tr>
+      <tr><td><b>HOMIE 행동 한계</b></td><td>Σ max(0, |u<sub>homie,i</sub>| − 1.0)²</td><td>−1.0</td><td>0–5</td></tr>
+      <tr><td colspan="4"><b>Stage 0: 문까지 걷기</b></td></tr>
+      <tr><td>문 쪽 걷기</td><td>exp(−‖v<sub>robot</sub> − v<sub>target</sub> d̂<sub>door</sub>‖²/(2·0.15²))</td><td>5.0</td><td>0</td></tr>
+      <tr><td>상체 기본 자세 이탈</td><td>‖q<sub>upper, non-finger</sub> − q<sub>resting</sub>‖<sub>1</sub></td><td>−1.0</td><td>0, 5</td></tr>
+      <tr><td>문 정면 보기</td><td>|wrap<sub>π</sub>(‖axis-angle(R<sub>door</sub>)‖)|</td><td>−1.0</td><td>0–2, 5</td></tr>
+      <tr><td colspan="4"><b>Stage 1: 잡기 전 자세</b></td></tr>
+      <tr><td>손–손잡이 방향</td><td>exp(−‖wrap<sub>π</sub>(‖axis-angle(R<sub>hand</sub> R<sub>±90</sub>)‖)‖²/(2·0.6²))</td><td>3.0</td><td>1–4</td></tr>
+      <tr><td>잡기 전 손가락 자세</td><td>track(q<sub>finger</sub>, q<sub>p0</sub>, 0.3) + track(q̇<sub>finger</sub>, 0.6, 0.2)</td><td>1.5</td><td>0–1, 5</td></tr>
+      <tr><td>안 쓰는 팔 이탈</td><td>‖q<sub>unused arm</sub> − q<sub>rest</sub>‖<sub>1</sub></td><td>−1.0</td><td>1–4</td></tr>
+      <tr><td>잡기 전 목표 거리</td><td>track(‖p<sub>hand</sub> − p<sub>pre-grasp</sub>‖, 0, 0.2) + track(‖v<sub>hand</sub> − v<sub>target</sub> d̂‖, 0, 0.15)</td><td>6.0</td><td>1</td></tr>
+      <tr><td><b>서 있지 않음 벌점</b></td><td>‖u<sub>HOMIE,[0:3]</sub>‖²</td><td>−15.0</td><td>1–3</td></tr>
+      <tr><td colspan="4"><b>Stage 2: 잡기</b></td></tr>
+      <tr><td>잡기 손가락 자세</td><td>track(q<sub>finger</sub>, q<sub>p1</sub>, 0.3) + track(q̇<sub>finger</sub>, 0.6, 0.2)</td><td>3.0</td><td>2–4</td></tr>
+      <tr><td>잡기 목표 거리</td><td>exp(−‖p<sub>hand</sub> − p<sub>grasp</sub>‖²/(2·0.1²))</td><td>3.0</td><td>2–4</td></tr>
+      <tr><td>잡기 힘</td><td>Σ (−|f<sub>palm,y,z</sub>| + f<sub>palm,x</sub>)</td><td>0.2</td><td>1–4</td></tr>
+      <tr><td colspan="4"><b>Stage 3: 열기</b></td></tr>
+      <tr><td>손잡이 누르기</td><td>θ̇<sub>handle</sub> + clip(θ<sub>handle</sub>, 0, 45°)/45°</td><td>6.0</td><td>3</td></tr>
+      <tr><td>경첩 밀기</td><td>10 θ̇<sub>hinge</sub> + clip(θ<sub>hinge</sub>, 0, 90°)/90°</td><td>6.0</td><td>3–4</td></tr>
+      <tr><td>문 미는 힘</td><td>clip(f<sub>hand,x</sub>, 0, 20)</td><td>0.3</td><td>3</td></tr>
+      <tr><td colspan="4"><b>Stage 4 젖히기·Stage 5 통과</b></td></tr>
+      <tr><td>손잡이 그만 누르기</td><td>−θ̇<sub>handle</sub> + (45° − θ<sub>handle</sub>)/45°</td><td>3.0</td><td>4–5</td></tr>
+      <tr><td>목표 루트 거리</td><td>track(v<sub>root</sub> · d̂<sub>target</sub>, v<sub>target</sub>, 0.2) + track(‖p<sub>root</sub> − p<sub>target</sub>‖, 0, 0.2)</td><td>12.0</td><td>4–5</td></tr>
+      <tr><td>가만히 서 있음 벌점</td><td>exp(−‖u<sub>HOMIE,[0:3]</sub>‖²/(2·0.05²))</td><td>−1.0</td><td>4</td></tr>
+      <tr><td colspan="4"><b>항상 켜짐</b></td></tr>
+      <tr><td>단계 진행</td><td>stage<sub>current</sub></td><td>1.0</td><td>0–5</td></tr>
+      <tr><td>과제 완료</td><td>1{complete}</td><td>4.0</td><td>0–5</td></tr>
+      <tr><td>성공 시간 절약</td><td>1{success} · 남은 시간 비율</td><td>0.5</td><td>0–5</td></tr>
+    </tbody>
+  </table></div>
+  <p class="src">(p.18, 표 2). 코드 가중치 (<a href="../reference/doorman/code/gr00t/rl/config/rewards/wbmanip/reward_door_open_homie.yaml">reward yaml</a>) 는 이 표와 같다. 소프트 한계 관절 위치·속도 0.95, 토크 0.9.</p>
+  </div>
+</details>
+<ul>
+  <li><b>HOMIE 행동 한계 벌점의 실제 구현</b>은 Σ(자르기 전 명령 − 자른 명령)², 즉 <b>잘린 양의 제곱</b> (<a href="../reference/doorman/code/gr00t/rl/envs/base_task/homie_base.py"><code>homie_base.py</code></a> <code>_reward_penalty_homie_action_limit</code>). VIRAL main 브랜치 설정은 이 항을 쓰지 않고, DoorMan 이 쓴다.</li>
+  <li><b>조작 단계 보상 게이트</b>: stage 1–3 보상은 속도 명령 노름 ≤ 0.1 일 때만 준다 (서서 조작하라). 문 열림 각 &gt; 10° 면 이전 단계 조건을 건너뛴다 (<a href="../reference/doorman/code/gr00t/rl/envs/door/door_open_homie.py"><code>door_open_homie.py</code></a> 812–952행).</li>
+</ul>
+
+<h3 class="ps">단계 전환 (코드)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>전환</th><th>조건</th><th>단계 제한 (스텝)</th></tr></thead>
+  <tbody>
+    <tr><td>0 → 1</td><td>잡을 점과 수평 거리 &lt; 0.3 m 그리고 상체가 기본 자세에서 최대 0.25 rad 이내</td><td>250 (5 s)</td></tr>
+    <tr><td>1 → 2</td><td>여는 손이 손잡이보다 5 cm 위, 잡기 전 목표 0.1 m 이내, 손가락이 잡기 전 자세 평균 10° 이내, 손 방향 보상 &gt; 0.2, 속도 명령 ≤ 0.1 (또는 문이 이미 10° 넘게 열림)</td><td>100</td></tr>
+    <tr><td>2 → 3</td><td>여는 손의 4 몸체 이상이 손잡이에 1 N 넘게 접촉 (또는 문 열림)</td><td>100</td></tr>
+    <tr><td>3 → 4</td><td>경첩 &gt; 10°</td><td>100</td></tr>
+    <tr><td>4 → 5</td><td>문틀을 넘음, 손잡이 복귀 (&lt; 0.2 rad), 경첩 &gt; 60°</td><td>100</td></tr>
+    <tr><td>5 완료</td><td>문틀 뒤 1.5 m</td><td>200</td></tr>
+  </tbody>
+</table></div>
+<p class="src">에피소드 20 s, 완료 뒤 50 스텝 지나 리셋, 단계 제한 초과 시 리셋 (<a href="../reference/doorman/code/gr00t/rl/config/env/door_open_homie.yaml">env yaml</a>).</p>
+
+<h3 class="ps">종료 (코드)</h3>
+<ul>
+  <li>머리·무릎·손목 접촉, 기저 높이 &lt; 0.5 m.</li>
+  <li>문과의 거리 &gt; 4 m.</li>
+  <li>상체 (손가락 제외) 관절 속도 &gt; 20 rad/s × 종료 수준 (리셋 뒤 20 스텝 이후).</li>
+</ul>
+
+<h3 class="ps">탐색: 단계 스냅숏 리셋 (staged reset)</h3>
+<ul>
+  <li><b>문제</b>: 손잡이를 잡았지만 돌리는 법을 모르면 토크·충돌 벌점·넘어짐 위험만 늘어 정책이 잡기를 "잊고" 다음 단계를 피한다 (p.5).</li>
+  <li><b>해법</b> (p.5, 그림 3): 환경이 다음 단계에 들어갈 때 그 순간의 로봇·문 상태 (모든 관절·강체의 일반 좌표) 를 단계별 롤링 버퍼에 저장 (최근 100 개). 리셋 때 비율 α<sub>y</sub> 로 시작 단계 또는 중간 단계를 골라 그 버퍼에서 상태를 불러온다.</li>
+  <li><b>식</b> (p.6, 식 1–3): 초기 분포 ρ̃<sub>α</sub> = Σ<sub>y</sub> α<sub>y</sub> ρ<sub>y</sub>, Σ α<sub>y</sub> = 1. 할인 점유 측도 d<sub>π</sub><sup>α</sup>(s) = (1 − γ) Σ<sub>t</sub> γ<sup>t</sup> Pr(s<sub>t</sub> = s | s<sub>0</sub> ∼ ρ̃<sub>α</sub>, π) 가 뒤 단계 쪽으로 다시 가중돼 그 상태의 경사 갱신이 잦아진다. 단계 사이 "다리" 를 지날 확률 p<sub>bridge</sub> ≪ 1 문제를 우회.</li>
+  <li><b>코드</b> (<a href="../reference/doorman/code/gr00t/rl/envs/base_task/staged_task_base.py"><code>staged_task_base.py</code></a>): 버퍼는 [단계, 표본, env] 꼴로 <b>env 마다 따로</b> 둔다. 리셋 비율 <code>staged_reset_ratios: [0.5, 0.1, 0.1, 0.1, 0.1, 0.1]</code>, 버퍼 크기 <code>staged_reset_max_samples_per_stage: 200</code> (논문은 100). 표본이 없는 단계는 가중치 0 으로 빼고 <code>torch.multinomial</code> 로 단계를 고른 뒤 그 안에서 균등 추출.</li>
+  <li><b>명령 누적값도 스냅숏에 포함</b>: 증분 누적 버퍼 <code>delta_actions</code> 를 문 상태와 함께 저장·복원 (<code>door_open_homie.py</code> 178–185행). 리셋 직후 명령과 자세가 어긋나지 않는다.</li>
+  <li>보상 계산에는 리셋 장치가 관여하지 않는다 (p.10).</li>
+</ul>
+
+<h2 class="ps">5. 학습 설정 (알고리즘 · 망 · 무작위화)</h2>
+<h3 class="ps">teacher PPO (코드 값, 논문은 "standard PPO" 만 적음)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>값</th><th>설정</th></tr></thead>
+  <tbody>
+    <tr><td>env 수</td><td>GPU 당 4096 (GPU 수는 논문에 없음)</td></tr>
+    <tr><td>망</td><td>actor·critic 각각 LSTM 2 층 × 256 → MLP [512, 256, 128] SiLU, 관측 정규화</td></tr>
+    <tr><td>롤아웃</td><td>env 당 64 스텝, 에폭 5, 미니배치 4</td></tr>
+    <tr><td>학습률</td><td>1e-4 (actor·critic), desired KL 0.005</td></tr>
+    <tr><td>γ / λ</td><td>0.9975 / 0.985</td></tr>
+    <tr><td>행동 std</td><td>초기 0.8, 상한 0.8 고정 (<code>clamp_noise_std</code>)</td></tr>
+    <tr><td>엔트로피</td><td>0.01</td></tr>
+    <tr><td>반복 수</td><td>그림 6b 가로축 약 3.8k 반복 (버퍼 100 이면 500 반복에 대부분, 약 1700 반복에 전 단계 도달)</td></tr>
+  </tbody>
+</table></div>
+<p class="src">(<a href="../reference/doorman/code/gr00t/rl/config/exp/wbmanip/door_open_homie_lstm.yaml">teacher exp</a>; p.10, 그림 6b)</p>
+
+<h3 class="ps">문 생성 무작위화 (물리)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>속성</th><th>범위</th><th>단위</th></tr></thead>
+  <tbody>
+    <tr><td>문짝 폭</td><td>0.8–1.1</td><td>m</td></tr>
+    <tr><td>문짝 높이</td><td>1.9–2.2</td><td>m</td></tr>
+    <tr><td>손잡이 높이</td><td>0.85–0.95</td><td>m</td></tr>
+    <tr><td>손잡이–가장자리 거리</td><td>0.04–0.1</td><td>m</td></tr>
+    <tr><td>손잡이 종류</td><td>knob, lever, pushbar, handle, flat</td><td></td></tr>
+    <tr><td>여는 쪽 / 방향</td><td>left·right / in·out</td><td></td></tr>
+    <tr><td>문 무게</td><td>80–120</td><td>kg</td></tr>
+    <tr><td>경첩 최대 힘 / 감쇠 / 강성</td><td>20–30 N·m / 5–10 / 10–20</td><td>감쇠·강성 (kg m²)/(s² °)</td></tr>
+    <tr><td>손잡이 최대 힘 / 감쇠 / 강성</td><td>1–3 N·m / 0.1–0.6 / 30–50</td><td></td></tr>
+  </tbody>
+</table></div>
+<p class="src">(p.16, 표 3). 래치는 손잡이 각에 묶인 mimic 관절, 손잡이 목표 −5° (위로) 로 수평에서도 스프링 장력. 열쇠 구멍·문틀·장식은 각 50 % 확률 (p.16, 부록 B).</p>
+<ul>
+  <li>공개 설정은 문 한 방향 (<code>door_open_lr: ["right"]</code>, <code>door_open_io: ["out"]</code>) 만 켜져 있다 (<a href="../reference/doorman/code/gr00t/rl/data/tasks/door/scenario_cfg/isaacsim.py">scenario_cfg</a>).</li>
+  <li>로봇 쪽 물리 무작위화 (마찰·질량·밀기·PD·지연) 는 teacher·student 설정 모두 꺼져 있다 (<code>NO_domain_rand</code>).</li>
+</ul>
+
+<h3 class="ps">시각 무작위화</h3>
+<ul>
+  <li>Isaac Lab PBR 재질을 모든 표면에, 하위 식별자·텍스처 변환·albedo·tint 를 무작위화. 0.9–1.1 s 마다 한 물체의 재질을 다시 뽑음 (p.16).</li>
+  <li>돔 라이트: Omniverse 공개분 전부 + Poly Haven 5233 장 (p.7, p.16).</li>
+  <li>RTX Real-Time 렌더러 성능 모드, 모션 블러·자동 화이트밸런스 켬 (p.7).</li>
+  <li>카메라 내부·외부 파라미터 정렬 후 "약간" 무작위 (p.7, 범위는 논문에 없음, 공개 코드에서 외부 파라미터 무작위 항목 찾지 못함).</li>
+  <li>영상 증강 (코드 <a href="../reference/doorman/code/gr00t/rl/config/domain_rand/domain_rand_visual_ImageRand.yaml">ImageRand</a>): 밝기 U(0.7, 2), 대비 U(0.5, 1.5), 색조 ±0.1, 채도 U(0.5, 2), 가우시안 잡음 std 0–0.15, 블러 커널 3–5, σ 0.1–1.5 (VIRAL 과 같은 값).</li>
+</ul>
+
+<h2 class="ps">6. teacher → student / 증류</h2>
+<h3 class="ps">Phase 2: DAgger</h3>
+<ul>
+  <li>학생 롤아웃에서 teacher 라벨을 받는 순수 DAgger. BC 는 teacher 분포만 덮는다는 이유 (p.5).</li>
+  <li>망 (논문, p.5): 시각 인코더 (ResNet, He et al.) 를 정책과 함께 미세조정 → 고유감각과 이어 붙여 2 층 LSTM (각 512) → MLP (512, 256, 128) → 목표.</li>
+  <li>코드 (<a href="../reference/doorman/code/gr00t/rl/config/exp/wbmanip/door_open_homie_dagger-lstm.yaml">dagger exp</a>): ResNet-18 ImageNet 사전학습·학습 가능 → 128, <b>LSTM 2 층 × 256</b> (논문 512 와 다름), MLP [512, 256, 128]. env 4096, env 당 8 스텝, 에폭 1, lr 1e-4, 행동 std 0.001 고정. teacher 롤아웃 비율 0 (<code>teacher_rollout_ratio: 0.0</code>; trainer 가 읽는 키 이름은 <code>ratio_teacher_rollout</code> 이라 기본값으로 학생 롤아웃만).</li>
+</ul>
+<h3 class="ps">Phase 3: GRPO 미세조정 (논문만, 공개 코드 없음)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>요소</th><th>내용</th><th>출처</th></tr></thead>
+  <tbody>
+    <tr><td>알고리즘</td><td>GRPO = 가치 함수 없는 PPO 변형. 현재 student 로 G 개 롤아웃 τ<sub>1..G</sub>, 각 리턴 R<sub>i</sub></td><td>p.6</td></tr>
+    <tr><td>이점</td><td>Â<sub>i</sub> = (R<sub>i</sub> − mean(R)) / std(R) — 궤적마다 하나, 그 궤적의 모든 스텝에 같은 값</td><td>p.6, 식 4</td></tr>
+    <tr><td>목적</td><td>L = E<sub>i,t</sub>[min(r<sub>i,t</sub> Â<sub>i</sub>, clip(r<sub>i,t</sub>, 1 − ε, 1 + ε) Â<sub>i</sub>)], r<sub>i,t</sub> = π<sub>θ</sub>/π<sub>old</sub></td><td>p.6, 식 5</td></tr>
+    <tr><td>보상</td><td>주로 <b>이진 과제 성공</b> + 관절 속도·관절 가속·행동 변화 벌점 같은 단순 형성 항</td><td>p.7</td></tr>
+    <tr><td>반복 수</td><td>그림 6a 가로축 0–200 반복</td><td>p.10, 그림 6a</td></tr>
+    <tr><td>그룹 크기 G, ε, 학습률, KL 항, 그룹 구성 (같은 초기 상태끼리인지)</td><td>논문에 없음</td><td>–</td></tr>
+    <tr><td>공개 코드</td><td>doorman 브랜치에 GRPO 문자열 0 건</td><td>로컬 grep</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li><b>저자들의 해석</b>: DAgger student 정체는 "복구 불가능한 관측 격차" (p.9). student 가 자기 롤아웃으로 부분 관측을 보완하는 전략 (손잡이를 시야에 두도록 위치 조정, 손끝 자세 조정) 을 스스로 찾는다 (p.6). "성공률이 0 이 아닌 기본 정책이면 어느 이동 조작 과제에도 바로 붙일 수 있다" (p.7).</li>
+  <li><b>곡선</b> (그림 6a, 그림에서 읽은 값): 푸시바 약 0.49 → 0.87, 밀기 레버 약 0.68 → 0.86, 당기기 레버 약 0.56 → 0.82. 점선 (teacher) 근처에서 평탄해짐 = teacher 가 상한.</li>
+</ul>
+
+<h2 class="ps">7. 결과</h2>
+<h3 class="ps">실기 대 사람 텔레옵 (그림 5)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>조건</th><th>성공률</th><th>평균 완료 시간</th></tr></thead>
+  <tbody>
+    <tr class="ours"><td>DoorMan (RGB, 자율)</td><td>83 %</td><td>15.40 s</td></tr>
+    <tr><td>전문 텔레옵 (전일 3 개월 이상)</td><td>80 %</td><td>20.02 s</td></tr>
+    <tr><td>비전문 텔레옵 (1 일 미만)</td><td>60 %</td><td>22.55 s</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>모두 같은 HOMIE WBC 위. 텔레옵은 PICO 4 Ultra + 손 컨트롤러, 머리·양손목 SE(3) + 손가락 각 + 허리 높이 + 평면 이동 명령, Pinocchio IK (p.16, 부록 C).</li>
+  <li>완료 시간: 전문 대비 23.1 % (본문 3.1 절은 23.8 %), 비전문 대비 31.7 % 빠름 (p.3, p.8). 성공률은 "비전문보다 28 % 좋다" 고 적었으나 83 대 60 은 23 %p (상대 38 %) 라 본문 수치와 맞지 않는다.</li>
+  <li>문별 실기 시도 횟수는 논문에 없음.</li>
+</ul>
+<h3 class="ps">시각 무작위화 절제 (시뮬, 처음 보는 문 120 회씩, 표 1)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>실험</th><th>외관</th><th>돔 라이트</th><th>밀기 레버</th><th>당기기 레버</th><th>푸시바</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>무작위 없음 (회색)</td><td>✗</td><td>10.8</td><td>5.0</td><td>20.0</td></tr>
+    <tr><td>2</td><td>단색 무작위</td><td>✓</td><td>67.5</td><td>65.8</td><td>70.0</td></tr>
+    <tr><td>3</td><td>+10 % 텍스처</td><td>✗</td><td>58.3</td><td>50.8</td><td>76.7</td></tr>
+    <tr><td>4</td><td>+10 % 텍스처</td><td>✓</td><td>79.2</td><td>77.5</td><td>77.5</td></tr>
+    <tr><td>5</td><td>+100 % 텍스처</td><td>✗</td><td>73.3</td><td>55.8</td><td>76.7</td></tr>
+    <tr class="ours"><td>6</td><td>+100 % 텍스처</td><td>✓</td><td>85.8</td><td>80.8</td><td>85.0</td></tr>
+  </tbody>
+</table></div>
+<p class="src">(p.9, 표 1, 성공률 %). 돔 라이트를 빼면 15–30 % 하락 (당기기 레버가 가장 큼), 텍스처 10 % 만 써도 100 % 대비 4–8 % 하락에 그침. 실험 6 의 수치는 GRPO 뒤 수치 (80.8–85.8 %) 와 같은 범위라, 표 1 은 GRPO 까지 거친 정책의 평가로 보인다 (추론).</p>
+<h3 class="ps">스냅숏 리셋 절제 (그림 6b)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>버퍼 크기</th><th>teacher 탐색 결과</th></tr></thead>
+  <tbody>
+    <tr><td>100</td><td>약 500 반복에 대부분 단계, 약 1700 반복에 전 단계 도달</td></tr>
+    <tr><td>10</td><td>전 단계 탐색에 4000 반복 넘게</td></tr>
+    <tr><td>0 (리셋 없음)</td><td>실패: stage 2 (손잡이 잡기) 에 못 들어감 — 잡기 실패 시 충돌 벌점이 커서 잡기를 피함</td></tr>
+  </tbody>
+</table></div>
+<p class="src">(p.10, 그림 6b) 보상 설정은 세 조건 모두 같음.</p>
+
+<h2 class="ps">8. 실기 · sim2real</h2>
+<ul>
+  <li><b>하드웨어</b>: G1 29 DoF + 7 DoF 3손가락 손 둘, RealSense D435i 의 <b>RGB 만</b> (깊이 출력 미사용), 추론은 데스크톱 i9-14900K + RTX 4090 (p.17, 부록 D).</li>
+  <li><b>무조정 배포</b>: 실제 장면을 시뮬에 재현하지 않았고, 실기 장면은 학습에서 본 적 없음 (p.7).</li>
+  <li><b>일반화</b> (그림 1): 손잡이 모양·외관, 벽 패널 외관, 밀기·당기기.</li>
+  <li><b>사람보다 나은 이유 (정성)</b>: 텔레옵은 손잡이·경첩 스프링 힘, 몸 기울임 양, 문짝 원호 궤적을 가늠하지 못해 실패가 잦다. 이 피드백은 VR 텔레옵으론 안 오지만 시뮬에선 상호작용으로 배운다 (p.9).</li>
+  <li><b>GRPO 뒤 정성 효과</b>: 손잡이를 시야에 유지, 통과 중 균형 유지, 벗어난 카메라 자세에서 복구 (p.11).</li>
+  <li>실기 실패 양상의 정량 분석은 없다.</li>
+</ul>
+
+<h2 class="ps">9. 코드에서 확인한 것</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>주제</th><th>확인 내용</th><th>파일</th></tr></thead>
+  <tbody>
+    <tr><td>브랜치</td><td><code>.git/HEAD</code> = <code>refs/heads/doorman</code>. VIRAL 과 같은 뼈대 (Isaac Lab + TRL + Hydra, HOMIE 를 trainer 안에서 고정 실행)</td><td><a href="../reference/doorman/code/README.md">README.md</a></td></tr>
+    <tr><td>환경 클래스</td><td><code>DoorPregrasp</code>: 6 단계, 단계 게이트 보상, 스냅숏 리셋</td><td><a href="../reference/doorman/code/gr00t/rl/envs/door/door_open_homie.py"><code>door_open_homie.py</code></a></td></tr>
+    <tr><td>스냅숏 리셋</td><td>env 별 단계별 롤링 버퍼, 로봇·문·증분 누적값 저장, 리셋 비율 [0.5, 0.1 × 5], 버퍼 200</td><td><a href="../reference/doorman/code/gr00t/rl/envs/base_task/staged_task_base.py"><code>staged_task_base.py</code></a></td></tr>
+    <tr><td>문 생성기</td><td>절차적 문 USD 생성 (래치·손잡이·장식)</td><td><a href="../reference/doorman/code/gr00t/rl/isaac_utils/playground/env_rand/door.py"><code>door.py</code></a>, <a href="../reference/doorman/code/gr00t/rl/scripts/generate_door_assets.py"><code>generate_door_assets.py</code></a></td></tr>
+    <tr><td>잘린 양 제곱 벌점</td><td><code>penalty_homie_action_limit: -1.0</code> 사용</td><td>reward yaml</td></tr>
+    <tr><td>GRPO</td><td>없음 (grep 0 건)</td><td>–</td></tr>
+    <tr><td>미사용 흔적</td><td>env yaml 의 <code>pred_model</code>·<code>random_model</code> (입력 3101, 은닉 1024 × 4) 설정은 있으나 환경 코드에서 쓰는 곳을 찾지 못함 (RND 류 탐색 보너스로 보이는 흔적, 추론)</td><td>env yaml</td></tr>
+    <tr><td>LFS</td><td><code>models/</code> HOMIE <code>model_walk.pt</code>·<code>model_stand.pt</code> 등과 데이터·메시 312 개 파일이 132–134 바이트 포인터. <code>logs_rl/</code> 은 VIRAL 실험 기록이 그대로 남아 있음</td><td><a href="../reference/doorman/code/models/">models/</a></td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">10. 한계</h2>
+<ul>
+  <li>GRPO 의 핵심 하이퍼파라미터 (그룹 크기, ε, 학습률, 그룹 구성) 가 없고 코드도 공개되지 않아 재현하려면 설계를 새로 해야 한다.</li>
+  <li>GRPO 는 성공률이 0 이 아닌 student 가 있어야 하고, 개선 상한이 teacher 성공률 근처에서 멈췄다 (p.9) — teacher 보다 나아지진 않았다.</li>
+  <li>과제 맞춤 보상 33 항. 저자도 과제별 보상 설계 의존을 줄이는 것을 향후 과제로 든다 (p.11).</li>
+  <li>실기 결과가 평균 성공률·시간만 있고 문 종류별 시도 수·실패 원인이 없다. 본문 비율 수치 일부가 그림과 맞지 않는다 (23.1 % 대 23.8 %, 28 %).</li>
+  <li>로봇 물리 무작위화가 공개 설정에서 꺼져 있다 (문 물리만 무작위).</li>
+  <li>RGB 해상도·카메라 무작위 범위 등 시각 sim2real 수치가 논문에 빠져 있다.</li>
+</ul>
+
+<h2 class="ps">11. 우리에게 가져올 것</h2>
+<div class="take"><ol>
+  <li><b>student RL 미세조정 단계를 계획에 넣는다</b>: DAgger 로 69 % 근처에서 멈춘 student 를 이진 성공 보상 (+ 관절 속도·가속·행동 변화 벌점) 으로 미세조정. DoorMan 은 약 200 반복으로 50–70 → 80.8–85.8 %. GRPO 는 가치 함수가 없어 비대칭 critic 이 필요 없다는 장점이 있지만 코드가 없으므로, 기존 rsl_rl PPO 에 student 를 actor 로 넣고 critic 은 특권 관측으로 새로 학습 (critic 을 먼저 데운 뒤 actor 갱신) 하는 쪽이 구현은 더 싸다 (추론). 어느 쪽이든 "teacher 성공률이 상한" 이라는 점을 기대치로 둔다.</li>
+  <li><b>GRPO 를 직접 짤 경우의 최소 설계</b> (논문에 없는 부분은 우리가 정해야 함): 같은 초기 상태 (박스 위치·질량·받침대 높이) 에서 G 개 env 를 한 그룹으로 돌리고, 리턴 = 성공 1/0 − 작은 평활 벌점, 그룹 안에서 평균·표준편차로 정규화, PPO clip ε 0.2 (VIRAL·DoorMan teacher 값) 로 시작 (추론).</li>
+  <li><b>단계 스냅숏 리셋 버퍼</b>: "박스 앞 도착", "쪼그림·숙임 완료", "두 손 접촉", "들기 시작" 진입 순간을 env 별 단계별 버퍼 (100–200) 에 저장하고 리셋 비율 [0.5, 나머지 균등] 으로 섞는다. 버퍼 0 이면 잡기 단계 진입 실패, 10 이면 4000 반복 넘게 걸렸다. v2 의 "한 손 밀기 국소해"·"바닥 도달 한계" 탐색에 직접 도움.</li>
+  <li><b>스냅숏에 명령 누적값과 하위 입력 이력을 함께 저장</b>: DoorMan 은 증분 누적 버퍼를 같이 저장한다. 우리는 골반 명령 누적값 6 + 상체 목표 11 + dev12 가 보는 저역 통과 상체 목표·변화율 상태까지 복원해야 리셋 직후 dev12 가 학습 밖 입력을 받지 않는다.</li>
+  <li><b>조작 단계 = 서서 하기 게이트</b>: stage 1–3 보상은 속도 명령 노름 ≤ 0.1 일 때만 + 속도 명령 벌점 −15. 우리 쪼그림·조이기·들기 단계에 그대로 맞는다 (dev12 의 서기 높이 범위 0.335 m 부터 쓸 수 있음).</li>
+  <li><b>잘린 양 제곱 벌점</b>: Σ(자르기 전 − 자른 명령)², 가중치 −1.0 (DoorMan). VIRAL 식 경첩 벌점과 둘 중 하나를 dev12 범위 기준으로.</li>
+  <li><b>teacher 망 = LSTM 2 × 256 + MLP [512, 256, 128]</b>, std 0.8 상한 고정, γ 0.9975, λ 0.985, KL 0.005. 접촉 순간이 중요한 과제에서 순환망 teacher 를 쓴 선례.</li>
+  <li><b>격차 원인 진단부터</b>: DoorMan 은 원인을 시야 가림으로 봤다. 우리도 student 실패 에피소드를 "박스가 깊이 영상 밖으로 나갔나" 와 "접촉 뒤 힘 조절 실패인가" 로 먼저 나눠 보면 RL 미세조정과 teacher 재학습 (접촉을 critic 전용으로) 중 무엇이 먼저인지 정할 수 있다 (추론).</li>
+</ol></div>
+<h3 class="ps">가져오지 말 것</h3>
+<ul>
+  <li><b>문 과제 보상 항</b> (손잡이 각, 경첩 각속도 ×10 등) 과 그 가중치: 과제가 다르다. 꼴 (단계 게이트, 진행·완료·시간 절약 상시 보상 1.0 / 4.0 / 0.5) 만 참고.</li>
+  <li><b>손 힘을 actor 관측에</b> (48 차원 또는 18 × 6): DoorMan 은 그대로 두고 GRPO 로 메웠지만, 우리는 먼저 접촉을 critic 전용으로 옮기는 값싼 실험이 있다.</li>
+  <li><b>과제 완료 플래그를 student 관측에</b> (코드에만 있음): 실기에서 얻을 수 없는 신호라 student 에 넣지 않는다.</li>
+  <li><b>RGB 시각 무작위화 묶음</b>: 깊이 student 에는 해당 없음. 깊이 구멍·잡음·카메라 자세 무작위가 대신.</li>
+  <li><b>로봇 물리 무작위화 없음</b>: 우리 박스 질량 0.5–2 kg, 마찰, 받침대 높이는 반드시 무작위.</li>
+</ul>
+
+<p class="src">출처 표기: (p.N) 은 PDF 쪽 (부록 A·B·C·표 3 = p.16, 부록 D = p.17, 표 2 = p.18), (표 N), (그림 N), (식 N), 코드는 파일 경로. 논문에 없는 값은 "논문에 없음". "추론" 은 이 페이지 작성자의 판단.</p>
+</main>
+</body>
+</html>

@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>What Matters — 논문 상세</title>
+<link rel="stylesheet" href="paper.css">
+</head>
+<body>
+<main class="wrap">
+<a class="back" href="../index.html#catalog">← 자료 목록으로</a>
+
+<header class="ph">
+  <h1>What Matters: 온폴리시 RL 구현 선택 50여 개를 25만 에이전트로 가려낸 대규모 실험</h1>
+  <p class="orig">What Matters In On-Policy Reinforcement Learning? A Large-Scale Empirical Study</p>
+  <p class="meta">Marcin Andrychowicz, Anton Raichuk, Piotr Stańczyk, Manu Orsini, Sertan Girgin, Raphael Marinier, Léonard Hussenot, Matthieu Geist, Olivier Pietquin, Marcin Michalski, Sylvain Gelly, Olivier Bachem · Google Research, Brain Team · ICLR 2021 (로컬 PDF 는 arXiv v1 2020-06, 48쪽 — 학회판과 그림 번호가 다를 수 있음) · 로봇 없음: Gym Hopper·Walker2d·HalfCheetah·Ant·Humanoid -v1 · MuJoCo 2.0</p>
+  <div class="chips">
+    <a class="chip loc" href="../reference/whatmatters/paper.pdf">로컬 PDF</a>
+    <a class="chip" href="https://arxiv.org/abs/2006.05990" target="_blank" rel="noopener">arXiv 2006.05990</a>
+    <span class="simv s4">유사도 4</span>
+    <span class="badge">라이선스 –</span>
+  </div>
+</header>
+
+<div class="callout blue tldr">PPO 기반 통합 구현에서 68개 선택(C1–C68)을 주제별로 무작위로 바꿔 25만 개 넘는 에이전트를 학습. 가장 크게 작동한 것은 <b>초기 행동 분포</b>(평균 0·작은 std: 정책 마지막 층 100배 축소만으로 Humanoid +66 %, 초기 std 0.5 가 5개 중 4개 환경에서 최고)와 <b>관측 정규화</b>(Humanoid 약 2,720 vs 470). clip 대신 tanh 는 "약간" 나음, 엔트로피·KL 규제는 HalfCheetah 외엔 무효 (p.4–8).</div>
+
+<h2 class="ps">우리와 무엇이 같고 다른가</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>이 논문</th><th>우리 (dev10 pelvis_pick)</th></tr></thead>
+  <tbody>
+    <tr><td>하위 제어기</td><td>없음 — 단일 정책 벤치마크</td><td>dev12 하체 RL, 골반 vx·vy·ωz·높이·pitch·roll 추종, 상체 11 외부 PD, 고정</td></tr>
+    <tr><td>상위 출력</td><td>정규화된 행동 [−1, 1]. 가우시안 → clip(기본) 또는 tanh</td><td>상체 11 + 골반 명령 6 = 17차원 유계 행동. v2 는 환경 안 자르기 + 벌점 없음 → std 발산, 켜짐/꺼짐 포화</td></tr>
+    <tr><td>과제·물체</td><td>이동 5개, 학습 1M(Hopper·HalfCheetah·Walker2d)·2M(Ant·Humanoid) 스텝</td><td>박스 집기, Isaac Lab 수천 env, 수억 스텝 이상</td></tr>
+    <tr><td>학습 스택</td><td>SEED RL 기반 통합 구현, 256 env, 기본 설정 = PPO2 기본에 가까움 (표 2)</td><td>rsl_rl PPO(dev12 하위와 같은 스택 예정). 참고: 9월 역할 분리 판 teacher(k1_boxlift) = 초기 std 0.5(log), ELU [512, 256, 128], 관측 정규화 끔, 엔트로피 0.005 (<a href="../../source/k1_boxlift/tasks/agents/rsl_rl_cfg.py">rsl_rl_cfg.py</a>). v2(sonic_pick)는 gear_sonic 의 TRL PPO(<code>ppo_im_phc</code>)라 설정이 다르다.</td></tr>
+    <tr><td>지각·증류</td><td>없음</td><td>특권 teacher → D436 깊이 student (DAgger)</td></tr>
+    <tr><td>평가 지표</td><td>학습 곡선 아래 면적(빨리 배우는 설정이 유리), 3 시드 중앙값</td><td>최종 성공률, 체크포인트 선택</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">1. 문제와 과제</h2>
+<p><b>질문</b>: 논문에 잘 안 적히는 구현 선택(초기화, 정규화, 손실 세부 등)이 성능을 얼마나 좌우하나? 결론을 실무 권고로 정리 (p.1–2).</p>
+<h3 class="ps">실험 설계 (p.2–3)</h3>
+<ul>
+  <li>통합 에이전트: OpenAI baselines PPO 와 같은 선택으로 PPO 논문 성능 재현을 확인한 뒤, 구현 결정마다 선택지 번호(C1–C68)를 붙임.</li>
+  <li>선택을 8개 주제 묶음으로 나누고, 묶음 안 선택만 균등 무작위, 나머지는 기본 설정(표 2). Adam lr(C24)은 상호작용이 의심돼 모든 묶음에 포함.</li>
+  <li>설정마다 3 시드. 10만 스텝마다 확률적 정책으로 100 에피소드 평가 → 평균(곡선 아래 면적 비례) → 3 시드 중앙값이 설정 점수.</li>
+  <li><b>분석 둘</b>: ① 선택값별 <b>조건부 95번째 백분위</b>(+ 이항 신뢰구간) — "나머지를 랜덤 서치 약 20개 설정으로 맞췄을 때 기대 성능" ② <b>상위 5 % 설정 안 선택값 분포</b> — 균등 표본이므로 과다 대표면 중요.</li>
+</ul>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>묶음 (부록)</th><th>무작위로 바꾼 선택</th><th>설정 수 / 환경</th></tr></thead>
+  <tbody>
+    <tr><td>정책 손실 (D)</td><td>손실 {PG, V-trace, PPO, AWR, V-MPO, RPA}, epoch {1, 3, 10}, 손실별 하이퍼, lr {3e-5 – 3e-3}</td><td>2,000</td></tr>
+    <tr><td>망 구조 (E)</td><td>공유/분리, 폭 {16 – 512}, 깊이 {1, 2, 4, 8}, 활성 6종, 초기화 8종, 마지막 층 배율 정책·가치 {0.001, 0.01, 0.1, 1.0}, 전역 std, std 변환 {exp, softplus}, 초기 std {0.1, 0.5, 1.0, 2.0}, 최소 std {0, 0.01, 0.1}, 행동 변환 {clip, tanh}, lr</td><td>4,000 (분리 망만으로 재실행)</td></tr>
+    <tr><td>정규화·자르기 (F)</td><td>관측 정규화, 관측 자르기 {1, 2, 5, 10, 없음}, 가치 정규화, 미니배치 이점 정규화, grad clip {0.5, 1, 2, 5, 없음}, PPO ε, lr</td><td>2,000</td></tr>
+    <tr><td>이점 추정 (G)</td><td>GAE λ {0.8, 0.9, 0.95, 0.99} / N-step {1, 3, 10, 10⁶} / V-trace, Huber δ, PPO 가치 자르기 {0.001 – 1.0, 없음}, env 수 {64, 128, 256}</td><td>4,000</td></tr>
+    <tr><td>학습 설정 (H)</td><td>반복당 전이 {512 – 4096}, 미니배치 방식 4종, epoch, env 수, 배치 {64, 128, 256}</td><td>2,000</td></tr>
+    <tr><td>시간 (I)</td><td>γ {0.95, 0.97, 0.99, 0.999}, frame skip {1, 2, 5}, 시간 초과 처리</td><td>2,000</td></tr>
+    <tr><td>최적화 (J)</td><td>Adam/RMSProp, 모멘텀 {0, 0.9}, ε, lr, lr 선형 감소</td><td>2,000</td></tr>
+    <tr><td>규제 (K)</td><td>없음 / 벌점 / 제약 × {KL(μ‖π), KL(π‖μ), KL(N(0,1)‖π), decoupled KL, 엔트로피}, 계수·문턱</td><td>4,000</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">2. 시스템 구조</h2>
+<p>행동 분포 매개화 (부록 B.8): <b>π = T<sub>u</sub>( N( x<sub>μ</sub>, T<sub>ρ</sub>(x<sub>ρ</sub> + c<sub>ρ</sub>) + ε<sub>ρ</sub> ) )</b>, c<sub>ρ</sub> = T<sub>ρ</sub><sup>−1</sup>(i<sub>ρ</sub> − ε<sub>ρ</sub>) — 초기 std 가 정확히 i<sub>ρ</sub> 가 되게 하는 오프셋.</p>
+<div class="fig">
+  <div class="flow">
+    <span class="node">관측 → 평균·표준편차 정규화 (C64), ±o<sub>max</sub> 자르기 (C65)</span><span class="arr">→</span>
+    <span class="node">정책 MLP (분리 C47, 폭·깊이 C49·C52, 활성 C55, 초기화 C56)</span><span class="arr">→</span>
+    <span class="node">평균 x<sub>μ</sub> (마지막 층 가중치 × C57)</span>
+  </div>
+  <p><small>표준편차 경로</small></p>
+  <div class="flow">
+    <span class="node">x<sub>ρ</sub>: 전역 매개 또는 망 출력 (C59)</span><span class="arr">→</span>
+    <span class="node">+ c<sub>ρ</sub> (초기 std C61)</span><span class="arr">→</span>
+    <span class="node">T<sub>ρ</sub>: exp 또는 softplus (C60) + ε<sub>ρ</sub> (C62)</span><span class="arr">→</span>
+    <span class="node">가우시안 표본 x</span><span class="arr">→</span>
+    <span class="node">T<sub>u</sub>: clip 또는 tanh (C63)</span><span class="arr">→</span>
+    <span class="node">환경 행동 [−1, 1]</span>
+  </div>
+</div>
+<ul>
+  <li><b>tanh 의 밀도</b>: u = tanh(x) 면 log p<sub>u</sub>(u) = log p<sub>θ</sub>(x) − log tanh′(x). 이 항은 정책 손실(∇<sub>θ</sub>log p 만 씀)과 KL(같은 표본의 log 차)에서 <b>상쇄</b>되고, <b>엔트로피에서만</b> 남는다: H = E[−log p<sub>θ</sub>(x) + log tanh′(x)]. 이 항이 극단 행동을 벌해 tanh 포화와 기울기 소실을 막고 엔트로피 상한을 준다 (B.8).</li>
+  <li><b>exp 안전장치</b>: 지수를 [−15, 15] 로 자르고 기울기는 1 로 통과시킴. 그냥 exp 는 일부 실행에서 NaN (각주 10, 25).</li>
+  <li><b>PPO 손실</b>: 비율 하한을 1 − ε 대신 1/(1 + ε) 로 (대칭) (각주 19).</li>
+  <li><b>데이터 루프</b> (B.1): env C1 개를 동기로 돌려 C2 개 전이 수집(env 당 C2/C1 스텝 조각) → C3 epoch × 크기 C4 미니배치. 미니배치 방식 C5 4종: 조각 고정 / 조각 섞기 / 전이 섞기(PPO2 원본, 이점은 반복 시작에 한 번) / <b>전이 섞기 + epoch 마다 이점 재계산</b>(이 논문 제안).</li>
+</ul>
+
+<h2 class="ps">3. 관측과 행동</h2>
+<p>우리 상위 정책에 가장 중요한 부분. 아래 수치는 각 선택값의 <b>조건부 95번째 백분위 점수</b>를 300 dpi 로 렌더한 막대그래프에서 읽은 근사값(눈금 기준 ±50 정도). 본문에 숫자로 적힌 것은 따로 표시.</p>
+<h3 class="ps">초기 행동 std i<sub>ρ</sub> (그림 2 = 그림 28)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>초기 std</th><th>Hopper</th><th>Humanoid</th><th>Walker2d</th><th>HalfCheetah</th><th>Ant</th><th>상위 5 % 비중 (전체)</th></tr></thead>
+  <tbody>
+    <tr><td>0.1</td><td>610</td><td>800</td><td>490</td><td>2,160</td><td>2,300</td><td>0.11</td></tr>
+    <tr class="ours"><td><b>0.5</b></td><td>1,280</td><td><b>2,850</b></td><td><b>735</b></td><td><b>2,850</b></td><td><b>2,970</b></td><td><b>0.47</b></td></tr>
+    <tr><td>1.0 (기본)</td><td>1,420</td><td>2,680</td><td>650</td><td>1,610</td><td>2,330</td><td>0.26</td></tr>
+    <tr><td>2.0</td><td><b>1,460</b></td><td>2,020</td><td>640</td><td>960</td><td>1,110</td><td>0.16</td></tr>
+  </tbody>
+</table></div>
+<p>본문: "0.5 가 Hopper 를 뺀 모든 환경에서 최고, Hopper 는 더 클수록 좋음" (p.5). 너무 작은 0.1 은 탐색 부족으로 급락.</p>
+
+<h3 class="ps">정책 마지막 층 가중치 배율 C57 (그림 24)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>배율</th><th>Hopper</th><th>Humanoid</th><th>Walker2d</th><th>HalfCheetah</th><th>Ant</th><th>상위 5 % 비중</th></tr></thead>
+  <tbody>
+    <tr><td>0.001</td><td>1,400</td><td>2,570</td><td>615</td><td>2,260</td><td>2,500</td><td>0.29</td></tr>
+    <tr class="ours"><td><b>0.01</b> (기본)</td><td>1,350</td><td>2,600</td><td>675</td><td>2,210</td><td>2,540</td><td>0.29</td></tr>
+    <tr><td>0.1</td><td>1,340</td><td>2,350</td><td>660</td><td>2,220</td><td>2,600</td><td>0.27</td></tr>
+    <tr><td>1.0</td><td>1,310</td><td>1,500</td><td>605</td><td>1,800</td><td>2,120</td><td>0.15</td></tr>
+  </tbody>
+</table></div>
+<p>본문: "마지막 층을 작게 초기화하는 것만으로 Humanoid +66 %" (p.5) — 0.01 대 1.0 (약 2,500 vs 1,500). 목적은 <b>초기 평균 행동을 관측과 무관하게 0 근처</b>로 두는 것. 가치망 마지막 층 배율(C58)은 거의 무관 (그림 19).</p>
+
+<h3 class="ps">행동 변환 clip vs tanh C63 (그림 17)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>변환</th><th>Hopper</th><th>Humanoid</th><th>Walker2d</th><th>HalfCheetah</th><th>Ant</th><th>상위 5 % 비중</th></tr></thead>
+  <tbody>
+    <tr><td>clip (기본)</td><td><b>1,380</b></td><td>2,290</td><td>620</td><td>1,780</td><td>2,450</td><td>0.45</td></tr>
+    <tr class="ours"><td>tanh</td><td>1,310</td><td><b>2,470</b></td><td><b>660</b></td><td><b>2,390</b></td><td><b>2,550</b></td><td><b>0.55</b></td></tr>
+  </tbody>
+</table></div>
+<p>본문: "tanh 가 전반적으로 약간 낫고 HalfCheetah 에서 +30 %. 그림 2 와 비교하면 차이의 대부분은 <b>초기 행동 크기 감소</b> 때문일 수 있다" (p.5). 이 실험은 엔트로피 규제 없이 했고, tanh 는 엔트로피 규제와 함께일 때 더 유리할 수 있다(각주 9).</p>
+
+<h3 class="ps">std 세부 선택 (그림 23, 25, 29) — 거의 무관</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>선택</th><th>Hopper</th><th>Humanoid</th><th>Walker2d</th><th>HalfCheetah</th><th>Ant</th></tr></thead>
+  <tbody>
+    <tr><td>std 상태별 / 전역 (C59)</td><td>1,340 / 1,360</td><td>2,410 / 2,350</td><td>610 / 665</td><td>2,070 / 2,150</td><td>2,570 / 2,380</td></tr>
+    <tr><td>exp / softplus (C60)</td><td>1,320 / 1,380</td><td>2,320 / 2,400</td><td>620 / 645</td><td>2,100 / 2,100</td><td>2,550 / 2,440</td></tr>
+    <tr><td>최소 std 0 / 0.01 / 0.1 (C62)</td><td>1,360 / 1,340 / 1,340</td><td>2,370 / 2,290 / 2,460</td><td>630 / 645 / 635</td><td>2,170 / 2,080 / 2,010</td><td>2,540 / 2,550 / 2,360</td></tr>
+  </tbody>
+</table></div>
+<p>권고: softplus + 음의 오프셋으로 초기 std 를 낮추고 그 오프셋을 조정. 최소 std 는 너무 크지만 않으면 무관 (p.5).</p>
+
+<h3 class="ps">관측 정규화 C64 · 관측 자르기 C65 (그림 33, 38)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>관측 정규화</th><th>Hopper</th><th>Humanoid</th><th>Walker2d</th><th>HalfCheetah</th><th>Ant</th></tr></thead>
+  <tbody>
+    <tr class="ours"><td>평균·표준편차 (기본)</td><td>1,650</td><td><b>2,720</b></td><td><b>1,800</b></td><td><b>2,080</b></td><td><b>2,450</b></td></tr>
+    <tr><td>없음</td><td>1,650</td><td>470</td><td>900</td><td>1,080</td><td>2,000</td></tr>
+  </tbody>
+</table></div>
+<p>본문: "Hopper 를 뺀 모든 환경에서 결정적" (p.6). 정규화한 관측을 ±o<sub>max</sub> 로 자르는 것은 큰 도움 근거 없음 — 시뮬 발산으로 극단값이 나올 위험이 있으면 쓸 만함. 기본 o<sub>max</sub> 10.</p>
+
+<h2 class="ps">4. 보상 · 종료 · 커리큘럼</h2>
+<p>이 논문에서는 보상을 바꾸지 않았다. 대신 반환·종료 처리와 이점 추정을 다뤘다.</p>
+<h3 class="ps">할인 γ · frame skip · 시간 초과 (그림 60–62, p.7)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>γ</th><th>Hopper</th><th>Humanoid</th><th>Walker2d</th><th>HalfCheetah</th><th>Ant</th></tr></thead>
+  <tbody>
+    <tr><td>0.95</td><td>470</td><td>740</td><td>480</td><td><b>1,340</b></td><td>1,320</td></tr>
+    <tr><td>0.97</td><td>580</td><td>1,040</td><td>510</td><td>1,290</td><td>1,820</td></tr>
+    <tr class="ours"><td>0.99 (기본)</td><td><b>2,180</b></td><td>2,420</td><td><b>850</b></td><td>1,040</td><td><b>1,950</b></td></tr>
+    <tr><td>0.999</td><td>940</td><td><b>2,530</b></td><td>850</td><td>750</td><td>310</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>γ 는 "가장 중요한 하이퍼파라미터 중 하나, 환경마다 조정, 0.99 에서 시작".</li>
+  <li>frame skip(행동 n 번 반복, γ<sup>n</sup> 으로 할인): 5개 중 2개 환경에서 이득.</li>
+  <li>시간 초과로 끊긴 에피소드를 특별 처리(마지막 이점 0, 가치 목표 = 현재 가치)해도 차이 없음 — 시간 제한이 1,000 스텝으로 길어서일 것.</li>
+</ul>
+<h3 class="ps">이점 추정 · 가치 손실 (그림 40–50, p.6)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>선택</th><th>Hopper</th><th>Humanoid</th><th>Walker2d</th><th>HalfCheetah</th><th>Ant</th></tr></thead>
+  <tbody>
+    <tr><td>GAE λ 0.8 / 0.9 / 0.95 / 0.99</td><td>1,560 / 1,910 / 1,910 / 1,820</td><td>2,960 / 2,470 / 2,150 / 1,870</td><td>1,180 / 1,590 / 1,420 / 1,270</td><td>1,210 / 1,870 / 1,490 / 1,510</td><td>2,500 / 2,340 / 1,930 / 1,480</td></tr>
+    <tr><td>Huber / MSE 가치 손실</td><td>1,670 / 1,840</td><td>2,150 / 2,530</td><td>1,130 / 1,260</td><td>1,420 / 1,690</td><td>1,830 / 2,290</td></tr>
+    <tr><td>PPO 가치 자르기 0.001 / 0.01 / 0.1 / 1.0 / 없음</td><td>1,310 / 1,390 / 1,780 / 1,920 / 1,880</td><td>1,440 / 1,510 / 2,430 / 2,790 / 2,660</td><td>480 / 640 / 1,050 / 1,460 / 1,530</td><td>830 / 870 / 1,100 / 2,030 / 2,390</td><td>800 / 1,150 / 2,210 / 2,250 / 2,440</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>GAE ≈ V-trace &gt; N-step. λ = 0.9 가 두 추정기 모두에서 무난 (환경별 조정 시 소폭 이득).</li>
+  <li><b>PPO 식 가치 자르기는 문턱과 상관없이 손해</b>(작을수록 크게), Huber 도 모든 환경에서 MSE 보다 나쁨. 권고: GAE λ 0.9, MSE, 가치 자르기 없음.</li>
+</ul>
+
+<h2 class="ps">5. 학습 설정 (알고리즘 · 망 · 무작위화)</h2>
+<h3 class="ps">망 구조 (그림 15, 18, 20–22, 30)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>선택</th><th>Hopper</th><th>Humanoid</th><th>Walker2d</th><th>HalfCheetah</th><th>Ant</th></tr></thead>
+  <tbody>
+    <tr><td>분리 / 공유 MLP</td><td>1,360 / 1,190</td><td>2,660 / 2,320</td><td>655 / 680</td><td>2,330 / 1,990</td><td>2,670 / 2,350</td></tr>
+    <tr><td>정책 폭 16 / 64 / 256 / 512</td><td>1,420 / 1,370 / 1,250 / 1,220</td><td>1,420 / 2,320 / 2,600 / 2,850</td><td>665 / 680 / 585 / 570</td><td>2,460 / 2,130 / 1,620 / 1,320</td><td>2,450 / 2,560 / 2,440 / 2,170</td></tr>
+    <tr><td>정책 깊이 1 / 2 / 4 / 8</td><td>1,380 / 1,370 / 1,340 / 1,190</td><td>2,310 / 2,660 / 2,440 / 1,800</td><td>620 / 700 / 620 / 585</td><td>2,130 / 2,320 / 2,130 / 1,610</td><td>2,600 / 2,680 / 2,300 / 2,160</td></tr>
+    <tr><td>가치 깊이 1 / 2 / 4 / 8</td><td>1,100 / 1,330 / 1,390 / 1,400</td><td>2,000 / 2,630 / 2,490 / 2,380</td><td>470 / 630 / 700 / 720</td><td>1,880 / 2,190 / 2,230 / 2,120</td><td>2,690 / 2,440 / 2,480 / 2,280</td></tr>
+    <tr><td>활성 ELU / ReLU / Swish / Tanh</td><td>1,410 / 920 / 1,300 / 1,480</td><td>2,350 / 2,120 / 2,270 / 2,770</td><td>660 / 515 / 680 / 715</td><td>2,370 / 1,760 / 2,160 / 2,360</td><td>2,640 / 2,230 / 2,390 / 2,720</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>분리 망이 5개 중 4개에서 나아 이후 분석은 분리 망만 (p.5). 가치망은 넓을수록 손해 없음, 정책 폭은 환경마다 최적이 다르다(HalfCheetah 정책 16–32 + 가치 256 이 최고). 두 층이 무난. 초기화 방식(C56)은 He 계열만 약간 나쁘고 나머지 비슷.</li>
+</ul>
+<h3 class="ps">정규화 · grad clip (그림 34, 35, 37)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>선택</th><th>Hopper</th><th>Humanoid</th><th>Walker2d</th><th>HalfCheetah</th><th>Ant</th></tr></thead>
+  <tbody>
+    <tr><td>가치 정규화 있음 / 없음</td><td>1,690 / 1,600</td><td><b>2,700 / 1,530</b></td><td><b>1,030 / 1,780</b></td><td>1,890 / 1,370</td><td>2,350 / 2,150</td></tr>
+    <tr><td>미니배치 이점 정규화 끔 / 켬</td><td>1,620 / 1,680</td><td>2,030 / 2,240</td><td>1,570 / 1,510</td><td>1,780 / 1,690</td><td>2,250 / 2,310</td></tr>
+    <tr><td>grad clip 0.5 / 1 / 2 / 5 / 없음</td><td>거의 같음</td><td>2,170 / 2,250 / 2,170 / 2,130 / 1,900</td><td>1,570 / 1,560 / 1,490 / 1,640 / 1,330</td><td>1,780 / 1,650 / 2,060 / 1,560 / 1,530</td><td>2,280 / 2,200 / 2,320 / 2,290 / 2,250</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>가치 정규화는 HalfCheetah·Humanoid 에 결정적, Hopper·Ant 소폭 이득, <b>Walker2d 에선 크게 손해</b> → "켜 보고 확인". 미니배치 이점 정규화는 영향 작음. grad clip 은 작은 이득, 문턱은 무관 (p.6).</li>
+</ul>
+<h3 class="ps">데이터 수집 · 최적화 (그림 52–57, 65–69)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>선택</th><th>Hopper</th><th>Humanoid</th><th>Walker2d</th><th>HalfCheetah</th><th>Ant</th></tr></thead>
+  <tbody>
+    <tr><td>epoch 1 / 3 / 10</td><td>1,390 / 1,850 / 1,960</td><td>2,100 / 2,760 / 2,740</td><td>990 / 1,510 / 1,510</td><td>1,100 / 1,800 / 1,990</td><td>2,190 / 2,490 / 2,700</td></tr>
+    <tr><td>env 수 64 / 128 / 256</td><td>1,960 / 1,810 / 1,570</td><td>2,600 / 2,680 / 2,610</td><td>1,600 / 1,430 / 1,110</td><td>1,850 / 1,540 / 1,550</td><td>2,420 / 2,570 / 2,420</td></tr>
+    <tr><td>미니배치: 조각 고정 / 조각 섞기 / 전이 섞기 / 전이 섞기 + 이점 재계산</td><td>1,740 / 1,730 / 1,860 / <b>1,980</b></td><td>2,720 / 2,620 / 2,580 / 2,650</td><td>1,410 / 1,450 / 1,250 / <b>1,570</b></td><td>1,800 / 1,780 / 1,360 / 1,800</td><td>2,360 / 2,470 / 2,560 / 2,470</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>데이터 여러 번 돌기는 필수. env 를 늘리면 조각이 짧아지고 부트스트랩이 일러져 일부 환경에서 급락(Walker2d 1,600 → 1,110), 대신 벽시계 시간은 빨라짐. 배치 크기(64–256)는 표본 효율에 영향 없음. 반복당 전이 수(C2)는 영향 큼 (p.7).</li>
+  <li>최적화: Adam(β1 0.9) 과 RMSProp 차이 작음, lr 3e-4 가 모든 과제에서 무난. lr 선형 감소는 4/5 환경에서 소폭 이득, Ant +15 % (p.7–8).</li>
+</ul>
+<h3 class="ps">규제: 엔트로피·KL (그림 76, 77, p.8)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>규제 방식</th><th>Hopper</th><th>Humanoid</th><th>Walker2d</th><th>HalfCheetah</th><th>Ant</th></tr></thead>
+  <tbody>
+    <tr><td>제약 (라그랑주)</td><td>1,720</td><td>2,680</td><td>855</td><td><b>2,150</b></td><td>2,340</td></tr>
+    <tr class="ours"><td>없음 (기본)</td><td>1,710</td><td><b>2,950</b></td><td>840</td><td>1,450</td><td><b>2,790</b></td></tr>
+    <tr><td>벌점 (고정 계수)</td><td>1,650</td><td>2,750</td><td>725</td><td>1,400</td><td>2,330</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>HalfCheetah 만 제약(특히 엔트로피 제약 약 2,540)이 도움. 그런데 이득이 제약 문턱과 무관 → 라그랑주 계수가 맞춰지기 전 초기의 강한 벌점 효과로 봄.</li>
+  <li>저자 추정: ① PPO 손실이 이미 신뢰 영역을 걸어 KL 이 중복 ② <b>신중한 정책 초기화가 탐색을 보장해 엔트로피 보너스가 불필요</b>.</li>
+</ul>
+<details class="more"><summary>기본 설정 (표 2) <span class="cnt">30개</span></summary><div class="body">
+<div class="tbl-wrap"><table>
+  <thead><tr><th>선택</th><th>기본값</th><th>선택</th><th>기본값</th></tr></thead>
+  <tbody>
+    <tr><td>C1 env 수</td><td>256</td><td>C2 반복당 전이</td><td>2,048</td></tr>
+    <tr><td>C3 epoch</td><td>10</td><td>C4 배치</td><td>64</td></tr>
+    <tr><td>C5 미니배치 방식</td><td>전이 섞기</td><td>C6 이점</td><td>GAE, λ 0.95</td></tr>
+    <tr><td>C11 가치 손실</td><td>MSE</td><td>C13 PPO 가치 자르기</td><td>0.2</td></tr>
+    <tr><td>C14 정책 손실</td><td>PPO, ε 0.2</td><td>C20 γ</td><td>0.99</td></tr>
+    <tr><td>C21 frame skip</td><td>1</td><td>C22 시간 초과 처리</td><td>안 함</td></tr>
+    <tr><td>C23–C28 최적화</td><td>Adam, lr 3e-4, β1 0.9, ε 1e-7</td><td>C31 lr 감소</td><td>0.0 (0 까지 선형 감소)</td></tr>
+    <tr><td>C32 규제</td><td>없음</td><td>C47 MLP</td><td>공유</td></tr>
+    <tr><td>C49·C50 폭</td><td>64 · 64</td><td>C52·C53 깊이</td><td>2 · 2</td></tr>
+    <tr><td>C55 활성</td><td>tanh</td><td>C56 초기화</td><td>Orthogonal, gain 1.41</td></tr>
+    <tr><td>C57 정책 마지막 층</td><td>0.01</td><td>C58 가치 마지막 층</td><td>1.0</td></tr>
+    <tr><td>C59 전역 std</td><td>예</td><td>C60 std 변환</td><td>safe_exp</td></tr>
+    <tr><td>C61 초기 std</td><td>1.0</td><td>C62 최소 std</td><td>1e-3</td></tr>
+    <tr><td>C63 행동 변환</td><td>clip</td><td>C64 관측 정규화</td><td>평균·표준편차</td></tr>
+    <tr><td>C65 관측 자르기</td><td>10.0</td><td>C66 가치 정규화</td><td>평균·표준편차</td></tr>
+    <tr><td>C67 미니배치 이점 정규화</td><td>끔</td><td>C68 grad clip</td><td>0.5</td></tr>
+  </tbody>
+</table></div>
+<p>주의: 기본값의 "C31 lr 감소 0.0" 은 B.5 정의상 0 까지 감소를 뜻한다. 기본이 이미 마지막 층 0.01(= 100배 축소)이라, 망 구조 묶음 밖의 실험은 모두 이 초기화 위에서 했다.</p>
+</div></details>
+
+<h2 class="ps">6. teacher → student / 증류</h2>
+<p>해당 없음 — 증류·모방 실험이 없는 순수 온폴리시 RL 연구.</p>
+
+<h2 class="ps">7. 결과</h2>
+<h3 class="ps">묶음별 권고 한눈에 (p.4–8)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>묶음</th><th>권고</th><th>근거 크기</th></tr></thead>
+  <tbody>
+    <tr><td>정책 손실</td><td>PPO, ε 0.25 에서 시작해 위아래 시도</td><td>PPO 가 5개 중 4개 최고. PG·V-trace 는 off-policy 화에 약함</td></tr>
+    <tr><td>망 구조</td><td>정책 마지막 층 100배 축소, softplus + 음의 오프셋으로 초기 std 낮추기(0.5 근처), tanh 활성(얕을 때)·tanh 행동 변환, 넓은 분리 가치망, 정책 폭은 조정</td><td>Humanoid +66 %, 초기 std 0.1 vs 0.5 는 3–4배 차</td></tr>
+    <tr><td>정규화</td><td>관측 정규화 항상, 가치 정규화는 확인, grad clip 은 부차</td><td>Humanoid 관측 정규화 약 6배</td></tr>
+    <tr><td>이점 추정</td><td>GAE λ 0.9, Huber·PPO 가치 자르기 쓰지 말 것</td><td>가치 자르기 0.001 이면 Walker2d 1,530 → 480</td></tr>
+    <tr><td>학습 설정</td><td>여러 epoch, 전이 섞기 + epoch 마다 이점 재계산, 벽시계 위해 env·배치 키우기(표본 효율은 손해 가능), C2 조정</td><td>epoch 1 → 10: HalfCheetah 1,100 → 1,990</td></tr>
+    <tr><td>시간</td><td>γ 환경별 조정(0.99 시작), frame skip 시도, 긴 시간 제한이면 특별 처리 불필요</td><td>γ 하나로 Hopper 470 – 2,180</td></tr>
+    <tr><td>최적화</td><td>Adam β1 0.9, lr 3e-4 기본, 선형 감소는 부차</td><td>Ant +15 %</td></tr>
+    <tr><td>규제</td><td>(명시 권고 없음) 대부분 무효</td><td>HalfCheetah 만 이득</td></tr>
+  </tbody>
+</table></div>
+<details class="more"><summary>묶음별 성능 분위수 (표 3–10) <span class="cnt">8 묶음</span></summary><div class="body">
+<div class="tbl-wrap"><table>
+  <thead><tr><th>묶음</th><th>95번째 백분위 Ant / HalfCheetah / Hopper / Humanoid / Walker2d</th><th>최대</th></tr></thead>
+  <tbody>
+    <tr><td>정책 손실 (표 3)</td><td>1,727 / 1,080 / 1,297 / 1,630 / 565</td><td>2,862 / 2,048 / 1,901 / 3,435 / 1,351</td></tr>
+    <tr><td>망 구조 (표 4)</td><td>2,494 / 2,120 / 1,349 / 2,382 / 637</td><td>4,112 / 4,358 / 1,875 / 3,987 / 1,265</td></tr>
+    <tr><td>정규화 (표 5)</td><td>2,287 / 1,716 / 1,662 / 2,165 / 1,564</td><td>3,333 / 3,515 / 2,074 / 3,482 / 2,371</td></tr>
+    <tr><td>이점 추정 (표 6)</td><td>2,114 / 1,535 / 1,777 / 2,374 / 1,185</td><td>3,775 / 3,613 / 2,215 / 3,564 / 2,309</td></tr>
+    <tr><td>학습 설정 (표 7)</td><td>2,484 / 1,673 / 1,853 / 2,655 / 1,431</td><td>3,563 / 3,693 / 2,434 / 3,502 / 2,426</td></tr>
+    <tr><td>시간 (표 8)</td><td>1,654 / 1,235 / 1,675 / 2,158 / 810</td><td>2,833 / 1,918 / 2,434 / 3,106 / 1,431</td></tr>
+    <tr><td>최적화 (표 9)</td><td>2,388 / 1,124 / 1,728 / 2,726 / 797</td><td>2,953 / 2,532 / 1,959 / 3,332 / 1,453</td></tr>
+    <tr><td>규제 (표 10)</td><td>2,600 / 1,870 / 1,707 / 2,832 / 814</td><td>3,202 / 3,156 / 1,979 / 3,348 / 1,597</td></tr>
+  </tbody>
+</table></div>
+<p>점수는 학습 곡선 평균이라 최종 반환보다 낮다. 묶음마다 무작위로 바꾼 선택이 달라 묶음 사이 비교는 의미가 작다.</p>
+</div></details>
+
+<h2 class="ps">8. 실기 · sim2real</h2>
+<p>해당 없음 — Gym MuJoCo 벤치마크만.</p>
+
+<h2 class="ps">9. 코드에서 확인한 것</h2>
+<p>해당 없음 — 로컬 <code>code/</code> 가 없고, 논문은 SEED RL 기반 구현이라고만 적고 저장소 링크를 주지 않는다.</p>
+
+<h2 class="ps">10. 한계</h2>
+<ul>
+  <li>환경 5개 모두 작은 상태 기반 이동 과제, 1–2M 스텝, 256 env(CPU). GPU 수천 env · 수억 스텝 · 접촉 많은 조작 과제로 그대로 옮겨진다는 보장이 없다.</li>
+  <li>점수는 곡선 아래 면적 = <b>빨리 배우는 설정</b>을 우대. 최종 성능 순위와 다를 수 있다.</li>
+  <li>상호작용은 묶음 안에서만 표본. 다른 묶음 선택은 기본값(공유 망, clip, 초기 std 1.0 등)에 고정.</li>
+  <li>95번째 백분위 = "약 20회 랜덤 서치" 가정의 기대값. 막대 차이가 신뢰구간 안인 경우가 많다(그림의 오차 막대).</li>
+  <li>로컬 PDF 는 arXiv v1. ICLR 판과 그림 번호·세부가 다를 수 있다.</li>
+</ul>
+
+<h2 class="ps">11. 우리에게 가져올 것</h2>
+<div class="take"><ol>
+  <li><b>정책 마지막 층 × 0.01, 편향 0</b>: 초기 평균 행동이 관측과 무관하게 0 근처. 우리 행동을 "명목 자세 / 현재 명령 대비 델타"로 정의하면 초기 정책 = "명목 유지"가 되어 v2 의 켜짐/꺼짐 포화 출발을 피한다. 우리 rsl_rl 버전의 actor 초기화에 이런 축소가 있는지 먼저 확인하고, 없으면 actor 생성 직후 마지막 Linear 가중치에만 0.01 을 곱한다.</li>
+  <li><b>초기 std 0.5 유지</b> (9월 판 k1_boxlift teacher 도 0.5). 단 이것은 행동이 [−1, 1] 로 정규화됐을 때의 값이다 — 17차원 각각을 "dev12 가 실제로 도달하는 범위"로 [−1, 1] 에 맞춘 뒤 0.5 를 쓴다. 델타 행동을 누적하면 무작위 탐색이 걸음마다 쌓이므로 누적 배율을 작게 잡거나 초기 std 를 더 낮춰 A/B (추론).</li>
+  <li><b>tanh 스쿼시 + 엔트로피 0(또는 log-det 포함)</b>: 논문에서 clip 은 엔트로피 규제 없이 썼고 문제없었다(약간 나쁠 뿐). 우리 v2 의 std 발산은 "환경 안 자르기 + 엔트로피 보너스 0.005" 조합으로 보인다 — 잘린 영역에선 반환이 σ 에 둔감해 엔트로피 기울기만 σ 를 키운다(추론). 처방: ① 엔트로피 보너스를 0 또는 매우 작게(논문: 초기화가 탐색을 보장) ② tanh 를 쓰면 엔트로피에 −log tanh′(x) 항이 들어가 극단 행동을 벌하고 엔트로피가 유계 ③ PPO 비율은 저장한 <b>tanh 이전 표본 x</b> 의 가우시안 log-prob 만으로 계산(log-det 상쇄) — atanh(±1) 역산을 피한다.</li>
+  <li><b>관측 정규화 켜기</b>: 9월 역할 분리 판 teacher(k1_boxlift)는 actor·critic 관측 정규화가 꺼져 있었다 (<a href="../../source/k1_boxlift/tasks/agents/rsl_rl_cfg.py">rsl_rl_cfg.py</a> <code>actor_obs_normalization=False</code>). 논문에서 Humanoid 는 정규화 없이 약 1/6. 손으로 스케일을 맞췄더라도 empirical normalization 을 켠 A/B 를 첫 실험에 넣는다. student 쪽도 같은 확인. (v2 sonic_pick 의 TRL PPO 설정은 이 항목을 따로 확인하지 않았다.)</li>
+  <li><b>가치 쪽</b>: PPO 식 가치 자르기 끄기 A/B (논문: 문턱과 무관하게 손해, dev12 설정은 <code>use_clipped_value_loss: True</code> — <a href="../../../dev12/source/k1_pelvis/rl/cfg.py">dev12 cfg.py</a>), 가치 정규화는 우리 rsl_rl 에 있으면 A/B (Walker2d 처럼 손해 날 수도 있음), 가치망은 넓게·분리.</li>
+  <li><b>GAE λ 0.9 · γ 확인</b>: 우리 기본 λ 0.95 → 0.9 는 낮은 우선순위 A/B. γ 는 상위 제어 주기에서 유효 지평 1/(1−γ) 스텝이 박스 과제 길이(접근 → 쪼그림 → 조이기 → 들기)를 덮는지 계산해 고른다.</li>
+  <li><b>epoch 마다 이점 재계산</b>: 전이 섞기 미니배치에서 소폭 이득. 비용이 작으면 넣을 수 있으나 우선순위 낮음.</li>
+</ol>
+<p><b>가져오지 말 것 / 주의</b></p>
+<ul>
+  <li>"clip 도 괜찮다"를 우리 문제에 그대로 적용하지 말 것: 엔트로피 보너스 0, 1–2M 스텝 조건의 결과다. 우리는 v2 에서 실제로 std 가 발산했다.</li>
+  <li>tanh 활성 권고: 얕은 64 폭 망 결과. 우리 ELU [512, 256, 128] 를 바꿀 근거는 약하다(Humanoid tanh 2,770 vs ELU 2,350 정도의 차).</li>
+  <li>env 수·배치 결론: 256 env 이하 범위의 표본 효율 결과. 수천 env GPU 학습의 벽시계 최적과는 다르다.</li>
+  <li>모든 수치는 막대그래프 근사값이므로 정확한 비율 비교에 쓰지 말 것 — 본문 수치(+66 %, +30 %, +15 %)만 인용.</li>
+</ul>
+</div>
+
+<p class="src">출처 표기: (p.N), (표 N), (그림 N), (식 N), 코드는 파일 경로. 논문에 없는 값은 "논문에 없음".</p>
+</main>
+</body>
+</html>

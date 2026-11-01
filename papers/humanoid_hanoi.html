@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Humanoid Hanoi — 논문 상세</title>
+<link rel="stylesheet" href="paper.css">
+</head>
+<body>
+<main class="wrap">
+<a class="back" href="../index.html#catalog">← 자료 목록으로</a>
+
+<header class="ph">
+  <h1>Humanoid Hanoi: 공유 전신 제어기(WBC) 위 기술 정책으로 상자 쌓기 — 기술이 만든 명령으로 하위 제어기를 다시 학습</h1>
+  <p class="orig">Humanoid Hanoi: Investigating Shared Whole-Body Control for Skill-Based Box Rearrangement</p>
+  <p class="meta">Minku Kim, Kuan-Chia Chen (공동 1저자), Aayam Shrestha, Li Fuxin, Stefan Lee, Alan Fern · Oregon State University · CoRL 2026 (논문 머리글, arXiv v4 2026-10-11) · Agility Digit V3 (구동 20, 손가락 없음) · MuJoCo</p>
+  <div class="chips">
+    <a class="chip loc" href="../reference/humanoid_hanoi/paper.pdf">로컬 PDF</a>
+    <a class="chip loc" href="../reference/humanoid_hanoi/code/">로컬 코드</a>
+    <a class="chip" href="https://arxiv.org/abs/2602.13850" target="_blank" rel="noopener">arXiv 2602.13850</a>
+    <a class="chip gh" href="https://github.com/osudrl/Humanoid_Hanoi" target="_blank" rel="noopener">osudrl/Humanoid_Hanoi</a>
+    <a class="chip" href="https://osudrl.github.io/Humanoid_Hanoi" target="_blank" rel="noopener">프로젝트 페이지</a>
+    <span class="simv s5">유사도 5</span>
+    <span class="badge">LICENSE 없음</span>
+    <span class="badge only">환경 코드만 (학습·가중치 없음)</span>
+  </div>
+</header>
+
+<div class="callout blue tldr">Digit 의 Pickup·Place·GoTo 기술(LSTM, 50 Hz)이 관절이 아니라 "가려진 지시"(Pickup·Place = 팔 관절 목표 8 + 골반 pitch + 높이 = 10 차원)를 내고, 사전학습된 공유 WBC(MHC)가 이를 20 관절 PD 목표로 바꾼다. 기술이 성공한 지시 시퀀스 18 개를 WBC 학습 분포에 더해 원래 추종 목적 그대로 이어 학습(Extended)하니 Pickup 89.43 → 96.92 %, 낮은 상자(&lt; 0.2 m) 85.00 → 95.03 %, 7 수 하노이 전체 24 → 47 %(DR), 실기 6/15 (p.6 표 1, p.7, p.9).</div>
+
+<h2 class="ps">우리와 무엇이 같고 다른가</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>이 논문</th><th>우리 (dev10 pelvis_pick)</th></tr></thead>
+  <tbody>
+    <tr><td>하위 제어기</td><td>사전학습 <strong>MHC</strong>(Masked Humanoid Controller): 가려진 지시 + 고유감각 → 20 관절 PD 목표, 50 Hz, PD 2 kHz. 기술 학습 동안 고정, 새 기술이 생기면 <strong>원래 목적으로 이어 학습</strong>(Extended) (p.4–5, p.12)</td><td class="ours">dev12 하체 RL(동결 예정), 골반 vx ±0.8·vy ±0.4·ωz ±1.0·높이 0.335–0.77 m·pitch ±45°·roll ±10° 추종, 상체 11 은 외부 PD(하위가 목표를 관측)</td></tr>
+    <tr><td>상위 출력</td><td>Pickup·Place: a ∈ R<sup>10</sup> = 팔 관절 목표 + 골반(base) pitch + 높이. GoTo: R<sup>3</sup>(서기 비트·평면 속도·yaw rate), GoTo-with-Box: R<sup>8</sup> (p.4 그림 3, p.13–15)</td><td class="ours">상체 11(허리 yaw 1 + 팔 5×2) + 골반 명령</td></tr>
+    <tr><td>과제·물체</td><td>Pickup 학습: 상자 변 0.15–0.5 m, 0–3.5 kg, 앞 0.3–0.6 m, 옆 ±0.1 m, 높이 0.085–0.95 m, yaw ±18° (p.14 표 5). 하노이 평가: 변 0.26–0.35 m, 0.5–3.0 kg (p.15)</td><td class="ours">바닥·받침대 0/0.1/0.2/0.3 m, 상자 37×40.5×29 cm, 0.5–2 kg, 발끝 앞 0.04–0.30 m, 옆 ±0.15 m, yaw ±40°</td></tr>
+    <tr><td>손·잡는 법</td><td>손가락 없음. 코드상 "손" = 아래팔(elbow 몸체의 원통 반지름 1.3 cm + 끝 구 1.5 cm)로 상자 좌우를 끼움 (<a href="../reference/humanoid_hanoi/code/sim/digit_sim/digit-v3-box-tower-of-hanoi.xml"><code>digit-v3-box-tower-of-hanoi.xml</code></a>)</td><td class="ours">고무 공 손바닥 두 개로 옆면 조이기, 팔 kp 22.3 / kd 1.42</td></tr>
+    <tr><td>지각·증류</td><td>상태 기반만. 상자 SE(3) 자세·크기를 정책에 직접 줌. 실기는 머리 D455 두 대 + AprilTag. 증류 없음 (p.4, p.9, p.17)</td><td class="ours">특권 teacher → D436 깊이(26×64, 6 프레임) + 고유감각 student (DAgger)</td></tr>
+    <tr><td>시뮬레이터</td><td>MuJoCo, CPU 160 코어(Xeon Platinum 8280 두 개) (p.13)</td><td class="ours">Isaac Lab + Newton 학습, MuJoCo sim2sim</td></tr>
+    <tr><td>성공 정의</td><td>기술: 넘어짐·떨어뜨림 없이 끝냄 + 안정성 지표. 하노이: 세 상자를 규칙대로 목표 탑에 쌓음 (p.3, p.6)</td><td class="ours">집어 들고 서서 유지 (정의 확정 전)</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">1. 문제와 과제</h2>
+<ul>
+  <li><strong>Humanoid Hanoi 과제</strong>: 하노이 탑 규칙(한 번에 하나, 큰 상자를 작은 상자 위에 못 둠)으로 상자 세 개를 탑 세 곳 사이에서 옮겨 쌓는다. 표준 재귀 해는 7 수, 한 수 = GoTo → Pickup → GoTo-with-Box → Place 의 4 기술 → 28 번 연속 실행 (p.3, p.7).</li>
+  <li>장면 무작위: 탑 반지름 1.5–2.5 m 원 위 세 점(서로 0.9 m 이상), 상자 크기 세 등급(작 0.26–0.29, 중 0.29–0.32, 대 0.32–0.35 m), 질량 0.5–3.0 kg(바닥 가운데 0.3 kg 점질량 포함), 미끄럼 마찰 0.5–0.7. 방법마다 같은 시드의 100 사례 (p.7, p.15 C.1).</li>
+  <li>연구 질문: 기술을 하나의 공유 WBC 위에서 돌릴 때, 새 기술이 WBC 학습 범위 밖 상태·명령을 만든다. 이를 <strong>기술별로 하위를 고칠지</strong>(Finetune, Residual, Joint), <strong>공유 WBC 의 학습 분포를 넓힐지</strong>(Extended) 비교 (p.5).</li>
+  <li>출발점 관찰: "낮은 높이 집기 같은 극단 자세에서는 기술 정책이 그럴듯한 명령을 내도 DR 아래에서 실행 오류가 난다" — 하위 제어기의 덮음 부족이 원인 (p.5).</li>
+</ul>
+
+<h2 class="ps">2. 시스템 구조</h2>
+<div class="fig">
+  <p><strong>실행 시 (모든 기술이 같은 WBC 를 씀)</strong></p>
+  <div class="flow">
+    <span class="node">기술 순서기: 하노이 재귀 (PDDL 인터페이스도 있음)</span><span class="arr">→</span>
+    <span class="node">기술 정책 1 개 활성 (LSTM 2 층·은닉 64, 50 Hz, 학습됨)</span><span class="arr">→</span>
+    <span class="node">가려진 지시: 목표 + 이진 마스크</span><span class="arr">→</span>
+    <span class="node frozen">공유 WBC = MHC (50 Hz, 기술 학습 중 고정)</span><span class="arr">→</span>
+    <span class="node">20 관절 PD 목표</span><span class="arr">→</span>
+    <span class="node frozen">고정 이득 PD 2 kHz → Digit</span>
+  </div>
+  <p style="margin-top:12px"><strong>WBC 덮음 넓히기 (Extended, 오프라인)</strong></p>
+  <div class="flow">
+    <span class="node">새 기술 π<sub>i</sub> 를 현재 WBC 로 폐루프 실행 (DR 없음)</span><span class="arr">→</span>
+    <span class="node">성공 롤아웃의 지시(목표·마스크) 시퀀스 S<sub>i</sub></span><span class="arr">→</span>
+    <span class="node">참조 집합 R<sub>i</sub> = R<sub>i−1</sub> ∪ S<sub>i</sub> (식 1)</span><span class="arr">→</span>
+    <span class="node">MHC 를 원래 추종 목적 + 같은 DR·외란으로 이어 학습</span>
+  </div>
+  <p style="margin-top:8px;font-size:13px">점선 = 해당 단계에서 고정. 기술별 지시 성분(그림 3, p.4): GoTo [a<sup>base</sup>], Pickup·Place [a<sup>arm</sup>, a<sup>pitch</sup>, a<sup>height</sup>], GoTo-with-Box [a<sup>arm</sup>, a<sup>base</sup>]. a<sup>base</sup> = 서기 비트 + 평면 속도 목표 + yaw rate.</p>
+</div>
+
+<h3 class="ps">MHC 가 받는 지시 (p.12 A.1)</h3>
+<ul>
+  <li>지시 = 목표 동작 시퀀스 + 어떤 자세 성분이 제약인지 나타내는 이진 마스크. 자세 표현은 루트 상태(위치·방향·선속도·각속도) + 관절 위치.</li>
+  <li>마스크로 지정하지 않은 자유도는 MHC 가 사전학습에서 배운 대로 채운다. 새 기술을 넣을 때 새 하위 제어기를 만들 필요 없이 "어떤 성분을 이 기술이 낼지"만 정한다.</li>
+  <li>MHC 사전학습 분포 D[R<sub>0</sub>]: AMASS + 궤적 최적화 동작에서 시각을 고르고 마스크를 씌운 뒤 보행·상체 목표를 원래 분포대로 추가 무작위 (p.12 A.2).</li>
+</ul>
+
+<h3 class="ps">비교한 하위 적응 방식 (p.5–6 §6.1)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>방식</th><th>무엇을 바꾸나</th><th>하위 제어기 전환</th></tr></thead>
+  <tbody>
+    <tr><td>Base</td><td>사전학습 MHC 그대로</td><td>없음 (공유)</td></tr>
+    <tr><td>Finetune</td><td>기술마다 WBC 를 그 기술 보상으로 미세조정</td><td>기술 경계에서 WBC 교체</td></tr>
+    <tr><td>Residual</td><td>고정 WBC 위에 기술별 잔차를 기술 보상으로 학습</td><td>기술 경계에서 잔차 교체</td></tr>
+    <tr><td><strong>Extended</strong></td><td>기술 롤아웃 지시를 WBC 참조 집합에 더해 <strong>원래 추종 목적</strong>으로 이어 학습</td><td>없음 (공유)</td></tr>
+    <tr><td>Joint</td><td>기술 정책과 하위를 함께 학습, 20 관절 PD 목표를 직접 냄(지시 인터페이스 없음)</td><td>기술마다 다른 정책</td></tr>
+    <tr><td>E2E [Dao 2024]</td><td>기술마다 종단간 정책 (외부 참고용)</td><td>기술마다 다른 정책</td></tr>
+  </tbody>
+</table></div>
+<p>Joint 를 제외하면 기술 정책은 고정하고 하위만 바꿔서 "하위 적응"의 효과만 따로 본다 (p.5).</p>
+
+<h2 class="ps">3. 관측과 행동</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>기술</th><th>actor 관측</th><th>critic</th><th>행동 (지시)</th></tr></thead>
+  <tbody>
+    <tr><td>Pickup</td><td>고유감각 + <strong>시작 시점</strong> 상자 자세(로봇 루트 좌표) + 상자 치수 (p.13)</td><td>논문에 없음</td><td>R<sup>10</sup>: 팔 관절 목표(Digit 팔 4×2 = 8, 코드 <code>arm_motor_position_inds</code>) + base pitch + 높이</td></tr>
+    <tr><td>Place</td><td>고유감각 + 현재·목표 상자 자세(루트 좌표) + 치수 (p.14)</td><td><strong>특권</strong>: 손·몸통 자세, 손·탁자 접촉력, 상자 질량 (p.14)</td><td>Pickup 과 같은 R<sup>10</sup></td></tr>
+    <tr><td>GoTo</td><td>국소 목표 (Δx, Δy, Δyaw), 학습 중 주기적으로 다시 뽑음 (p.15)</td><td>논문에 없음</td><td>R<sup>3</sup>: 평면 속도 + 방향. 높이 0.85 m·pitch 0 rad 고정</td></tr>
+    <tr><td>GoTo-with-Box</td><td>+ 상자 치수, 몸통 기준 상자 자세 (p.15)</td><td>논문에 없음</td><td>R<sup>8</sup>: 보행 + 운반 안정용 상체 목표 (분해는 논문에 없음)</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>고유감각 차원은 논문에 없음. 코드 Digit 상태 이름은 몸통 방향 쿼터니언 4 + 각속도 3 + 모터 위치 20 + 모터 속도 20 + 비구동 관절(정강이·발목 스프링 등) 위치 10 + 속도 10 = <strong>67</strong> (<a href="../reference/humanoid_hanoi/code/env/robots/digit/digit.py"><code>env/robots/digit/digit.py</code></a> <code>robot_state_names</code>) — Dao 2024 의 67 차원과 같다.</li>
+  <li>지시 값의 범위는 논문에 없음. 높이 명령은 a<sub>z</sub> &lt; 0.1 또는 &gt; 0.9 일 때 −0.1 벌점(표 3)이라 사실상 그 사이로 묶는다.</li>
+  <li>Pickup 은 상자 자세를 시작 때 한 번만 받는다. 잡은 뒤 상자 상태는 보지 않는다 (p.13).</li>
+</ul>
+
+<h2 class="ps">4. 보상 · 종료 · 커리큘럼</h2>
+<p>보상은 대개 유계 지수 항의 가중합 w·exp(−α·c). α 가 "–" 인 항은 지수 없이 그대로(지시 함수 등) 쓴다 (p.13). 두 값은 Pickup / Place.</p>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>기술</th><th>항</th><th>c (비용)</th><th>w</th><th>α</th></tr></thead>
+  <tbody>
+    <tr><td rowspan="9">Pickup</td><td>hand contact position</td><td>‖p<sub>hand</sub><sup>current</sup> − p<sub>elbow</sub><sup>target</sup>‖₂</td><td>0.5</td><td>–</td></tr>
+    <tr><td>base pitch roll</td><td>|θ<sub>base</sub>| + |θ<sub>base</sub> + 0.15| (표기 그대로)</td><td>0.2</td><td>15</td></tr>
+    <tr><td><strong>box rotation</strong></td><td>|θ<sub>box</sub>| + |φ<sub>box</sub>|, <strong>contact(L ∧ R) 일 때만</strong></td><td>0.1</td><td>10</td></tr>
+    <tr><td>box acceleration</td><td>‖v̇<sub>box</sub>‖₂</td><td>0.05</td><td>0.02</td></tr>
+    <tr><td><strong>table force</strong></td><td>F<sub>table</sub> / mg, <strong>contact(L ∧ R) 일 때만</strong></td><td>0.05</td><td>2.0</td></tr>
+    <tr><td>motor vel</td><td>mean(v<sub>motor</sub> ⊙ W<sub>weights</sub>)</td><td>0.05</td><td>0.4</td></tr>
+    <tr><td>torque penalty</td><td>mean(|τ| / τ<sub>max</sub>)</td><td>0.05</td><td>0.05</td></tr>
+    <tr><td>foot velocity</td><td>‖v<sub>L</sub>‖₂ + ‖v<sub>R</sub>‖₂</td><td>0.05</td><td>2.0</td></tr>
+    <tr><td>collision penalty</td><td>1[자기 충돌]</td><td>−1.0</td><td>–</td></tr>
+    <tr><td rowspan="7">Place</td><td>box target</td><td>‖p<sub>box,xy</sub><sup>target</sup> − p<sub>box,xy</sub><sup>current</sup>‖₂</td><td>0.15</td><td>15</td></tr>
+    <tr><td>box rotation</td><td>|ψ<sub>box</sub> − ψ<sub>target</sub>|</td><td>0.15</td><td>15</td></tr>
+    <tr><td>hand contact bonus</td><td>C<sub>hand,current</sub> ≡ C<sub>hand,require</sub></td><td>0.05</td><td>–</td></tr>
+    <tr><td>elbow position error</td><td>‖p<sub>elbow</sub><sup>current</sup> − p<sub>elbow</sub><sup>target</sup>‖₂</td><td>0.2</td><td>5.0</td></tr>
+    <tr><td>base roll error</td><td>|θ<sub>base</sub>|</td><td>0.1</td><td>15</td></tr>
+    <tr><td>base position error</td><td>1(‖p<sub>base</sub><sup>current</sup>‖₂ &gt; 0.12)</td><td>−0.2</td><td>–</td></tr>
+    <tr><td>soft table contact</td><td>1(F<sub>table</sub> &gt; 30)</td><td>−0.1</td><td>–</td></tr>
+    <tr><td rowspan="11">공유</td><td>hand traj tracking</td><td>|p<sub>hand</sub><sup>current</sup> − p<sub>hand</sub><sup>target</sup>|</td><td>0.1 / 0.12</td><td>5.5</td></tr>
+    <tr><td>hand roll</td><td>|θ<sub>L,hand</sub>| + |θ<sub>R,hand</sub>|</td><td>0.05 / 0.1</td><td>1.0 / 10</td></tr>
+    <tr><td>base height error</td><td>‖z<sub>base</sub><sup>current</sup> − z<sub>base</sub><sup>target</sup>‖₂</td><td>0.5 / 0.6</td><td>8 / 10</td></tr>
+    <tr><td><strong>base pitch limit</strong></td><td>1(|φ<sub>base</sub>| &gt; 0.25) (0.25 rad = 14.3°)</td><td>−0.1</td><td>–</td></tr>
+    <tr><td>CoP stability error</td><td>‖p<sub>CoP</sub><sup>current</sup> − p<sub>foot</sub><sup>target</sup>‖₂</td><td>0.15</td><td>20</td></tr>
+    <tr><td>stance width error</td><td>||y<sub>L,foot</sub> − y<sub>R,foot</sub>| − 0.33|</td><td>0.05</td><td>25</td></tr>
+    <tr><td>stand parallel</td><td>|x<sub>L,foot</sub> − x<sub>R,foot</sub>|</td><td>0.05</td><td>10.0</td></tr>
+    <tr><td>foot orientation</td><td>d<sub>quat</sub>(q<sub>foot</sub><sup>current</sup>, q<sub>foot</sub><sup>target</sup>)</td><td>0.05</td><td>20</td></tr>
+    <tr><td>action smoothness</td><td>(1/n)|a<sub>t</sub><sup>skill</sup> − a<sub>t−1</sub><sup>skill</sup>|</td><td>0.1</td><td>6.0</td></tr>
+    <tr><td>low-level cmd</td><td>(1/n)|a<sub>t</sub><sup>llc</sup> − a<sub>t−1</sub><sup>llc</sup>| (WBC 출력 변화)</td><td>0.05</td><td>5.0</td></tr>
+    <tr><td>height cmd penalty</td><td>1(a<sub>z</sub> &lt; 0.1 ∨ a<sub>z</sub> &gt; 0.9)</td><td>−0.1</td><td>–</td></tr>
+  </tbody>
+</table></div>
+<p style="font-size:13px">출처: p.13 표 3. hand contact position 은 양의 가중치 거리 항인데 커널이 없다고 적혀 있어 표기 그대로는 해석이 모호하다(오기 가능성). low-level cmd 항은 기술 정책이 하위 출력의 출렁임까지 책임지게 한다.</p>
+
+<h3 class="ps">Pickup 단계 커리큘럼 (p.14)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>단계</th><th>길이 (50 Hz 스텝)</th><th>예</th></tr></thead>
+  <tbody>
+    <tr><td>approach</td><td>t<sub>approach</sub> = 100 × (0.9 − 상자 높이) + 30</td><td>높이 0.085 m → 111.5 스텝(2.2 s), 0.5 m → 70(1.4 s), 0.95 m → 25(0.5 s) (계산)</td></tr>
+    <tr><td>contact</td><td>25 (0.5 s)</td><td>—</td></tr>
+    <tr><td>lift</td><td>35 (0.7 s)</td><td>—</td></tr>
+    <tr><td>stand</td><td>목표 서기 높이 0.8 m 까지의 거리로 결정</td><td>—</td></tr>
+    <tr><td>끝 서기 연장</td><td>120 (2.4 s)</td><td>"extended terminal stand"</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>보상은 끝단 동작과 골반 높이에 대한 <strong>거리 기반 궤적 추종</strong>(Dao 2024 방식) + 잡기·안정 항(손–면 접촉 보너스, 발 힘 균형, base pitch·발 간격 정규화) + 하드웨어용 매끄러움 항 (p.14).</li>
+  <li><strong>접촉 45 스텝(0.9 s) 뒤 받침 탁자를 없앤다</strong> → 탁자에 기대 끌지 못하고 완전히 들어야 한다 (p.14).</li>
+  <li>Pickup 종료: 시간 초과, 상자 떨어뜨림, <strong>잘못된 손 접촉</strong> (p.14). "잘못된"의 정의는 논문에 없음.</li>
+</ul>
+
+<h3 class="ps">Place · GoTo (p.14–15)</h3>
+<ul>
+  <li>Place 참조 = <strong>성공한 Pickup 롤아웃을 거꾸로 돌린 것</strong>. 성공 Pickup 60k 개(어려운 높이 70–90 cm·크기 15–50 cm 10k 포함)의 끝단·골반 높이·접촉·상자/탁자 상태 시퀀스를 뒤집어 lift/stand → approach/place 로 매핑.</li>
+  <li>Place 시작: 상자를 든 서기 자세. 목표 거리 40–50 cm, 받침 높이 0–75 cm, 상자 pitch 외란 −30°–5° 주입(목표는 똑바로).</li>
+  <li>"내릴 때 앞쏠림을 벌하는 <strong>명시적 base-pitch 제약이 결정적</strong>이었다" (p.14).</li>
+  <li>GoTo: constellation 보상(목표 둘레 8 점 + 중심, w 1.0, α 0.5) 외 base 위치·yaw·발 자세·발 간격 0.33 m·매끄러움·토크·에너지·가속 항(표 4). GoTo-with-Box 추가: 손 roll 0.05, 상자 접촉 0.05, 상자 방향 0.1(α 5), 몸통 기준 상자 위치 0.05(α 5) (p.14 표 4).</li>
+  <li>GoTo 종료: 넘어짐(과한 roll·pitch, 낮은 base), 자기 충돌, 과속. GoTo-with-Box 는 <strong>상자 접촉 상실</strong>도 종료 (p.15).</li>
+</ul>
+
+<h2 class="ps">5. 학습 설정 (알고리즘 · 망 · 무작위화)</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>값</th><th>출처</th></tr></thead>
+  <tbody>
+    <tr><td>알고리즘</td><td>PPO + dynamics randomization</td><td>p.13</td></tr>
+    <tr><td>정책망</td><td>LSTM 2 층, 은닉 64, 50 Hz</td><td>p.13</td></tr>
+    <tr><td>PD</td><td>고정 이득, 2 kHz. 코드 Digit kp 다리 [80, 80, 110, 140, 40, 40]·팔 [80, 80, 50, 80], kd 다리 [8, 8, 10, 12, 6, 6]·팔 [9, 9, 7, 9]</td><td>p.13, <a href="../reference/humanoid_hanoi/code/env/robots/digit/digit.py"><code>digit.py</code></a></td></tr>
+    <tr><td>계산</td><td>CPU 160 코어 (Intel vLab)</td><td>p.13</td></tr>
+    <tr><td>PPO 하이퍼파라미터·env 수·반복 수·학습 시간</td><td>논문에 없음</td><td>—</td></tr>
+    <tr><td>WBC 이어 학습</td><td>Pickup 9 + Place 9 = 18 성공 시퀀스(극단 옆 위치·높이), DR 없이 수집. 같은 추종 목적·DR 범위·외란으로 학습. 개수는 조정·민감도 실험 안 함</td><td>p.5, p.12–13</td></tr>
+  </tbody>
+</table></div>
+
+<h3 class="ps">도메인 무작위화 (p.14 표 5)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>분류</th><th>항목</th><th>범위</th></tr></thead>
+  <tbody>
+    <tr><td rowspan="4">동역학</td><td>몸 질량</td><td>× 0.75–1.25</td></tr>
+    <tr><td>관절 감쇠</td><td>× 0.5–3.5</td></tr>
+    <tr><td>질량 중심 위치</td><td>× 0.95–1.05</td></tr>
+    <tr><td>마찰 계수</td><td>× 0.8–1.2</td></tr>
+    <tr><td rowspan="9">상자</td><td>질량</td><td>0.0–3.5 kg</td></tr>
+    <tr><td>크기 XYZ</td><td>0.15–0.5 m</td></tr>
+    <tr><td>X 거리</td><td>0.3–0.6 m</td></tr>
+    <tr><td>Y 거리</td><td>−0.1–0.1 m</td></tr>
+    <tr><td>Z 높이</td><td>0.085–0.95 m</td></tr>
+    <tr><td>yaw</td><td>−18–18°</td></tr>
+    <tr><td>미끄럼 마찰</td><td>0.1–1.0</td></tr>
+    <tr><td>구름 마찰</td><td>0.01–0.1</td></tr>
+    <tr><td>회전 마찰</td><td>0.001–0.005</td></tr>
+    <tr><td>통신</td><td>지연</td><td>2–4 ms</td></tr>
+  </tbody>
+</table></div>
+<p>공개 코드의 DR 파일에는 표 5 에 없는 항목이 더 있다: 엔코더 오프셋 ±0.05 rad, 토크 지연 4–7 주기(2 kHz 에서 약 2–3.5 ms), 토크 효율 0.9–1.0, 바닥 기울기 ±0.05 rad, 스프링 강성 ±10 %, 발 solref ±10 % (<a href="../reference/humanoid_hanoi/code/env/robots/digit/dynamics_randomization.json"><code>dynamics_randomization.json</code></a>, <a href="../reference/humanoid_hanoi/code/env/genericenv.py"><code>genericenv.py</code></a>). 학습 때도 이것을 썼는지는 확인할 수 없다(학습 코드 미공개).</p>
+
+<h2 class="ps">6. teacher → student / 증류</h2>
+<p>해당 없음 — 모든 정책이 상태 기반(상자 SE(3) 자세를 직접 받음)이고 student·시각 증류가 없다. Place 만 critic 에 특권 정보를 준다 (p.9 한계, p.14).</p>
+
+<h2 class="ps">7. 결과</h2>
+<h3 class="ps">기술 단독 평가, DR 켬 (p.6 표 1)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>지표</th><th>기술</th><th>Base</th><th>Finetune</th><th>Residual</th><th>Extended</th><th>Joint</th><th>E2E [Dao]</th></tr></thead>
+  <tbody>
+    <tr><td colspan="8"><em>전체 높이 분포: 고정 시드 10 × 1000 에피소드, 평균 ± 표준오차</em></td></tr>
+    <tr><td rowspan="2">성공 (%)</td><td>Pickup</td><td>89.43 ± 0.22</td><td>92.83 ± 0.28</td><td>93.15 ± 0.31</td><td><strong>96.92 ± 0.15</strong></td><td>91.39 ± 0.35</td><td>81.11 ± 0.36</td></tr>
+    <tr><td>Place</td><td>89.75 ± 0.27</td><td><strong>93.51 ± 0.35</strong></td><td>90.76 ± 0.27</td><td>93.03 ± 0.32</td><td>91.94 ± 0.21</td><td>91.18 ± 0.33</td></tr>
+    <tr><td rowspan="2">CoM 오차 (cm)</td><td>Pickup</td><td>5.455</td><td>5.104</td><td>5.176</td><td><strong>4.160</strong></td><td>5.394</td><td>4.546</td></tr>
+    <tr><td>Place</td><td>5.480</td><td>4.908</td><td>5.901</td><td>4.339</td><td>5.494</td><td><strong>3.904</strong></td></tr>
+    <tr><td rowspan="2">발 힘 쏠림</td><td>Pickup</td><td>0.4432</td><td>0.4323</td><td>0.4341</td><td><strong>0.3930</strong></td><td>0.4453</td><td>0.3958</td></tr>
+    <tr><td>Place</td><td>0.4254</td><td>0.4340</td><td>0.4179</td><td><strong>0.3714</strong></td><td>0.4279</td><td>0.4088</td></tr>
+    <tr><td>상자 위치 오차 (cm)</td><td>Place</td><td>4.895</td><td><strong>4.623</strong></td><td>4.855</td><td>4.781</td><td>4.906</td><td>6.398</td></tr>
+    <tr><td>상자 yaw 오차 (°)</td><td>Place</td><td>2.64</td><td>3.71</td><td>2.34</td><td>2.48</td><td><strong>2.33</strong></td><td>11.1</td></tr>
+    <tr><td colspan="8"><em>낮은 상자·목표 (&lt; 0.2 m): 3000 에피소드 평균</em></td></tr>
+    <tr><td rowspan="2">성공 (%)</td><td>Pickup</td><td>85.00</td><td>89.43</td><td>89.43</td><td><strong>95.03</strong></td><td>86.46</td><td>73.13</td></tr>
+    <tr><td>Place</td><td>85.06</td><td>90.40</td><td>86.93</td><td><strong>91.50</strong></td><td>85.53</td><td>91.26</td></tr>
+    <tr><td rowspan="2">CoM 오차 (cm)</td><td>Pickup</td><td>5.676</td><td>5.455</td><td>5.520</td><td><strong>2.731</strong></td><td>5.550</td><td>5.068</td></tr>
+    <tr><td>Place</td><td>5.515</td><td>4.690</td><td>5.798</td><td><strong>4.216</strong></td><td>5.461</td><td>4.639</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>Extended 가 성공률과 안정 지표(CoM 오차, 발 힘 쏠림)를 가장 고르게 올렸다. 특히 <strong>낮은 높이 Pickup 의 CoM 오차가 절반</strong>(5.676 → 2.731 cm).</li>
+  <li>저자 해석: 보상으로 하위를 고치는 것(Finetune·Residual·Joint)은 고차원 전신 행동 공간에서 안정을 간접적으로만 감독하는 어려운 최적화이고, 원래 WBC 목적을 유지한 채 분포만 넓히는 쪽이 더 고른 이득을 냈다 (p.6).</li>
+  <li>상체 추종(원래 학습 데이터 궤적): 관절 MAE 중앙값 0.1246 → 0.0805, 성공 95 → 100 % (p.13 표 2). 기술 데이터를 더해도 원래 능력은 줄지 않았다.</li>
+</ul>
+
+<h3 class="ps">7 수 하노이 전체 (p.7 그림 4, §6.3–6.4)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>방식</th><th>DR 켬 전체 성공</th><th>기술 성공률 곱(7 수) 예상</th><th>전환 10 스텝 보간 뒤</th></tr></thead>
+  <tbody>
+    <tr><td>Base</td><td>24 %</td><td>21.45 %</td><td>— (전환 없음)</td></tr>
+    <tr><td><strong>Extended</strong></td><td><strong>47 %</strong></td><td>48.44 %</td><td>— (전환 없음)</td></tr>
+    <tr><td>Finetune</td><td>21 %</td><td>37.13 %</td><td>32 %</td></tr>
+    <tr><td>Residual</td><td>19 %</td><td>30.87 %</td><td>32 %</td></tr>
+    <tr><td>Joint</td><td>16 %</td><td>29.56 %</td><td>38 %</td></tr>
+    <tr><td>E2E [Dao]</td><td>0/100 (DR 없음 1/100)</td><td>—</td><td>—</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>DR 없이 Extended 약 70 % (그림 4). DR 없을 때 Finetune·Residual·Joint 는 개별 기술은 낫지만 전체 성공은 Base 보다 낮다 (p.7).</li>
+  <li><strong>공유 WBC 는 "기술 성공률의 곱"과 거의 같은 전체 성공</strong>을 낸다. 비공유 방식은 예상보다 훨씬 낮다 → 하위 제어기 교체가 추가 손실을 만든다 (p.7).</li>
+  <li>교체 직후 Finetune 은 PD 목표가 급변하고 모터가 출렁인다(그림 5 고관절 yaw). Place 는 상자를 든 채 시작하므로 이 출렁임이 상자 높이·pitch 를 학습 무작위 범위 밖으로 흔든다. 실패한 Place 는 전환 직후 상자 변화가 더 크다(400 회, 그림 7) (p.8, p.15 C.2).</li>
+  <li>전환을 10 스텝 선형 보간만 해도 21 → 32 %, 19 → 32 %, 16 → 38 % 로 오르지만 Extended 47 % 에는 못 미친다 (p.8).</li>
+  <li>최종 상자 자세 오차는 성공 사례에서 x·y 약 4–7 cm, yaw 약 2.3–3.7° 이고 공통 성공 사례만 보면 어느 방식도 일관되게 낫지 않다 → Extended 의 이득은 정밀도가 아니라 견고성 (p.16 표 6, p.17 표 7).</li>
+  <li>실패 대부분은 Place: 내려놓을 때 상자 pitch 회전 → 탑 붕괴, 놓은 뒤 앞으로 내딛는 회복 걸음이 탑을 침, Pickup 의 치우친 파지가 누적, GoTo-with-Box 뒤 남은 위치 오차(목표 SE(2) 5 cm 안이면 Place 로 전환), 물체를 모르는 GoTo 의 뒷걸음·제자리 회전이 탑에 부딪힘 (p.16 C.4, p.17 그림 8).</li>
+</ul>
+
+<h2 class="ps">8. 실기 · sim2real</h2>
+<ul>
+  <li>장비: Digit V3, 머리 위 D455 두 대(머리 기준 아래로 67°·20°), 온보드 Intel NUC(10 세대) 가 지각·제어를 하고 UDP 로 관절 PD 명령 전송 (p.17 E.1).</li>
+  <li>상태 추정: 상자마다 AprilTag, 탑마다 뒤에 AprilTag 3 개로 전역 위치. 태그가 안 보이면 IMU 오도메트리, 매 Pickup 뒤 오도메트리 재설정. 정책은 원 영상이 아니라 이 추정값을 받는다 (p.8, p.17–18).</li>
+  <li>세 배치(상자 33.65×33.65×34.92 / 35.56×35.56×34.92 / 37.78×37.78×34.92 cm, 탑 거리 150 / 165 / 180 cm), 연속 5 회씩: Extended <strong>3/5, 2/5, 1/5 = 6/15 (40 %)</strong>, 시행당 평균 4.2 수 완료, 다른 방식 0/15. 성공 시 7 수에 약 5 분 (p.9, p.18).</li>
+  <li>기술 단위 실기(정성): 낮은 높이 Pickup·Place 연속 실행에서 Base WBC 는 자세가 크게 흔들리고 상자를 건드리며 앞으로 내딛지만 Extended 는 안정 (p.17 부록 D, p.18 그림 9).</li>
+  <li>실패 원인(15 회 중): AprilTag 인지 실패(Pickup) 2, 의도치 않은 접촉으로 Place 중 상자 뒤집힘 2, 전환 시 yaw 어긋남 2, 큰 옆 위치 오차로 파지 실패 1, IMU 고장 1, 놓기·일어서기 중 상자 걷어참 1 (p.19 E.3).</li>
+  <li>탑 두 개를 거의 일직선으로 둔 단순 배치에서는 3 상자 쌓기 <strong>연속 5/5</strong>, 6 번째는 모터 과열로 리셋 → yaw 위치 추정이 큰 병목 (p.19 E.4, 그림 10).</li>
+</ul>
+
+<h2 class="ps">9. 코드에서 확인한 것</h2>
+<p>저장소는 <strong>벤치마크 환경만</strong> 있다. README 에 "Training code is NOT included". 정책·WBC 가중치 파일도 없다(LFS 포인터조차 없음). LICENSE 파일 없음 → 아이디어·수치 참고만, 코드 복사는 피한다.</p>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>파일</th><th>내용</th></tr></thead>
+  <tbody>
+    <tr><td><a href="../reference/humanoid_hanoi/code/README.md"><code>README.md</code></a>, <a href="../reference/humanoid_hanoi/code/eval.py"><code>eval.py</code></a></td><td>H1·G1·Digit 중 고르는 대화형 평가 실행기. 정책 연결부 없음</td></tr>
+    <tr><td><a href="../reference/humanoid_hanoi/code/env/tasks/boxtowerofhanoienv/boxtowerofhanoienv.py"><code>boxtowerofhanoienv.py</code></a></td><td>장면 생성·로그. 탑 반지름 U(1.5, 2.5), 탑 간격 &gt; 0.9 m. 상자 반변 0.1 + U(0.03–0.045 / 0.045–0.06 / 0.06–0.075) → 전체 변 0.26–0.35 m. 몸체 질량 0.2 + U(0, 2.5) kg + 바닥 0.3 kg 추(합 0.5–3.0 kg). 미끄럼 마찰 U(0.5, 0.7)·구름 0.02·회전 0.005. 초기 쌓기 높이(상자 중심) 0.78–0.9 / 0.44–0.5 / 0.14–0.15 m. <code>np.random.seed(24)</code>, 100 사례. <code>_get_state</code> 는 0 벡터 80 개, <code>step</code> 은 처음 2 스텝만 0 행동 — 자기 정책을 꽂는 틀</td></tr>
+    <tr><td><a href="../reference/humanoid_hanoi/code/env/rewards/humanoidhanoi/humanoidhanoi.py"><code>humanoidhanoi.py</code></a>, <a href="../reference/humanoid_hanoi/code/env/rewards/humanoidhanoi/reward_weight.json"><code>reward_weight.json</code></a></td><td><code>compute_rewards</code> 는 빈 dict(보상 없음). 평가 종료: 골반 z &lt; 0.2 m, 상자 운반 중 양 아래팔 접촉력이 모두 0 인 스텝이 50 회 넘음, 마지막 기술 전환 뒤 1,500 스텝 초과</td></tr>
+    <tr><td><a href="../reference/humanoid_hanoi/code/sim/digit_sim/digit-v3-box-tower-of-hanoi.xml"><code>digit-v3-box-tower-of-hanoi.xml</code></a></td><td><code>timestep 0.0005</code>(2 kHz), Newton 풀이기 50 반복, <strong><code>cone="elliptic"</code>, <code>impratio="20"</code></strong>. 아래팔 원통 반지름 0.013 m·반길이 0.1565 m <code>condim 6</code> + 끝 구 0.015 m. 상자 <code>condim 6</code>. G1·H1 XML 도 같은 option (G1 은 <code>rubber_hand</code> 메시)</td></tr>
+    <tr><td><a href="../reference/humanoid_hanoi/code/sim/digit_sim/mj_digitsimboxtowerofhanoi.py"><code>mj_digitsimboxtowerofhanoi.py</code></a></td><td>팔 구동 인덱스 8 개(팔 4×2), 손–상자 접촉 판정은 <code>left-arm/elbow</code>·<code>right-arm/elbow</code> ↔ <code>box</code> 몸체 쌍</td></tr>
+    <tr><td><a href="../reference/humanoid_hanoi/code/sim/mujoco_sim.py"><code>sim/mujoco_sim.py</code></a></td><td>토크 = 효율 × min(속도 의존 토크 한계, PD 출력 / 기어비). 한계는 2·ctrlrange − (2·ctrlrange / 무부하 rpm 환산)·|ω| 를 [0, ctrlrange] 로 자름 = <strong>선형 토크–속도 곡선</strong>. 토크 버퍼로 지연 구현</td></tr>
+    <tr><td><a href="../reference/humanoid_hanoi/code/env/genericenv.py"><code>genericenv.py</code></a></td><td>행동 = 중립 오프셋 + a(절대), <code>integral_action</code> 이면 현재 모터 위치 + a. DR 적용·엔코더 오프셋·바닥 기울기</td></tr>
+    <tr><td><a href="../reference/humanoid_hanoi/code/box-world-json/hanoi.json"><code>box-world-json/hanoi.json</code></a></td><td>PDDL 계획(unstack · locomotion · putdown · stack 순서)</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">10. 한계</h2>
+<ul>
+  <li>상태 기반: 시각·가림·자세 추정 잡음·부분 관측을 다루지 않는다 (p.9).</li>
+  <li>비공유 하위 설계를 다 시험한 것은 아니다. 전환 보간 외의 처리는 보지 않음 (p.9).</li>
+  <li>Extended 는 <strong>WBC 학습 파이프라인을 다시 돌릴 수 있어야</strong> 쓸 수 있다. 데이터 집계 개수(18)는 조정 안 함 (p.13).</li>
+  <li>학습 코드·하이퍼파라미터·학습 시간 미공개. 보상 표 일부 식(hand contact position, base pitch roll)은 표기가 모호.</li>
+  <li>Pickup 은 시간 대본(단계 길이 고정) 위의 궤적 추종이라, 손 경로 설계가 로봇 기하에 묶인다.</li>
+  <li>실기는 15 회 + 단순 배치 5 회, 실패 대부분이 지각·위치 추정 쪽이라 제어 기여를 실기에서 따로 떼기는 어렵다 (p.19).</li>
+</ul>
+
+<h2 class="ps">11. 우리에게 가져올 것</h2>
+<div class="take"><ol>
+  <li><strong>가져올 것 — dev12 를 "고정"이 아니라 "관리되는 부품"으로 계획</strong>: 상위가 내는 낮은 집기 명령이 dev12 학습 덮음 밖이면 상위 보상으로는 못 고친다(이 논문의 Finetune·Residual·Joint 가 그 예). 처방은 teacher 가 성공한 롤아웃(골반 명령 6 + 상체 11 목표 시퀀스, DR 끈 상태)을 모아 dev12 명령 표본 분포에 섞고 <strong>dev12 원래 추종 보상·DR 그대로</strong> 이어 학습하는 것. Hanoi 는 극단 옆 위치·높이에서 9 + 9 개만으로 낮은 상자 85.00 → 95.03 % 였다. 우리 대상 구간: 골반 0.335–0.45 m × pitch 30–45°, 옆 ±0.15 m 상자. dev12 는 참조 궤적이 아니라 무작위 명령으로 학습하므로 "기록된 명령 재생"을 일부 env(예: 10–20 %, 우리 제안값)에 넣는 꼴로 옮긴다.</li>
+  <li><strong>가져올 것 — 높이와 pitch 를 둘 다 상위가 고르게</strong>: Pickup 출력이 팔 + pitch + 높이(10)인 것은 우리 상체 11 + 골반 높이·pitch 와 같은 꼴이다. 집기 동안 vx·vy·ωz 는 0 근처로 묶고, 쪼그림·숙임 배분은 정책이 고르게 둔다.</li>
+  <li><strong>가져오지 말 것 — 절대 pitch 상한 0.25 rad</strong>: Digit 는 |φ| &gt; 14.3° 에 −0.1 을 주지만 K1 은 발목 ±45° 때문에 낮은 자세에서 숙임이 필수다(골반 0.335 m 는 45°). 상한 벌점은 dev12 의 높이별 숙임 하한·상한 표(0.635 m 0° … 0.335 m 45°)에서 벗어난 양에 걸고, Place 에서 결정적이었던 "내릴 때 앞쏠림 벌점"은 나중 내려놓기 단계에 그 표 기준으로 넣는다.</li>
+  <li><strong>가져올 것 — 두 손 접촉(L ∧ R)일 때만 켜지는 하류 보상</strong>: 상자 기울기(|roll| + |pitch|, w 0.1·α 10)와 받침 하중(F<sub>table</sub>/mg, w 0.05·α 2)을 두 손이 다 닿았을 때만 준다. 한 손 밀기로는 이 항을 못 얻으므로 dev10 v2 의 한 손 국소해를 막는 데 직접 쓸 수 있다. "잘못된 손 접촉" 종료는 우리 식으로 정의한다(예: 손바닥이 아닌 팔 링크·윗면 접촉).</li>
+  <li><strong>가져올 것 — 받침 높이 비례 시간과 받침 제거</strong>: 받침 0.1/0.2/0.3 m 상자는 두 손 접촉 0.9 s(45 스텝) 뒤 받침을 없애 "받침에 기대 끌기" 편법을 막는다. 바닥 상자는 해당 없음. 시간 대본을 쓰지 않더라도 낮은 상자에 접근·제한 시간을 더 주는 꼴(Hanoi: 높이 1 m 낮을 때마다 100 스텝 = 2 s 추가)은 시간 초과·종료 규칙에 옮길 수 있다.</li>
+  <li><strong>가져올 것 — 들고 난 뒤 서기 연장</strong>: 끝에 120 스텝(2.4 s) 서서 유지 구간을 붙인다. 우리 "서서 유지" 성공 판정과 같은 구간으로 맞춘다.</li>
+  <li><strong>가져올 것 — 하위 출력 변화 벌점</strong>: "low-level cmd"(WBC 출력 변화, w 0.05·α 5)처럼 상위가 하위의 출렁임까지 책임지게 한다. 우리는 dev12 다리 관절 목표 변화율을 teacher 보상에 작게 넣을 수 있다(dev12 는 고정이라 이 항이 상위 명령의 급변만 벌한다).</li>
+  <li><strong>가져올 것 — 정책 교체 대신 하나의 하위</strong>: 기술마다 하위를 바꾸면 전환 출렁임이 성공률을 깎는다(21 % vs 예상 37 %). 우리는 이미 dev12 하나를 공유한다. 나중에 접근·집기·운반을 다른 상위 정책으로 나누면 적어도 10 스텝 행동 보간을 학습 때부터 넣는다.</li>
+  <li><strong>참고 값 — MuJoCo 평가 설정</strong>: 공개 XML 은 타원 마찰 원뿔 + impratio 20, 손·상자 condim 6. 우리 sim2sim 은 피라미드 원뿔에서 조인 상자가 미끄러졌다. 타원 원뿔은 유지하고 impratio 10 과 20 을 둘 다 돌려 성공률 민감도를 본다.</li>
+  <li><strong>참고 값 — 모터 곡선·지연</strong>: 코드가 선형 토크–속도 한계와 2–3.5 ms 토크 지연, 토크 효율 0.9–1.0, 엔코더 오프셋 ±0.05 rad 를 무작위한다. dev12 쪽 sim2real 체크리스트(모터 곡선·지연)와 대조할 근거.</li>
+  <li><strong>가져오지 말 것 — 아래팔로 끼우는 손 궤적</strong>: Digit 는 아래팔 원통 31 cm 로 상자를 끼워 접촉 면적이 넓다. K1 은 공 손바닥 두 점이고 쪼그림에서 옆면 중앙까지 20 cm 모자란다. 손 목표 궤적·접촉 위치는 K1 IK 로 닿는 점(쪼그림이면 옆면 뒤쪽 윗부분)에서 다시 정해야 한다.</li>
+  <li><strong>가져오지 말 것 — 상태 기반 상자 자세 입력 그대로</strong>: Pickup 은 시작 때 상자 자세를 한 번만 받는다. 우리 student 는 깊이로 매 스텝 봐야 하므로 teacher 관측도 "student 가 깊이로 복원할 수 있는 것"으로 제한한다.</li>
+</ol></div>
+
+<p class="src">출처 표기: (p.N), (표 N), (그림 N), (식 N), 코드는 파일 경로. 논문에 없는 값은 "논문에 없음".</p>
+</main>
+</body>
+</html>

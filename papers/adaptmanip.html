@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AdaptManip — 논문 상세</title>
+<link rel="stylesheet" href="paper.css">
+</head>
+<body>
+<main class="wrap">
+<a class="back" href="../index.html#catalog">← 자료 목록으로</a>
+
+<header class="ph">
+  <h1>AdaptManip: 동결 보행 정책에 [vx, vy, ω, z] 명령 + 상체 잔차 17 을 내는 정책과 순환 상자 추정기로 상자 들고 나르기</h1>
+  <p class="orig">AdaptManip: Learning Adaptive Whole-Body Object Lifting and Delivery with Online Recurrent State Estimation</p>
+  <p class="meta">Morgan Byrd, Donghoon Baek, Kartik Garg, Hyunyoung Jung, Daesol Cho, Maks Sorokin, Robert Wright, Sehoon Ha · Georgia Tech, Georgia Tech Research Institute · 사전 공개 (arXiv v2 2026-09-30, RA-L 여부 미확인) · Unitree G1 29 DoF, 관절 없는 고무 손 · Isaac Lab (학습), MuJoCo (미학습 시뮬 평가)</p>
+  <div class="chips">
+    <a class="chip loc" href="../reference/adaptmanip/paper.pdf">로컬 PDF</a>
+    <a class="chip" href="https://arxiv.org/abs/2602.14363" target="_blank" rel="noopener">arXiv 2602.14363</a>
+    <a class="chip gh" href="https://github.com/morganbyrd03/adaptmanip" target="_blank" rel="noopener">morganbyrd03/adaptmanip (PDF·영상만)</a>
+    <span class="simv s5">유사도 5</span>
+    <span class="badge only">논문만 (코드 없음)</span>
+  </div>
+</header>
+
+<div class="callout blue tldr">G1 에서 PPO 보행 정책(명령 [v̄x, v̄y, ω̄, z̄] 을 따름)을 고정하고, 그 위 잔차 정책이 보행 명령 4 + 상체(허리·팔) 잔차 PD 목표 17 을 낸다. 상자 6D 자세는 AprilTag·고유감각·직전 행동을 섞는 LSTM(128) 추정기가 내고 정책과 함께 학습한다. 135 시행에서 전체 성공 Isaac Lab 0.85 · 미학습 MuJoCo 0.75 (Pure RL 0.62 / 0.37, Oracle 0.91 / 0.79), MuJoCo 재파지 6.32 회. 실기 G1 은 정성 시연 (p.4–6, 표 III).</div>
+
+<h2 class="ps">우리와 무엇이 같고 다른가</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>이 논문</th><th>우리 (dev10 pelvis_pick)</th></tr></thead>
+  <tbody>
+    <tr><td>하위 제어기</td><td>RL 전신 보행 정책 π<sub>wbc</sub>(고정): 명령 [v̄x, v̄y, ω̄, z̄] 추종, <strong>29 관절 전부</strong> 출력 (p.3–4)</td><td class="ours">dev12 하체 RL(동결 예정), 다리 12 만 출력, 골반 vx·vy·ωz·높이·pitch·roll 추종, 상체 11 은 외부 PD(하위가 목표를 관측)</td></tr>
+    <tr><td>상위 출력</td><td>ū<sub>loco</sub> ∈ R<sup>4</sup> + 상체 잔차 a<sub>upper</sub> ∈ R<sup>17</sup>(허리·팔). 잔차는 하위 출력 a<sub>t</sub> 위에 더해짐 (p.4, 그림 3)</td><td class="ours">상체 11 + 골반 명령 6 (pitch·roll 은 이 논문에 없음)</td></tr>
+    <tr><td>과제·물체</td><td>상자로 걸어가(0.5 m 안이면 전환) 양손으로 들고 목표까지 운반. 상자 질량 가산 −0.88–1.5 kg, x·y 크기 ×0.75–1.25. 기본 크기·질량·받침 높이는 논문에 없음 (p.3, p.5 표 II)</td><td class="ours">바닥·받침대 0–0.3 m 상자 37×40.5×29 cm, 0.5–2 kg, 두 손 옆면 조이기 → 서서 유지 (나중에 접근·운반)</td></tr>
+    <tr><td>손</td><td>관절 없는 고무 손, 형태 폐합 없이 마찰로만 지지 (p.3)</td><td class="ours">고무 공 손, 팔 kp 22.3 / kd 1.42</td></tr>
+    <tr><td>지각·증류</td><td>teacher → student 증류 없음. 학습 중 정책 입력의 상자 자세를 GT → 추정값으로 서서히 바꿈(w = min(t/T, 1)). 시각은 렌더링 대신 잡음·무작위 가림을 씌운 GT 로 흉내 (p.5)</td><td class="ours">특권 teacher → D436 깊이(26×64, 6 프레임) + 고유감각 student (DAgger)</td></tr>
+    <tr><td>평가</td><td>Isaac Lab(학습 시뮬) + MuJoCo(미학습) 각 135 시행 (p.6)</td><td class="ours">Isaac(Newton) + MuJoCo sim2sim</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">1. 문제와 과제</h2>
+<ul>
+  <li>목표: 사람 시연·원격조종·모캡 없이 RL 만으로, 온보드 센서만 써서 "상자로 걸어가 → 들고 → 목표까지 나르기"를 자율로 (p.1–2, 표 I).</li>
+  <li>세 단계 (p.3, 그림 2):
+    <ol>
+      <li><strong>항법</strong>: 처음엔 상자가 카메라 밖. LiDAR-관성 오도메트리(FAST-LIO)로 상자 앞 목표 위치까지 이동.</li>
+      <li><strong>잡기·들기</strong>: 상자에서 0.5 m 이내면 전환. 시각(AprilTag)을 켜 상자 자세를 정밀화. 고무 손이라 마찰로만 들어야 함.</li>
+      <li><strong>운반</strong>: 몸·손에 상자가 자주 가려져 시각이 믿기 어려움.</li>
+    </ol>
+  </li>
+  <li>핵심 주장: 상자 상태 추정과 제어를 함께 학습하면, 미끄러짐·떨어뜨림 같은 실패에서 다시 잡는 회복 행동이 나온다 (p.1).</li>
+</ul>
+
+<h2 class="ps">2. 시스템 구조</h2>
+<div class="fig">
+  <p><strong>학습 3 단계 (그림 3, p.4)</strong></p>
+  <div class="flow">
+    <span class="node">① 무작위 속도·높이 명령 + 고유감각 → π<sub>wbc</sub> 학습 (Isaac Lab)</span><span class="arr">→</span>
+    <span class="node frozen">π<sub>wbc</sub> 고정</span><span class="arr">→</span>
+    <span class="node">② 잔차 π<sub>res</sub> 학습 + ③ LSTM 추정기 동시 학습(지도)</span>
+  </div>
+  <p style="margin-top:12px"><strong>실행 시 (50 Hz, 물리 200 Hz)</strong></p>
+  <div class="flow">
+    <span class="node">AprilTag 자세(안 보이면 0) + 고유감각 + 실행한 행동</span><span class="arr">→</span>
+    <span class="node">LSTM 128 + MLP 머리 → 로봇 기준 상자 6D 자세 X̃<sub>box</sub></span><span class="arr">→</span>
+    <span class="node">π<sub>res</sub> (MLP 512-256-128)</span><span class="arr">→</span>
+    <span class="node">ū<sub>loco</sub> = [v̄x, v̄y, ω̄, z̄]</span><span class="arr">→</span>
+    <span class="node frozen">π<sub>wbc</sub> → a<sub>t</sub> ∈ R<sup>29</sup></span><span class="arr">⊕</span>
+    <span class="node">Δa<sub>t</sub> (상체 17)</span><span class="arr">→</span>
+    <span class="node">PD: τ = k<sub>p</sub>(a + q<sub>def</sub> − q) − k<sub>d</sub>q̇</span>
+  </div>
+  <p style="margin-top:8px;font-size:13px">점선 = 고정. 항법 단계는 LiDAR 오도메트리가 속도 명령을 만들고 π<sub>wbc</sub> 만 쓴다 (그림 2). 17 = G1 허리 3 + 팔 7×2 로 보이나 논문은 "주로 허리와 팔 관절"이라고만 씀 (p.4).</p>
+</div>
+
+<h2 class="ps">3. 관측과 행동</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>정책</th><th>actor</th><th>critic</th><th>행동</th></tr></thead>
+  <tbody>
+    <tr><td>π<sub>wbc</sub> (보행)</td><td>θ<sub>j</sub> 29, θ̇<sub>j</sub> 29, 몸통 각속도 3, 투영 중력 3, 명령 v̄ 2·ω̄ 1·z̄ 1, 직전 행동 29 = 97 (차원 합은 계산) (p.3)</td><td>actor 관측 + 몸통 선속도 3, 3 스텝 이력 [o<sub>t−2:t</sub>, v<sub>t−2:t</sub>] (p.3)</td><td>a<sub>t</sub> ∈ R<sup>29</sup>, 기본 자세 대비 관절 위치 목표 (p.3)</td></tr>
+    <tr><td>π<sub>res</sub> (조작)</td><td>θ<sub>j</sub>, θ̇<sub>j</sub>, ω, g<sub>proj</sub>, <strong>추정 상자 6D 자세 X̃<sub>box</sub></strong>, 명령 상자 자세 X̄<sub>box</sub>, a<sub>t−1</sub> (p.4)</td><td>actor 3 스텝 이력 + 특권 3 스텝: GT 상자 6D 자세, 상자 선속도·각속도, <strong>손 접촉력 f<sub>hand</sub>, 상자 접촉력 f<sub>box</sub></strong> (p.4)</td><td>ū<sub>loco</sub> ∈ R<sup>4</sup> + a<sub>upper</sub> ∈ R<sup>17</sup> 잔차 PD 목표 = 21 (p.4)</td></tr>
+    <tr><td>추정기</td><td>현재 시각 자세 측정(없으면 0) + 고유감각 + 실행한 행동 (p.5)</td><td>—</td><td>로봇 기준 상자 6D 자세 (지도 학습, GT 정답)</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>명령 범위(v̄, ω̄, z̄), 잔차 배율, 6D 자세의 표현 차원은 논문에 없음.</li>
+  <li>접촉력은 critic 전용이다 — actor·추정기는 힘을 직접 보지 않는다 (p.4).</li>
+  <li>관측 잡음은 "보행·조작 정책 모두에 넣음"이라고만 하고 값은 논문에 없음 (p.5).</li>
+</ul>
+
+<h2 class="ps">4. 보상 · 종료 · 커리큘럼</h2>
+<h3 class="ps">보행 보상 (식 1, p.4)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>묶음 (가중 λ)</th><th>항</th></tr></thead>
+  <tbody>
+    <tr><td>명령 추종 λ<sub>tr</sub></td><td>e<sup>−‖v − v̄‖</sup>, e<sup>−‖ω − ω̄‖</sup>, e<sup>−|z − z̄|</sup></td></tr>
+    <tr><td>걸음 모양 λ<sub>gait</sub></td><td>Σ<sub>f</sub> 𝟙<sub>v&gt;0.1</sub>(t<sub>f</sub> − 0.4) (공중 시간), e<sup>−0.5 Σ<sub>f</sub> |z<sub>f</sub> − 0.05|</sup> (발 높이 0.05 m)</td></tr>
+    <tr><td>동작 정규화 −λ<sub>reg</sub></td><td>Σ<sub>j</sub> [τ<sub>j</sub>², ω<sub>j</sub>², ω̇<sub>j</sub>², a<sub>j</sub>², ȧ<sub>j</sub>², ä<sub>j</sub>²]</td></tr>
+    <tr><td>제약 위반 −λ<sub>vio</sub></td><td>Σ<sub>f</sub> I<sub>c</sub>‖v<sub>f</sub>‖ (디딘 발 미끄럼), Σ<sub>f</sub> v<sub>r</sub>f<sub>c</sub>, ‖g<sub>proj</sub>‖², 관절 속도·토크 한계 위반 ω<sub>o</sub>, τ<sub>o</sub></td></tr>
+  </tbody>
+</table></div>
+
+<h3 class="ps">조작 보상 (식 2, p.5) — r = r<sub>loco</sub> + 아래 항</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>묶음 (가중 λ)</th><th>항</th><th>뜻</th></tr></thead>
+  <tbody>
+    <tr><td>운동학 추종 λ<sub>kin</sub></td><td>e<sup>−|ψ<sub>robot</sub> − ψ<sub>box</sub>|</sup>, e<sup>−4‖p<sub>hand</sub><sup>err</sup>‖</sup>, e<sup>−1.5‖p<sub>root</sub><sup>err</sup>‖</sup></td><td>상자 향하기, 손 위치 오차, 루트 위치 오차(목표 정의는 논문에 없음)</td></tr>
+    <tr><td>상자 안정 λ<sub>box</sub></td><td>e<sup>−2‖p<sub>box</sub> − p<sub>des</sub>‖₁ − ‖q<sub>box</sub> − q<sub>des</sub>‖₁</sup>, <strong>e<sup>−‖v<sub>root</sub> − v<sub>box</sub>‖₂</sup></strong></td><td>상자 목표 자세, 몸–상자 상대 속도</td></tr>
+    <tr><td>접촉력 품질 λ<sub>con</sub></td><td>clamp(Σ<sub>h</sub> ‖f<sub>con,h</sub>‖ · I<sub>box</sub>, 0, 1)</td><td>두 손 접촉력 합을 1 에서 자름</td></tr>
+    <tr><td>미끄럼 회피 −λ<sub>slip</sub></td><td>Σ<sub>h</sub> min(0, v<sub>hand,z</sub> − v<sub>box,z</sub>)</td><td>손–상자 수직 속도 차</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li><strong>λ 값은 모두 논문에 없음.</strong></li>
+  <li>본문은 접촉 항이 "몸–상자 상대 운동 벌점, 대칭 양손 접촉력 장려, 손–상자 접촉 방향 보상, 접촉 실패 벌점, 접선 미끄럼 억제"를 한다고 쓰지만(p.4), 식 2 에는 대칭·방향 항이 따로 없다. 접촉 항은 힘 합을 1 에서 잘라(단위 미표기) 사실상 "어느 손이든 닿음" 신호다.</li>
+  <li>미끄럼 항은 식 그대로면 부호가 어색하다: 상자가 손보다 아래로 미끄러지면(v<sub>hand,z</sub> &gt; v<sub>box,z</sub>) min 이 0 이라 벌점이 없고, 손이 상자보다 내려갈 때 −λ·(음수) = 양의 값이 된다. 의도는 "상자가 손 대비 아래로 빠지는 속도 벌점"으로 보인다.</li>
+</ul>
+
+<h3 class="ps">종료 · 커리큘럼 (p.5)</h3>
+<ul>
+  <li>종료: 20 s 경과, 기울기 60° 초과, 루트 높이 0.15 m 미만, <strong>상자 높이 0.25 m 미만</strong>.</li>
+  <li>상자 자세 커리큘럼(식 3): X<sub>in</sub> = w·X̃<sub>box</sub> + (1 − w)·X<sub>box</sub>, w = min(t/T, 1), t = 학습 반복, T = 최대 반복. 초반엔 GT, 끝으로 갈수록 추정값을 정책에 넣는다.</li>
+  <li>시각 흉내: 학습 중 렌더링을 하지 않고, 잡음과 무작위 가림을 씌운 GT 자세를 시각 측정 대신 넣는다. "실기로 잘 옮겨졌다" (p.5).</li>
+</ul>
+
+<h2 class="ps">5. 학습 설정 (알고리즘 · 망 · 무작위화)</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>값</th><th>출처</th></tr></thead>
+  <tbody>
+    <tr><td>알고리즘</td><td>PPO + <strong>좌우 대칭 손실</strong>(Yu, Turk, Liu 2018 방식)</td><td>p.5</td></tr>
+    <tr><td>actor·critic</td><td>3 층 MLP [512, 256, 128], ELU</td><td>p.5</td></tr>
+    <tr><td>추정기</td><td>LSTM 은닉 128 + MLP 머리, 정책과 함께 지도 학습(GT 상자 자세)</td><td>p.5</td></tr>
+    <tr><td>학습 시간</td><td>보행·조작 정책 따로, 각각 약 1 일, RTX 4090 한 장</td><td>p.5</td></tr>
+    <tr><td>제어·물리</td><td>제어 50 Hz, 물리 200 Hz</td><td>p.6</td></tr>
+    <tr><td>env 수·반복 수·PPO 하이퍼파라미터·대칭 손실 가중</td><td>논문에 없음</td><td>—</td></tr>
+  </tbody>
+</table></div>
+
+<h3 class="ps">도메인 무작위화 (p.5 표 II)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>범위</th><th>방식</th></tr></thead>
+  <tbody>
+    <tr><td>몸통 질량</td><td>−2.5–2.5 kg</td><td>더함</td></tr>
+    <tr><td>k<sub>p</sub>, k<sub>d</sub></td><td>0.8–1.2</td><td>곱함</td></tr>
+    <tr><td>지면 정·동마찰</td><td>0.3–1.5 · 0.3–0.9</td><td>절대값</td></tr>
+    <tr><td>몸통 외력 · 외부 토크</td><td>−4.0–4.0 N · −2.0–2.0 N·m</td><td>절대값</td></tr>
+    <tr><td>탁자 정·동마찰 · 반발</td><td>0.3–1.3 · 0.3–1.5 · 0.0–0.5</td><td>절대값</td></tr>
+    <tr><td>상자 정·동마찰 · 반발</td><td>0.3–1.3 · 0.3–1.5 · 0.0–0.5</td><td>절대값</td></tr>
+    <tr><td><strong>상자 질량</strong></td><td>−0.88–1.5 kg</td><td>더함 (기본 질량은 논문에 없음)</td></tr>
+    <tr><td>상자 크기 x · y</td><td>0.75–1.25</td><td>곱함 (z 는 무작위 안 함)</td></tr>
+    <tr><td>상자 질량 중심 x · y · z</td><td>0.75–1.25</td><td>"더함" — 단위 없음, 표기 그대로면 오기로 보임</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">6. teacher → student / 증류</h2>
+<p>teacher → student 증류는 없다. 대신 <strong>한 정책 안에서 특권 상자 상태 → 추정 상자 상태로 옮겨 가는</strong> 방식을 쓴다. 우리 student 설계와 직접 비교할 만해서 정리한다.</p>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>요소</th><th>AdaptManip</th><th>우리 계획과의 차이</th></tr></thead>
+  <tbody>
+    <tr><td>특권 정보 위치</td><td>critic 만 GT 상자 자세·속도·접촉력을 봄. actor 는 처음부터 "추정 가능한 것"만 봄 (p.4)</td><td class="ours">우리 teacher actor 는 특권 상태를 보고 student 가 깊이로 흉내 → 정보 격차가 생김(dev10 v2 student 69 %)</td></tr>
+    <tr><td>전환 방식</td><td>정책 입력 = w·추정 + (1 − w)·GT, w 를 학습 반복에 따라 0 → 1 (식 3)</td><td class="ours">DAgger 로 행동을 회귀</td></tr>
+    <tr><td>추정기 학습</td><td>LSTM 128, GT 자세 지도 손실, 정책과 동시 (p.5)</td><td class="ours">student 에 상자 자세 보조 머리를 붙일 수 있음</td></tr>
+    <tr><td>시각 입력</td><td>학습 중 렌더링 없음. 잡음·가림을 씌운 GT 를 측정으로 사용. 실기 AprilTag 하나(윗면 가운데) (p.5–6)</td><td class="ours">D436 깊이 26×64 를 학습 중 직접 렌더링</td></tr>
+  </tbody>
+</table></div>
+<p>결과적으로 정책은 "잘 안 보이는 상자 자세"를 전제로 학습되고, 상자가 손에 붙은 뒤에는 고유감각과 행동 이력으로 추적한다. MuJoCo 에서 Oracle(테스트 때 GT) 0.79 와 AdaptManip 0.75 의 차이가 작다는 것이 근거다 (p.6 표 III).</p>
+
+<h2 class="ps">7. 결과</h2>
+<h3 class="ps">135 시행 비교 (p.6 표 III)</h3>
+<p>질량 3 × 크기 3 × 마찰 3 조건, 조건마다 시드 5 = 135 시행(조건 값 자체는 논문에 없음). Stage1 = 항법, Stage2 = 파지·들기. 평균 (± 표준편차).</p>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>시뮬</th><th>방식</th><th>전체 성공</th><th>Stage1</th><th>Stage2</th><th>떨어뜨림 ↓</th><th>재파지 ↑</th></tr></thead>
+  <tbody>
+    <tr><td rowspan="6">Isaac Lab (학습)</td><td>Pure RL</td><td>0.62 (0.48)</td><td>0.98</td><td>0.88</td><td>1.79</td><td>5.74</td></tr>
+    <tr><td>Pure RL + FK</td><td><strong>0.88</strong> (0.32)</td><td>0.93</td><td>0.92</td><td>0.29</td><td>2.94</td></tr>
+    <tr><td>Motion Imitation</td><td>0.42 (0.46)</td><td>0.96</td><td>0.93</td><td>3.81</td><td>2.94</td></tr>
+    <tr><td><strong>AdaptManip</strong></td><td>0.85 (0.35)</td><td>0.97</td><td>0.92</td><td>0.49</td><td>2.12</td></tr>
+    <tr><td>Pure Vision</td><td>0.63 (0.42)</td><td>0.95</td><td>0.91</td><td>12.44</td><td>23.55</td></tr>
+    <tr><td>Oracle</td><td>0.91 (0.28)</td><td>0.98</td><td>0.97</td><td>0.46</td><td>2.47</td></tr>
+    <tr><td rowspan="6">MuJoCo (미학습)</td><td>Pure RL</td><td>0.37 (0.48)</td><td>0.84</td><td>0.80</td><td>2.11</td><td>4.20</td></tr>
+    <tr><td>Pure RL + FK</td><td>0.61 (0.49)</td><td>0.95</td><td>0.93</td><td>2.44</td><td>5.24</td></tr>
+    <tr><td>Motion Imitation</td><td>0.00 (0.00)</td><td>0.93</td><td>0.69</td><td>0.82</td><td>1.78</td></tr>
+    <tr><td><strong>AdaptManip</strong></td><td><strong>0.75</strong> (0.43)</td><td>0.90</td><td>0.88</td><td>1.94</td><td>6.32</td></tr>
+    <tr><td>Pure Vision</td><td>0.37 (0.48)</td><td>0.77</td><td>0.75</td><td>2.09</td><td>4.79</td></tr>
+    <tr><td>Oracle</td><td>0.79 (0.41)</td><td>0.98</td><td>0.97</td><td>2.16</td><td>6.37</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>기준선: Pure RL = 추정기 없이 GT 6D 자세로 학습, Pure RL + FK = 거기에 FK 손 위치 추가, Motion Imitation = 정해진 집기 동작 추종(DeepMimic 식), Pure Vision = 영상으로 처음부터 학습(AprilTag 없음), Oracle = Pure RL 과 같고 테스트 때 GT. Pure Vision 외에는 시각 없이 Isaac Lab 에서 학습, 평가 때 상자 자세는 AprilTag(Oracle 제외) (p.6).</li>
+  <li>학습 시뮬에서는 FK 손 위치만 더해도 0.62 → 0.88 (상태 표현의 중요성). 하지만 <strong>미학습 MuJoCo 에서는 FK 판이 0.61 로 떨어지고 AdaptManip 0.75 가 Oracle 0.79 에 가깝다</strong>. 저자 해석: FK 만으로는 손–상자 미끄러짐을 못 잡는다 (p.6).</li>
+  <li>MuJoCo 에서 AdaptManip 재파지 6.32 회 = 놓쳤다가 다시 잡는 회복 행동이 있다는 근거. Motion Imitation 은 MuJoCo 에서 한 번도 완주 못 함 (p.6).</li>
+  <li>새 물체(Isaac Lab, 0 샷): 원통 시작 방향 X 82 ± 14, Y 86 ± 8, Z 78 ± 11, 구 51 ± 21 (%) (p.6).</li>
+  <li>추정기 오차(50 에피소드, 그림 4): 처음엔 크다가 태그가 시야에 들어오면 떨어지고, 이후 상자를 들고 다녀도 낮게 유지 — 손이 상자에 단단히 붙어 있는 동안 고유감각이 정보를 줌 (p.7).</li>
+</ul>
+
+<h2 class="ps">8. 실기 · sim2real</h2>
+<ul>
+  <li>장비: Unitree G1 + RealSense D435i + Livox Mid-360 LiDAR. 모든 지각·제어 온보드, 외부 모캡 없음. 상자 윗면 가운데 AprilTag 하나, dt-apriltags 파이썬 바인딩 (p.6).</li>
+  <li>sim2sim 확인 뒤 추가 조정 없이 0 샷 배치 (p.6).</li>
+  <li>결과는 <strong>정성 시연</strong>(그림 5, 6). 성공 횟수·시행 수는 논문에 없음 (p.7).</li>
+  <li>관찰: 파지 형성 구간에서 양팔을 조심스럽게 맞춘 뒤 들고, 든 뒤 손 위치는 거의 고정. 끝 무렵 한 번 파지가 흔들리자 작은 팔 보정으로 회복. 걸을 때 상자가 시야를 벗어나면 시각 추정은 무너지지만 순환 추정은 계속 추적 (p.7, 그림 6).</li>
+</ul>
+
+<h2 class="ps">9. 코드에서 확인한 것</h2>
+<p>해당 없음 — 공개 코드 없음. GitHub 저장소는 PDF·영상·index.html 뿐이다(조사 노트 확인, 받은 것은 논문 PDF 만).</p>
+
+<h2 class="ps">10. 한계</h2>
+<ul>
+  <li>보상 가중 λ 전부, 명령 범위, env 수·반복 수, 대칭 손실 가중, 관측 잡음 값, 상자 기본 크기·질량, 평가 135 조건의 실제 값이 논문에 없다.</li>
+  <li>식 2 의 접촉 항(힘 합을 1 에서 자름)은 두 손 대칭을 강제하지 않고, 미끄럼 항은 표기 부호가 어색하다. 표 II 상자 질량 중심 행은 단위 없이 "0.75–1.25 더함"이라 오기로 보인다.</li>
+  <li>실기는 정성 시연뿐. AprilTag·LiDAR 에 의존 (p.6–7).</li>
+  <li>학습 시뮬에서는 FK 판(0.88)이 본 방법(0.85)보다 높다 — 추정기의 이득은 미학습 시뮬에서만 드러난다.</li>
+  <li>저자도 더 긴 과제, 다른 센서, 관절 있는 손을 향후 과제로 든다 (p.7–8).</li>
+</ul>
+
+<h2 class="ps">11. 우리에게 가져올 것</h2>
+<div class="take"><ol>
+  <li><strong>가져올 것 — 행동 꼴에 대한 확신</strong>: 동결 보행 명령 + 상체 잔차라는 우리 구조가 G1 고무 손 상자 들기에서 Isaac 0.85·MuJoCo 0.75 로 작동했다. 우리는 하위가 상체를 내지 않으므로 "잔차"의 기준을 고정 기본 팔 자세로 두고, 상체 11 = 기본 자세 + 유계 델타(우리 v2 의 절대·포화 출력 대신)로 낸다.</li>
+  <li><strong>가져올 것 — 좌우 대칭 손실</strong>: PPO 손실에 거울 관측·행동 일관성 항을 넣는다. K1 상체 11(허리 yaw 부호 반전, 팔 좌우 교환·roll/yaw 부호 반전)과 골반 명령(vy·ωz·roll 부호 반전)의 거울 표를 dev12 대칭 손실 표와 같이 쓴다. 한 손 쪽으로 몸을 돌리는 국소해를 줄이는 데 도움이 되지만, 대칭 손실만으로 한 손 밀기가 사라진다는 증거는 이 논문에 없다.</li>
+  <li><strong>가져올 것 — 몸–상자 상대 속도 보상</strong>: e<sup>−‖v<sub>root</sub> − v<sub>box</sub>‖</sup> 를 든 뒤 유지·운반 구간에 넣는다. 우리 "서서 유지"의 팔 흔들림(박스 높이 폭 15 cm) 억제에 직접 맞는다.</li>
+  <li><strong>가져올 것(부호 고쳐서) — 손 대비 상자 수직 미끄럼 벌점</strong>: 손마다 max(0, v<sub>hand,z</sub> − v<sub>box,z</sub>) 를 든 뒤에만 벌한다(상자가 손바닥보다 아래로 빠질 때). 논문 표기 그대로 옮기면 반대 방향을 벌한다.</li>
+  <li><strong>가져올 것(상대값으로) — 상자 높이 종료</strong>: 논문은 상자 &lt; 0.25 m 면 종료. 우리 상자는 바닥(중심 약 0.145 m)에서 시작하므로 절대 높이는 못 쓰고, "들기 판정 뒤 상자 바닥이 시작 높이 + 2 cm 아래로 내려오면 종료"처럼 들기 뒤 상대 높이로 바꾼다.</li>
+  <li><strong>가져올 것 — 두 시뮬 격자 평가</strong>: 질량 × 크기 × 마찰 × 시드 = 135 처럼, 우리도 Isaac(Newton)과 MuJoCo 에서 같은 격자(예: 질량 0.5 / 1.25 / 2 kg × 받침 0 / 0.1 / 0.2 / 0.3 m × 상자 마찰 3 단계 × 시드 5)로 재고 떨어뜨림·재파지 횟수를 함께 기록한다. 학습 시뮬에서 좋은 판(FK 0.88)이 미학습 시뮬에서 무너지는 것을 이 방식으로 잡았다.</li>
+  <li><strong>가져올 것 — student 에 상자 자세 보조 머리</strong>: 깊이 student 에 순환층 + 상자 상대 자세(위치 3 + 회전) 지도 손실을 붙인다. 들고 서면 상자가 D436 시야의 70–92 % 를 가리므로(우리 측정), 잡은 뒤에는 고유감각·행동 이력으로 상자를 추적해야 한다는 이 논문의 결과가 그대로 적용된다.</li>
+  <li><strong>가져올 것 — teacher actor 에서 접촉력 빼기</strong>: 접촉력·상자 속도를 critic 전용으로 둔 것이 sim2sim 에서 Oracle 과 4 %p 차이였다. dev10 v2 student 격차의 원인으로 지목된 접촉 정보를 teacher actor 에서 빼고 critic 으로만 옮긴다. 옮기는 방법으로 w = min(t/T, 1) 혼합 같은 점진 전환을 teacher 학습 후반에 시험할 만하다.</li>
+  <li><strong>가져오지 말 것 — 접촉력 합 clamp(Σ‖f‖, 0, 1) 접촉 보상</strong>: 힘 합이 단위 1 에서 포화되어 한 손만 닿아도 최대값이다. 우리 한 손 밀기 문제에는 두 손 중 약한 쪽 힘(min)으로 주는 보상이 맞다.</li>
+  <li><strong>가져오지 말 것 — 지각 파이프라인과 DR 값 그대로</strong>: AprilTag·LiDAR 는 우리 경로가 아니다. 상자 질량 −0.88–1.5 kg 가산은 기본 질량이 없어 옮길 수 없고, 우리는 절대 0.5–2 kg 을 쓴다. k<sub>p</sub>·k<sub>d</sub> ×0.8–1.2, 지면 마찰 0.3–1.5, 상자 마찰·반발 범위는 참고값으로만.</li>
+</ol></div>
+
+<p class="src">출처 표기: (p.N), (표 N), (그림 N), (식 N), 코드는 파일 경로. 논문에 없는 값은 "논문에 없음".</p>
+</main>
+</body>
+</html>

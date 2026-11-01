@@ -1,0 +1,437 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DextrAH-G — 논문 상세</title>
+<link rel="stylesheet" href="paper.css">
+</head>
+<body>
+<main class="wrap">
+<a class="back" href="../index.html#catalog">← 자료 목록으로</a>
+
+<header class="ph">
+  <h1>DextrAH-G: 깊이 영상에서 곧바로 팔·손을 움직이는, 기하 패브릭 위의 집기 정책</h1>
+  <p class="orig">DextrAH-G: Pixels-to-Action Dexterous Arm-Hand Grasping with Geometric Fabrics</p>
+  <p class="meta">Tyler Ga Wei Lum, Martin Matak (공동 1저자), Viktor Makoviychuk, Ankur Handa, Arthur Allshire, Tucker Hermans, Nathan D. Ratliff, Karl Van Wyk · Stanford · Utah · NVIDIA · UC Berkeley · arXiv 2407.02274 v3 (2024-10, PDF 에 학회 표기 없음) · Kuka LBR iiwa 7 + Allegro 손 (모터 23) · Isaac Gym</p>
+  <div class="chips">
+    <a class="chip loc" href="../reference/dextrah_g/paper.pdf">로컬 PDF</a>
+    <a class="chip loc" href="../reference/dextrah_g/code/">로컬 코드</a>
+    <a class="chip" href="https://arxiv.org/abs/2407.02274" target="_blank" rel="noopener">arXiv 2407.02274</a>
+    <a class="chip gh" href="https://github.com/NVlabs/DEXTRAH" target="_blank" rel="noopener">NVlabs/DEXTRAH</a>
+    <a class="chip" href="https://sites.google.com/view/dextrah-g" target="_blank" rel="noopener">프로젝트 페이지</a>
+    <span class="simv s3">유사도 3</span>
+    <span class="badge">NVIDIA License</span>
+    <span class="badge lfs" title="로컬 code/ 의 .usd 167 개와 .obj 280 개(합 447)가 Git LFS 포인터, 체크포인트 없음">LFS</span>
+  </div>
+</header>
+
+<div class="callout blue tldr">해석적 제어기(기하 패브릭, 60 Hz)가 충돌·관절 한계·자세를 책임지고 11 차원 행동(손바닥 자세 6 + 손가락 PCA 5)만 위로 열어 준다. 그 위에서 특권 teacher(LSTM)를 PPO 로 68 시간 학습하고, 깊이 160×120 student 로 온라인 DAgger 12 시간 증류 → 실기 무중단 빈 담기 256 회 87 %, 주기 10.66 s.</div>
+
+<p>평가 배경: <a href="../reports/%EB%B0%95%EC%8A%A4%20%EC%A7%91%EA%B8%B0%20%EC%83%81%EC%9C%84%20%EC%A0%95%EC%B1%85%20%EC%B0%B8%EA%B3%A0%20%EC%97%B0%EA%B5%AC.md">보고서</a> 의 "가장 가까운 연구 10 개" 중 9 위, 가져올 것 = "teacher actor 에서 접촉·질량 빼기". 노트는 <a href="../research_notes/%EB%B0%95%EC%8A%A4%20%EC%A7%91%EA%B8%B0%20%EC%83%81%EC%9C%84%20%EC%A0%95%EC%B1%85%20%EC%B0%B8%EA%B3%A0%20%EC%97%B0%EA%B5%AC/vision_teacher_student.md">vision_teacher_student.md</a> §1-11. 아래 내용은 논문과 로컬 코드에서 직접 옮겼다.</p>
+
+<h2 class="ps">우리와 무엇이 같고 다른가</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>이 논문</th><th>우리 (dev10 pelvis_pick)</th></tr></thead>
+  <tbody>
+    <tr><td>하위 제어기</td><td>기하 패브릭(학습 안 함, 해석적 2차 동역학) 60 Hz → 관절 PD(실기 팔 1 kHz, 손 333 Hz). 충돌 회피·관절 한계·가속/저크 한계·자세 유지를 구조로 보장 (p.4–5, 부록 B)</td><td>dev12 하체 RL(동결), 골반 vx ±0.8 m/s, vy ±0.4 m/s, ωz ±1.0 rad/s, 높이 0.335–0.77 m(보행 0.42–0.77), pitch ±45°·roll ±10°(서기) 추종. 상체 11 은 외부 PD(팔 kp 22.3·kd 1.42, 허리 76.45·4.87). 충돌·한계 보장 없음</td></tr>
+    <tr><td>상위 출력</td><td>11 차원 절대 목표: 손바닥 위치 3 + 오일러 3 + 손가락 PCA 5, 15 Hz (p.6)</td><td>상체 11 관절 목표 + 골반 명령(vx, vy, ωz, 높이, pitch, roll)</td></tr>
+    <tr><td>과제·물체</td><td>탁자 위 물체 140 종 중 하나를 쥐고 20 cm 이상 들어 목표점 0.1 m 안에 1 s 유지 (p.17)</td><td>바닥·받침대 0/0.1/0.2/0.3 m 상자 37×40.5×29 cm, 0.5–2 kg, 발끝 앞 0.04–0.30 m, 옆 ±0.15 m, yaw ±40°. 손가락 없는 공 손으로 옆면 조이기, 쪼그리거나 숙여서</td></tr>
+    <tr><td>지각·증류</td><td>탁자 고정 D415 깊이 160×120(0.5–1.5 m) + 고유감각, GRU student, 온라인 DAgger + 물체 위치 보조 출력 β 0.1 (p.6)</td><td>머리 D436 깊이 crop 26×64 × 6 프레임 + 고유감각, 특권 teacher → DAgger. 카메라가 골반·목과 함께 움직임</td></tr>
+    <tr><td>특권 정보 배치</td><td>actor = 잡음 물체 자세 + 물체 one-hot. critic 만 = 관절 힘, 손끝 접촉력, 참 자세·속도 (p.6)</td><td>v2 는 student 격차(Isaac 69 %, MuJoCo 50 % vs teacher 90 %)를 접촉 정보 탓으로 봄</td></tr>
+    <tr><td>행동 매개화</td><td>관절 공간 행동(cspace fabric)은 같은 성능까지 4 배 느렸고 다물체 학습은 실패 (부록 C)</td><td>v2 는 관절 공간 오프셋 13 출력 → 추종기 못 따름·포화 문제</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">1. 문제와 과제</h2>
+<ul>
+  <li>기존 집기: 집기 자세 예측 + 경로 계획 → 연속 반응이 안 되고, 모든 자유도를 함께 계획하지 않으며, 쥔 뒤 손가락·팔 협응이 없다 (p.2).</li>
+  <li>RL 집기: 느림, 하드웨어 안전 보장 없음, 부자연스러운 자세, 일반화 부족 (p.2).</li>
+  <li>해법: 픽셀 → 행동 정책(FGP, fabric-guided policy)을 패브릭 위에 올리고 시뮬만으로 학습, 실기에 그대로 배포 (p.2).</li>
+</ul>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>값</th><th>출처</th></tr></thead>
+  <tbody>
+    <tr><td>로봇</td><td>Kuka LBR iiwa 7 + Allegro 4 손가락 16, 모터 23, 카메라 D415 하나(탁자 고정)</td><td>p.7, 그림 3</td></tr>
+    <tr><td>학습 물체</td><td>Visual Dexterity 150 종 중 시뮬 오류 10 개 제외 140 종, 무게 중심을 원점으로 옮기고 V-HACD 볼록 분해</td><td>p.19, 부록 E.8</td></tr>
+    <tr><td>물체 초기 위치</td><td>탁자 중심 기준 x ±0.18125 m, y ±0.29 m, z 0.05–0.051 m 균일</td><td>p.18, 부록 E.2</td></tr>
+    <tr><td>물체 초기 방향</td><td>확률 0.5 로 똑바로, 0.5 로 균일 무작위(대개 넘어짐)</td><td>p.18</td></tr>
+    <tr><td>로봇 초기 자세</td><td>기본 자세(팔꿈치 벌림) + 관절 범위의 ±10 % 균일 잡음, 관절 속도 U(−0.1, 0.1), 패브릭 충돌 검사로 기각 표집</td><td>p.18</td></tr>
+    <tr><td>성공</td><td>물체가 목표점 0.1 m 안에 15 스텝(1 s) 연속</td><td>p.17</td></tr>
+    <tr><td>에피소드</td><td>최대 150 스텝 = 10 s (15 Hz)</td><td>p.17</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">2. 시스템 구조</h2>
+<div class="fig">
+  <p><b>1 단계 · teacher RL</b></p>
+  <div class="flow">
+    <span class="node">특권 관측: 고유감각 + 잡음 물체 자세 + one-hot + 목표</span><span class="arr">→</span>
+    <span class="node">teacher FGP: MLP + LSTM 1024 (15 Hz, 학습)</span><span class="arr">→</span>
+    <span class="node">행동 11: 손바닥 6 + PCA 5</span><span class="arr">→</span>
+    <span class="node frozen">기하 패브릭 60 Hz (고정)</span><span class="arr">→</span>
+    <span class="node frozen">관절 PD 목표 → 시뮬 60 Hz</span>
+  </div>
+  <div class="flow" style="margin-top:8px">
+    <span class="node">critic: MLP, 전체 특권 상태(관절 힘·손끝 접촉력·참 자세·속도)</span><span class="arr">→</span>
+    <span class="node">가치 V(s) → PPO</span>
+  </div>
+  <p style="margin-top:12px"><b>2 단계 · student 증류 (온라인 DAgger)</b></p>
+  <div class="flow">
+    <span class="node">깊이 160×120 + 고유감각 + 목표</span><span class="arr">→</span>
+    <span class="node">student: CNN + MLP + GRU 1024 (15 Hz, 학습)</span><span class="arr">→</span>
+    <span class="node">행동 â 11 + 물체 위치 x̂ 3</span><span class="arr">←</span>
+    <span class="node frozen">teacher 행동 a (동결) · 시뮬 참 위치</span>
+  </div>
+  <p style="margin-top:12px"><b>3 단계 · 실기</b></p>
+  <div class="flow">
+    <span class="node">D415 깊이 + 고유감각</span><span class="arr">→</span>
+    <span class="node frozen">student (15 Hz 노드)</span><span class="arr">→</span>
+    <span class="node">상태 기계 (x̂ 높이로 단계 전환)</span><span class="arr">→</span>
+    <span class="node frozen">패브릭 노드 60 Hz</span><span class="arr">→</span>
+    <span class="node frozen">PD 팔 1 kHz · 손 333 Hz</span>
+  </div>
+  <p class="src">그림 2 (p.4), p.6–7. 점선 테두리 = 그 단계에서 학습하지 않는 것.</p>
+</div>
+
+<h3 class="ps">기하 패브릭이 하는 일</h3>
+<p>기본식: M<sub>f</sub>(q<sub>f</sub>, q̇<sub>f</sub>) q̈<sub>f</sub> + f<sub>f</sub>(q<sub>f</sub>, q̇<sub>f</sub>) + f<sub>π</sub>(a) = 0 (식 1, p.3). 정책 행동 a 는 힘 f<sub>π</sub> 로만 들어가고, 적분한 q<sub>f</sub> 가 그대로 관절 PD 위치 목표가 된다(속도 목표는 항상 0, 근사 2차 Runge-Kutta 60 Hz, 부록 B.1, p.13).</p>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항</th><th>내용</th><th>출처</th></tr></thead>
+  <tbody>
+    <tr><td>충돌 회피</td><td>로봇 = 구 집합, 환경 = 상자 집합. 기하 항 ẍ = k<sub>g</sub>‖ẋ‖² x̂̈<sub>b</sub>(속도 무관 경로), 강제 항 ẍ = k<sub>f</sub> x̂̈<sub>b</sub> − bẋ(경계 근처 관통 방지). ẍ<sub>b</sub> = −Σ n̂<sub>i</sub>/d<sub>i</sub>, 계량 M = (β/d̃²) M̂<sub>b</sub>, M<sub>b</sub> = Σ (s<sub>i</sub>/d<sub>i</sub>) n̂<sub>i</sub>⊗n̂<sub>i</sub>, 속도 게이트 s<sub>i</sub> = ½ tanh(−α<sub>1</sub>(v<sub>i</sub> − α<sub>2</sub>) + 1)</td><td>p.4–5, 그림 5</td></tr>
+    <tr><td>손가락 PCA</td><td>DexYCB 사람 집기 → Allegro 리타겟(손끝 점 ×1.6, 식 4) → PCA 5 성분이 분산 98 %. A ∈ R<sup>5×16</sup>, x = [0, A] q ∈ R<sup>5</sup>. 끌개 ẍ = −k<sub>a</sub> tanh(α<sub>a</sub>‖x − x<sub>t</sub>‖)(x − x<sub>t</sub>)/‖x − x<sub>t</sub>‖ − bẋ, M = mI</td><td>p.5, 부록 D (p.15–16)</td></tr>
+    <tr><td>손바닥 자세</td><td>손바닥 고정점 7 개 = 21 차원 taskmap. 행동(위치 3 + 오일러 3)을 7 점 목표 x<sub>g</sub> 로 바꿔 같은 끌개</td><td>p.5</td></tr>
+    <tr><td>관절 한계</td><td>상·하한까지 거리 taskmap 에서 반발 항, 한계에 가까울수록 우선</td><td>부록 B.3 (p.14)</td></tr>
+    <tr><td>가속·저크 한계</td><td>q̈<sub>f</sub> = −(M<sub>f</sub> + αI)<sup>−1</sup> f<sub>f</sub> 에서 α 하나로 모든 관절을 가속 한계 안에, 저크는 q̈ 한계를 Δt·q⃛/2 로 줄여 반영 (식 2–3)</td><td>p.14</td></tr>
+    <tr><td>자세 끌개</td><td>관절 공간 HD2 끌개 → 팔꿈치 바깥·손가락 굽힘 자세. 없으면 로봇 가까운 물체를 못 집음</td><td>부록 B.4 (p.14)</td></tr>
+  </tbody>
+</table></div>
+<p>패브릭을 쓰는 이유 넷: 충돌 회피, 탐색을 이끄는 귀납 편향, 관절 한계 준수, 조작성 좋은 자세 유지 (p.4). 실기에서 정책 노드가 망가져도 패브릭 노드가 계속 명령을 낸다 (p.7).</p>
+
+<h3 class="ps">무엇이 고정이고 무엇이 학습되나</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>구성</th><th>1 단계</th><th>2 단계</th><th>실기</th></tr></thead>
+  <tbody>
+    <tr><td>기하 패브릭</td><td>고정(손 설계)</td><td>고정</td><td>고정, 별도 ROS 2 노드 60 Hz</td></tr>
+    <tr><td>teacher FGP</td><td>PPO 학습</td><td>동결, 정답 행동 제공</td><td>안 씀</td></tr>
+    <tr><td>critic</td><td>학습</td><td>안 씀</td><td>안 씀</td></tr>
+    <tr><td>student FGP</td><td>없음</td><td>처음부터 지도 학습</td><td>동결, 15 Hz 노드</td></tr>
+    <tr><td>상태 기계</td><td>없음</td><td>없음</td><td>손으로 작성</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">3. 관측과 행동</h2>
+<h3 class="ps">teacher actor 관측 o<sub>privileged</sub> (p.6)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>차원</th><th>비고</th></tr></thead>
+  <tbody>
+    <tr><td>관절 위치 q, 속도 q̇</td><td>23 + 23</td><td></td></tr>
+    <tr><td>손바닥 세 점 [x<sub>palm</sub>, x<sub>palm−x</sub>, x<sub>palm−y</sub>]</td><td>9</td><td>방향 정보를 점으로</td></tr>
+    <tr><td>손끝 4 개 위치</td><td>12</td><td></td></tr>
+    <tr><td>패브릭 상태 q<sub>f</sub>, q̇<sub>f</sub>, q̈<sub>f</sub></td><td>69</td><td>여기까지 o<sub>robot</sub> = 136</td></tr>
+    <tr><td>목표 물체 위치 x<sub>goal</sub></td><td>3</td><td>자세 아닌 위치만: 들고 나면 가려져 자세를 못 봄 (부록 E.7)</td></tr>
+    <tr><td>잡음 물체 위치·쿼터니언</td><td>3 + 4</td><td>잡음은 아래 표</td></tr>
+    <tr><td>물체 one-hot</td><td>140</td><td>형상 대신 정체만</td></tr>
+    <tr><td><b>합계</b></td><td><b>286</b></td><td>계산값, 논문에 합계 없음</td></tr>
+  </tbody>
+</table></div>
+<p>critic 은 o<sub>privileged</sub> + s<sub>privileged</sub>: 관절 힘 23, 손끝 접촉력 4×3, 참 물체 위치 3·쿼터니언 4·선속도 3·각속도 3 = 48 추가(합 334, 계산) (p.6). 물체 속도는 실기에서 추정이 어려워 actor 에서 뺐다 (부록 E.7, p.19). 질량은 actor·critic 어디에도 없다.</p>
+<p>저자 설명: "teacher 가 정확한 특권 상태에 크게 기대는 행동을 배우지 않게 하려고" actor 에는 제한된 부분집합만 준다고 "믿는다(believe)" (p.5). 이 배치를 빼고 비교한 실험은 없다.</p>
+
+<h3 class="ps">물체 자세 잡음 (부록 E.4, p.18)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>종류</th><th>위치 σ</th><th>회전 σ</th><th>표집 시점</th></tr></thead>
+  <tbody>
+    <tr><td>비상관</td><td>0.02 m</td><td>0.1 rad</td><td>시뮬 스텝마다</td></tr>
+    <tr><td>상관(편향)</td><td>0.02 m</td><td>0.1 rad</td><td>에피소드 시작에 한 번, 끝까지 유지</td></tr>
+  </tbody>
+</table></div>
+<p>효과: 다가갈 때 손을 필요 이상 넓게 벌려 위치·형상 불확실성을 흡수하는 행동이 생긴다 (p.6).</p>
+
+<h3 class="ps">student 관측 o<sub>depth</sub> (p.6)</h3>
+<ul>
+  <li>o<sub>robot</sub> 136 + x<sub>goal</sub> 3 + 원 깊이 영상 I ∈ [0.5, 1.5]<sup>160×120</sup> m.</li>
+  <li>물체 자세·one-hot 없음 → 형상과 위치를 깊이에서 추론해야 한다.</li>
+</ul>
+
+<h3 class="ps">행동 a ∈ R<sup>11</sup> (p.6)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>성분</th><th>차원</th><th>패브릭 안에서</th></tr></thead>
+  <tbody>
+    <tr><td>손바닥 목표 위치 x<sub>f,target</sub></td><td>3</td><td>손바닥 7 점 목표로 변환</td></tr>
+    <tr><td>손바닥 목표 방향(오일러) r<sub>f,target</sub></td><td>3</td><td>같음</td></tr>
+    <tr><td>손가락 PCA 목표 x<sub>pca,target</sub></td><td>5</td><td>PCA 공간 끌개</td></tr>
+  </tbody>
+</table></div>
+<p>정책 15 Hz, 패브릭·시뮬 60 Hz → 행동을 4 스텝 반복 (p.6). 범위 숫자는 논문에 없음, 코드 값은 9 절.</p>
+
+<h2 class="ps">4. 보상 · 종료 · 커리큘럼</h2>
+<p>핵심 장치는 상태를 가진 진척 함수 <b>minimize(e) = max(e<sub>smallest</sub> − e, 0)</b>: 이번 에피소드 최저 오차보다 줄었을 때만 양수, 받으면 e<sub>smallest</sub> 갱신. 같은 자리에 머물면 0 (p.16, 부록 E.1).</p>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항</th><th>식</th><th>가중치</th><th>누적 최대(저자 어림)</th></tr></thead>
+  <tbody>
+    <tr><td>r<sub>to−obj</sub></td><td>minimize(‖x<sub>fingertips</sub> − x<sub>obj</sub>‖)</td><td>5</td><td>5 × 0.5 m = 2.5</td></tr>
+    <tr><td>r<sub>lift</sub></td><td>minimize(z<sub>lifted</sub> − z(x<sub>obj</sub>)) × (1 − lifted)</td><td>50</td><td>50 × 0.2 = 10</td></tr>
+    <tr><td>r<sub>lifted</sub></td><td>처음 lifted 가 될 때 1</td><td>50</td><td>50</td></tr>
+    <tr><td>r<sub>to−goal</sub></td><td>minimize(‖x<sub>goal</sub> − x<sub>obj</sub>‖) × lifted</td><td>1,000</td><td>1,000 × 0.3 = 300</td></tr>
+    <tr><td>r<sub>reached</sub></td><td>1(‖x<sub>goal</sub> − x<sub>obj</sub>‖ &lt; 0.1 m)</td><td>40</td><td>≤ 40 × 150 = 6,000</td></tr>
+    <tr><td>r<sub>success</sub></td><td>1(reached 15 스텝 연속) × (T<sub>max</sub> − T)</td><td>100</td><td>≤ 100 × 150 = 15,000</td></tr>
+  </tbody>
+</table></div>
+<p class="src">식·가중치 p.17, 어림 p.17–18. z<sub>lifted</sub> = z<sub>table</sub> + 0.2 m, d<sub>success</sub> = 0.1 m, T<sub>success</sub> = 15, T<sub>max</sub> = 150.</p>
+<ul>
+  <li><b>양수만</b>: 벌점이 없어 일찍 끝내려는 동기가 없다.</li>
+  <li><b>minimize</b>: 가만히 있기로는 보상이 안 나오고, 항마다 누적 최대 = 시작 오차라 가중치 맞추기가 쉽다.</li>
+  <li><b>lifted 게이트</b>: 들지 않고 탁자 위로 밀어서 목표 보상을 받는 것을 막는다.</li>
+  <li><b>사다리</b>: 뒤 단계 항의 누적 최대가 앞 단계보다 크게. success 를 reached 보다 크게 해 목표 영역을 드나들며 종료를 미루는 꼼수를 막는다 (p.18).</li>
+</ul>
+<p><b>종료</b>: reset = any(z(x<sub>obj</sub>) &lt; z<sub>table</sub>, r<sub>success</sub> = 1, T &gt; T<sub>max</sub>) (p.17).</p>
+<p><b>커리큘럼</b>(부록 E.9, p.19–20): 패브릭 cspace 감쇠를 0 에서 시작(접촉 많이 허용, 탐색 최대), 평균 성공률이 90 % 를 넘을 때마다 +0.1, 10 에 도달할 때까지. 10 = 접촉 최소, 실기 안전. 낮은 물체는 탁자 가까이 손을 넣어야 해서 이 완화가 필요했다.</p>
+<p><b>시드</b>(부록 E.10, p.20): 과제 보상만 있어 해가 많고, 시드마다 집기 전략이 다르며 실기 성능도 다르다. 한 시드는 학습 내내 같은 전략을 유지. 시뮬 성능은 실기의 일부 지표일 뿐 → 여러 시드를 실기에서 겨뤄 고름("random seed shootout").</p>
+
+<h2 class="ps">5. 학습 설정 (알고리즘 · 망 · 무작위화)</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>값</th><th>출처</th></tr></thead>
+  <tbody>
+    <tr><td>알고리즘</td><td>PPO, rl_games, 비대칭 actor-critic</td><td>p.5, p.21</td></tr>
+    <tr><td>학습률 · γ · 엔트로피 · clip</td><td>5e-4 · 0.998 · 0 · 0.2</td><td>부록 E.11 (p.21)</td></tr>
+    <tr><td>미니 에폭 · horizon</td><td>5 · 16</td><td>p.21</td></tr>
+    <tr><td>정규화</td><td>관측·가치·advantage 모두</td><td>p.21</td></tr>
+    <tr><td>actor</td><td>MLP [512, 512] + LSTM 1024, LSTM 둘레 skip(LSTM 출력을 잔차로)</td><td>부록 E.6, E.11</td></tr>
+    <tr><td>critic</td><td>MLP [512, 512, 256, 128] (특권 정보가 다 있어 순환 불필요)</td><td>p.18, p.21</td></tr>
+    <tr><td>env 수 · GPU</td><td>GPU 당 8,192, V100 32 GB × 4</td><td>p.21</td></tr>
+    <tr><td>속도 · 양</td><td>약 20k FPS(1 프레임 = 행동 1 스텝 66.7 ms), 4.7 B 프레임, 정책 갱신 약 9,000 회</td><td>p.21</td></tr>
+    <tr><td>벽시계</td><td>약 68 시간(시뮬 약 10 년). 20 시간 안에 대부분 물체 성공, 나머지는 잔여 개선</td><td>p.21, 그림 9</td></tr>
+  </tbody>
+</table></div>
+
+<h3 class="ps">강건화 네 가지 (p.6)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>장치</th><th>값</th><th>출처</th></tr></thead>
+  <tbody>
+    <tr><td>무작위 렌치</td><td>매 스텝 확률 0.1 로 f = 50·m·u<sub>f</sub>, τ = 100·I·u<sub>τ</sub> (u 무작위 단위 벡터, m 질량, I 관성)</td><td>부록 E.3 (p.18)</td></tr>
+    <tr><td>자세 잡음</td><td>위 3 절 표</td><td>부록 E.4</td></tr>
+    <tr><td>마찰 낮추기</td><td>물체 기본 μ = 0.7 (마찰에 기대는 집기 억제)</td><td>p.6</td></tr>
+    <tr><td>영역 무작위화</td><td>아래 표 2</td><td>p.19</td></tr>
+  </tbody>
+</table></div>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>묶음</th><th>변수</th><th>분포</th><th>연산</th><th>범위</th></tr></thead>
+  <tbody>
+    <tr><td>로봇</td><td>질량</td><td>uniform</td><td>배율</td><td>0.3–3.0</td></tr>
+    <tr><td></td><td>마찰</td><td>uniform</td><td>배율</td><td>0.5–1.1</td></tr>
+    <tr><td></td><td>반발</td><td>uniform</td><td>더하기</td><td>0–0.4</td></tr>
+    <tr><td></td><td>관절 강성</td><td>loguniform</td><td>배율</td><td>0.5–2</td></tr>
+    <tr><td></td><td>관절 감쇠</td><td>loguniform</td><td>배율</td><td>0.3–3</td></tr>
+    <tr><td>물체</td><td>질량</td><td>uniform</td><td>배율</td><td>0.3–3</td></tr>
+    <tr><td></td><td>마찰 · 반발</td><td>uniform</td><td>배율 · 더하기</td><td>0.5–1.1 · 0–0.4</td></tr>
+    <tr><td>탁자</td><td>마찰 · 반발</td><td>uniform</td><td>배율 · 더하기</td><td>0.5–1.1 · 0–0.4</td></tr>
+    <tr><td>관측</td><td>비상관 · 상관 잡음</td><td>gaussian</td><td>더하기</td><td>0–0.005 · 0–0.01</td></tr>
+    <tr><td>행동</td><td>비상관 · 상관 잡음</td><td>gaussian</td><td>더하기</td><td>0–0.05 · 0–0.02</td></tr>
+    <tr><td>환경</td><td>중력</td><td>gaussian</td><td>더하기</td><td>0–0.5</td></tr>
+  </tbody>
+</table></div>
+<p class="src">표 2 (p.19).</p>
+<p>이 넷이 없으면 시뮬에서는 잘 되지만 실기에서 깨지는 집기(가운데·약지 사이에 끼우기, 검지·약지 사이에 끼우기)가 나온다. 넣으면 다시 잡는 행동까지 생긴다 (부록 E.13, 그림 10–12, p.21–23).</p>
+
+<h2 class="ps">6. teacher → student / 증류</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>값</th><th>출처</th></tr></thead>
+  <tbody>
+    <tr><td>방식</td><td>온라인 DAgger [Ross 2011], student 가 환경에서 움직이고 teacher 가 그 상태의 정답 행동을 줌</td><td>p.6</td></tr>
+    <tr><td>출력</td><td>행동 â ∈ R<sup>11</sup> + 물체 위치 x̂<sub>obj</sub> ∈ R<sup>3</sup> (실기 상태 기계가 씀)</td><td>p.6</td></tr>
+    <tr><td>손실</td><td>L = ‖â − a‖² + β‖x̂<sub>obj</sub> − x<sub>obj</sub>‖², β = 0.1 (a = teacher 행동, x<sub>obj</sub> = 시뮬 참 위치)</td><td>p.6, 부록 F</td></tr>
+    <tr><td>역전파</td><td>n = 6 스텝(0.4 s) 굴린 뒤 BPTT, 어느 env 든 끝나면(낙하·10 s·성공) 갱신</td><td>부록 F.2 (p.23)</td></tr>
+    <tr><td>계산</td><td>RTX 3090 1 장, env 480, 약 140 FPS, 약 12 시간, 롤아웃 140 회, 6.05 M 프레임(시뮬 4.67 일)</td><td>p.23</td></tr>
+  </tbody>
+</table></div>
+<h3 class="ps">student 망 (부록 F.3, p.23–24)</h3>
+<ul>
+  <li>o<sub>robot</sub>, x<sub>goal</sub>: 3 층 MLP (512, 256, 128), ELU.</li>
+  <li>깊이 I: conv 3 층 (16, 32, 64), 커널 3, stride 1, padding 1, 각 뒤 max-pool(2, 2), ReLU → MLP (128, 128) ReLU.</li>
+  <li>모두 이어 붙여 GRU(1 층, 1024) → â. 처음부터 학습. GPU 메모리(3090 1 장) 때문에 단순 구조, ResNet 같은 백본이면 나을 것이라고 저자 추정.</li>
+  <li>순환 구조 이유: 순환 teacher 가 MLP teacher 보다 성공률이 높았고, 손이 가까이 가 물체를 가린 뒤에도 앞서 본 위치를 기억해야 한다. 이력을 이어 붙인 MLP 도 될 것이라고 봄.</li>
+</ul>
+<h3 class="ps">깊이 증강 (부록 F.1, p.21)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>증강</th><th>값</th></tr></thead>
+  <tbody>
+    <tr><td>픽셀 0 으로(드롭)</td><td>p = 0.003</td></tr>
+    <tr><td>픽셀 무작위 값</td><td>p = 0.003, 값 범위 "(−0.5, −1.3)" 로 인쇄됨(부호 오식으로 보임)</td></tr>
+    <tr><td>막대(배선 등 흉내)</td><td>p = 0.0025, 길이 최대 18 px, 폭 3 px</td></tr>
+    <tr><td>상관·비상관 깊이 잡음</td><td>Handa et al. 2014 [57] 모델과 값을 그대로</td></tr>
+    <tr><td>카메라 위치</td><td>증류 중 확률적으로 흔듦(값 논문에 없음, 코드 9 절)</td></tr>
+  </tbody>
+</table></div>
+<p>그림 13 (p.24): 깨끗한 시뮬 깊이 / 증강 뒤 / 실기 깊이 비교.</p>
+
+<h2 class="ps">7. 결과</h2>
+<h3 class="ps">시뮬 (p.6–7, 부록 F.4)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>지표</th><th>teacher</th><th>student</th></tr></thead>
+  <tbody>
+    <tr><td>끝난 env 묶음 평균 성공률</td><td>student 와 같음(값 따로 없음)</td><td>99 %</td></tr>
+    <tr><td>물체별 평균 성공률(10 s)</td><td>85 %</td><td>80 %</td></tr>
+    <tr><td>성공 에피소드 평균 길이</td><td colspan="2">약 4 s (실기 관찰과 일치)</td></tr>
+  </tbody>
+</table></div>
+<p>99 % 와 80 % 의 19 %p 차이: 첫 측정은 성공한 env 가 바로 리셋돼 쉬운 물체가 더 자주 집히기 때문 (p.6–7). 즉 "teacher 와 같은 99 %" 는 쉬운 물체 쪽으로 기운 숫자이고, 물체별로 보면 student 가 5 %p 낮다.</p>
+
+<h3 class="ps">실기 단일 물체 (표 1, p.7) · 물체당 5 자세</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>방법</th><th>Pitcher</th><th>Pringles</th><th>Coffee</th><th>Container</th><th>Cup</th><th>Cheezit</th><th>Cleaner</th><th>Brick</th><th>Spam</th><th>Pot</th><th>Airplane</th></tr></thead>
+  <tbody>
+    <tr><td><b>DextrAH-G</b></td><td>80</td><td>100</td><td>100</td><td>100</td><td>80</td><td>100</td><td>100</td><td>100</td><td>100</td><td>100</td><td>60</td></tr>
+    <tr><td>DexDiffuser</td><td>–</td><td>60</td><td>–</td><td>–</td><td>60</td><td>80</td><td>100</td><td>–</td><td>–</td><td>–</td><td>20</td></tr>
+    <tr><td>ISAGrasp</td><td>–</td><td>60</td><td>–</td><td>40</td><td>–</td><td>80</td><td>–</td><td>–</td><td>–</td><td>80</td><td>–</td></tr>
+    <tr><td>Matak</td><td>67</td><td>100</td><td>67</td><td>–</td><td>0</td><td>0</td><td>100</td><td>100</td><td>0</td><td>–</td><td>–</td></tr>
+  </tbody>
+</table></div>
+<p>단위 %. DextrAH-G 11 물체 평균 92.7 % (계산). 비교 방법 값은 각 논문 보고값. 성공하거나 회복 불가 실패까지 계속 돌리므로 재시도가 포함된다.</p>
+
+<h3 class="ps">실기 빈 담기 (p.7–8, 부록 I)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>지표</th><th>값</th><th>출처</th></tr></thead>
+  <tbody>
+    <tr><td>연속 성공 CS (8 회 실행)</td><td>6.56 ± 2.41 개 (95 % CI), 최대 27</td><td>p.8, 그림 16</td></tr>
+    <tr><td>주기 CT</td><td>10.66 ± 0.84 s = 5.63 PPM (그림 17 은 5.64)</td><td>p.8, p.28</td></tr>
+    <tr><td>운반 성공률 SR</td><td>87 % (30 개 넘는 물체, 256 회)</td><td>p.8</td></tr>
+    <tr><td>집기 성공률</td><td>89 % (1 인치 이상 들기)</td><td>p.25, 그림 15</td></tr>
+    <tr><td>개입 · 실패 빈도</td><td>분당 0.53 · 0.30</td><td>그림 17</td></tr>
+    <tr><td>주기 분포</td><td>중앙값 8 s, 42 % 가 6.0–7.3 s</td><td>그림 18</td></tr>
+    <tr><td>사람 어림</td><td>16.53 PPM (집기 1.13 + 옮기기 1.5 + 복귀 1 s)</td><td>p.8</td></tr>
+  </tbody>
+</table></div>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>실패 유형 (그림 15)</th><th>비율</th></tr></thead>
+  <tbody>
+    <tr><td>실수로 밀어 패브릭 작업 영역 밖으로</td><td>8 %</td></tr>
+    <tr><td>어려운 물체 반복 헛손질(사람이 다시 놓음)</td><td>3 %</td></tr>
+    <tr><td>느슨하게 쥐어 빈 도착 전 떨어뜨림</td><td>1 %</td></tr>
+    <tr><td>쥔 위치가 나빠 떨어뜨림</td><td>1 %</td></tr>
+  </tbody>
+</table></div>
+<p>물체별(그림 19): 벽돌·스팸·오리·마우스 상자·용기 최상, 작은 병·냄비·초록 컵 최하. 영향 요인: 크기, 미끄러움, 구름, 투명, 손가락이 걸리는 형상 (p.27).</p>
+
+<h3 class="ps">설계 검증 (사실상의 절제)</h3>
+<ul>
+  <li><b>행동 공간</b>: 관절 위치 목표를 내는 cspace fabric 은 단일 물체에서 같은 성능까지 4 배 오래 걸렸고, 다물체는 끝내 높은 성능에 못 갔다. 약지·가운뎃손가락 사이 집기 같은 이상한 전략, 흐트러진 손가락 배치 → 실기 전이 나쁨 (부록 C, 그림 6, p.14–15).</li>
+  <li><b>PCA 차원</b>: 2D 보다 5D 가 다양한 집기, 사람 같은 다양체 유지 (그림 7, 정성).</li>
+  <li><b>강건화 넷</b>: 빼면 실기 실패하는 집기 (부록 E.13).</li>
+  <li><b>비대칭 actor-critic</b>: 절제 없음.</li>
+</ul>
+
+<h2 class="ps">8. 실기 · sim2real</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>층</th><th>주기</th><th>비고</th></tr></thead>
+  <tbody>
+    <tr><td>팔 관절 PD · 손 관절 PD</td><td>1 kHz · 333 Hz</td><td>별도 ROS 2 노드 둘</td></tr>
+    <tr><td>패브릭 노드</td><td>60 Hz</td><td>행동 받아 관절 명령</td></tr>
+    <tr><td>student 노드</td><td>15 Hz</td><td>정책이 죽어도 패브릭이 명령 유지</td></tr>
+  </tbody>
+</table></div>
+<p class="src">p.7.</p>
+<ul>
+  <li>시뮬만으로 학습, 실기 무조정 배포. 여러 시간 시험(못된 FGP 포함) 동안 하드웨어 손상 0 (p.8).</li>
+  <li><b>지연</b>: 속도 목표 0 이라 팔 실제 위치가 목표보다 약 0.2 s, 손이 약 0.1 s 늦다. 같은 지연 동역학으로 학습해서 문제없음 (부록 I, 그림 20, p.27).</li>
+  <li><b>조이기 = 추종 오차</b>: 쥐는 동안 목표–측정 관절각 차가 커지고, 그 오차가 접촉력을 만든다 (p.27). 손은 많이, 팔은 적게 움직인다.</li>
+  <li><b>상태 기계</b>(부록 G, p.24–25): 정책을 켜고, 예측 x̂<sub>obj</sub> 의 높이가 충분하면 마지막 PCA 를 얼리고 빈 위 자세로 정해진 시간 이동 → 손가락 펴기 → 기본 자세 복귀 → 정책 재가동. 손바닥이 너무 높이 튀면(정책 붕괴 신호) 정책을 끄고 기본 자세로 보낸 뒤 다시 켬.</li>
+  <li>후속 DextrAH-RGB 논문에 따르면 G 실험의 깊이 영상은 배경 방해물을 피하려 잘라 썼고 햇빛을 막았다 (DextrAH-RGB p.7).</li>
+</ul>
+
+<h2 class="ps">9. 코드에서 확인한 것</h2>
+<div class="callout">로컬 <a href="../reference/dextrah_g/code/README.md"><code>code/</code></a> 는 NVlabs/DEXTRAH 의 <b>Isaac Lab(v2.2.1) 재구현</b>이다. 설정은 논문 G(Isaac Gym, 15 Hz, 진척형 보상)보다 후속 DextrAH-RGB(Isaac Lab, 60 Hz, ADR, 지수형 보상, 스테레오)에 가깝다. 기하 패브릭은 외부 패키지 <code>fabrics_sim</code>(NVlabs/FABRICS)로 import 만 하고 로컬엔 없다.</div>
+<h3 class="ps">논문 G 와 코드의 차이</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>논문 G</th><th>로컬 코드</th></tr></thead>
+  <tbody>
+    <tr><td>정책 주기</td><td>15 Hz, 시뮬 60 Hz</td><td>sim_dt 1/120, decimation 2 → 60 Hz, 정책 스텝마다 패브릭 2 회 적분(fabrics_dt 1/60) (<a href="../reference/dextrah_g/code/dextrah_lab/tasks/dextrah_kuka_allegro/dextrah_kuka_allegro_env_cfg.py">env_cfg.py</a> L124–128)</td></tr>
+    <tr><td>보상</td><td>minimize 진척 6 항</td><td>exp 형 4 항: 1·exp(−10 d<sub>hand</sub>), 5·exp(β d<sub>goal</sub>) β −15→−20, (5→0)·exp(−8.5|Δz|), 손가락 굽힘 정규화 (−0.01→−0.005)·‖q − q<sub>curl</sub>‖² (<a href="../reference/dextrah_g/code/dextrah_lab/tasks/dextrah_kuka_allegro/dextrah_kuka_allegro_env.py">env.py</a> L1620–1656)</td></tr>
+    <tr><td>커리큘럼</td><td>cspace 감쇠 0→10</td><td>ADR 50 단계, 패브릭 감쇠 이득 10→20 등 (<a href="../reference/dextrah_g/code/dextrah_lab/tasks/dextrah_kuka_allegro/dextrah_adr.py">dextrah_adr.py</a>)</td></tr>
+    <tr><td>렌치</td><td>매 스텝 p 0.1, 50·m</td><td>손이 0.3 m 안일 때만, 1 s 마다 a ∈ U(0, a<sub>max</sub>), a<sub>max</sub> 0→10 m/s², f = a·m, τ = a·m·0.01 m (env.py L1535–1597)</td></tr>
+    <tr><td>critic 접촉 정보</td><td>손끝 4 개 접촉력 12</td><td><code>hand_forces[:, :3]</code> 3 값뿐: 손 몸체 5 개 incoming joint force(6 차원씩)를 펼친 뒤 앞 3 개 = 정렬된 첫 몸체(아마 palm_link)의 힘 (env.py L1343–1346, L1501)</td></tr>
+    <tr><td>깊이 막대 확률</td><td>p<sub>stick</sub> 0.0025, 드롭·무작위 0.003</td><td>p<sub>stick</sub> 0.001/4 = 0.00025, 드롭·무작위 0.0125/4 = 0.003125 (env_cfg.py L449–480)</td></tr>
+    <tr><td>깊이 해상도·범위</td><td>160×120, 0.5–1.5 m</td><td>카메라 320×240, d<sub>min</sub> 0.5, d<sub>max</sub> 1.3 m (env_cfg.py L265–266, L447–448)</td></tr>
+    <tr><td>물체 수</td><td>140</td><td><code>visdex_objects/USD</code> 폴더 152 개</td></tr>
+  </tbody>
+</table></div>
+
+<h3 class="ps">관측 차원 (코드)</h3>
+<ul>
+  <li>teacher 167 + N<sub>obj</sub>, critic 214 + N<sub>obj</sub>, student 159 (env.py L304–310). 로컬 N<sub>obj</sub> = 152 → 319 / 366 (계산).</li>
+  <li>teacher: 잡음 q·q̇ 46, 잡음 손 점 5 개 위치·속도 30(패브릭 taskmap 으로 계산), 잡음 물체 위치 3·쿼터니언 4, 목표 3, one-hot, 물체 배율 1, 직전 행동 11, 패브릭 q·q̇·q̈ 69 (L1461–1491).</li>
+  <li>critic: 참 q·q̇, 손 점 위치 15·속도 30, 힘 3, 관절 토크 23, 참 물체 위치·쿼터니언·속도 6, 목표, one-hot, 배율, 직전 행동, 패브릭 상태 (L1493–1533). 질량·마찰 등 DR 값은 주석 처리돼 critic 에도 없음.</li>
+  <li>student 159: 잡음 q·q̇, 손 점 위치·속도, 목표, 직전 행동, 패브릭 상태. 물체 정보 없음 (L1439–1459).</li>
+  <li>관측 잡음(ADR 최종): 관절 위치 0.08 rad·편향 0.08, 속도 0.18·편향 0.08, 물체 위치 0.03 m·편향 0.02 m, 회전 0.1·편향 0.08 rad. 회전 잡음은 쿼터니언 성분에 그냥 더함 (env_cfg.py L404–419, env.py L1362–1366).</li>
+</ul>
+
+<h3 class="ps">행동 매핑과 PPO 설정</h3>
+<ul>
+  <li>[−1, 1] 행동을 하한–상한으로 선형 사상 후 자르기 (<a href="../reference/dextrah_g/code/dextrah_lab/tasks/dextrah_kuka_allegro/dextrah_kuka_allegro_utils.py">utils.py</a> <code>compute_absolute_action</code>). 손바닥 x −1.2–0, y −0.7–0.7, z 0–1 m, 방향은 ZYX 오일러 (−135°, 0°, 180°) 둘레 ±max_pose_angle(README 45°), PCA 범위는 상수 (<a href="../reference/dextrah_g/code/dextrah_lab/tasks/dextrah_kuka_allegro/dextrah_kuka_allegro_constants.py">constants.py</a>).</li>
+  <li>rl_games <a href="../reference/dextrah_g/code/dextrah_lab/tasks/dextrah_kuka_allegro/agents/rl_games_ppo_lstm_cfg.yaml"><code>rl_games_ppo_lstm_cfg.yaml</code></a>: clip_actions 1.0, clip_observations 5.0, <b>bound_loss_type regularization, bounds_loss_coef 0.005</b>(행동 평균 μ 에 거는 정규화, rl_games 소스는 로컬에 없어 식은 미확인), σ 는 상태 무관 학습 변수(초기 log σ 0).</li>
+  <li>같은 yaml: lr 3e-4 linear(README 실행 명령은 1e-4), γ 0.998, τ 0.95, e_clip 0.2, entropy 0.002, horizon 16, minibatch 16,384, mini_epochs 4, critic_coef 4, grad_norm 1.0, 보상 배율 0.01, seq_length 16, max_epochs 20,000. actor = LSTM 1024(layer norm, MLP 앞) + MLP [512, 512], 입력·출력 이어 붙임(skip). critic = LSTM 2048 + MLP [1024, 512], lr 5e-5. README 기본 4,096 env.</li>
+</ul>
+
+<h3 class="ps">증류 코드</h3>
+<ul>
+  <li>G 식 깊이 student 는 <a href="../reference/dextrah_g/code/dextrah_lab/distillation/a2c_with_aux_depth.py"><code>a2c_with_aux_depth.py</code></a> 의 <code>DepthEncoder</code>(conv 16/32/64, k3 s1 p1, max-pool 2, fc 128 → 128, 입력 120×160 가정)로 남아 있다. 하지만 <a href="../reference/dextrah_g/code/dextrah_lab/distillation/run_distillation.py"><code>run_distillation.py</code></a> 기본 선택은 RGB mono/stereo transformer 이고, 환경 영상(320×240)과도 크기가 안 맞아 그대로는 G 재현 경로가 아니다(추정).</li>
+  <li><a href="../reference/dextrah_g/code/dextrah_lab/distillation/distillation.py"><code>distillation.py</code></a>: β 를 항상 0 으로 둬 student 행동만 환경에 넣는다(L365–380). 손실 = teacher σ<sup>−2</sup> 가중 L2(μ) + L2(σ) + aux_coeff × 보조 손실(L503–512). Adam 1e-4, grad clip 1.0, 매 스텝 갱신(seq_length 1), 100,000 반복, 5,000 반복마다 저장, 5,000 반복까지 백본 동결.</li>
+  <li>깊이 증강 <a href="../reference/dextrah_g/code/dextrah_lab/distillation/depth_augs.py"><code>depth_augs.py</code></a>(warp 커널): 상관 잡음 = 픽셀 좌표를 σ<sub>s</sub> 0.5 px 흔들어 쌍선형 보간 + 시차 양자화 d' = 35130 / (round((35130/d + N(0, σ<sub>d</sub> 1/6) + 0.5)/8)·8) (Kinect 식 모델), 법선 방향 잡음 σ<sub>θ</sub> 0.01, 픽셀 드롭·무작위, 막대.</li>
+  <li>카메라 무작위(증류 env): 회전 ±3°, 위치 ±3 cm, 리셋마다 (env.py L1131–1162).</li>
+</ul>
+
+<h3 class="ps">배포 스크립트</h3>
+<ul>
+  <li><a href="../reference/dextrah_g/code/dextrah_lab/deployment_scripts/kuka_allegro_fabric.py"><code>kuka_allegro_fabric.py</code></a>: 패브릭 노드 60 Hz.</li>
+  <li><a href="../reference/dextrah_g/code/dextrah_lab/deployment_scripts/kuka_allegro_stereo_fgp.py"><code>kuka_allegro_stereo_fgp.py</code></a>: 평균 행동 μ 사용, [−1, 1] 자르기, CUDA graph, 60 Hz.</li>
+  <li><a href="../reference/dextrah_g/code/dextrah_lab/deployment_scripts/kuka_allegro_state_machine.py"><code>kuka_allegro_state_machine.py</code></a>: 예측 물체 z &gt; 0.45 m(세계, 탁자 윗면 약 0.25 m) → 필터된 PCA(EMA α 0.1)를 얼리고 빈으로, 손바닥 오차 &lt; 0.2 m 면 손 펴기, 손가락 벌림 &gt; 0.23 m 면 복귀, 복귀 오차 &lt; 0.1 m 면 정책 재가동 (L262–345).</li>
+  <li>README 는 카메라·PD·로봇 드라이버 노드가 없어 그대로는 안 돈다고 명시.</li>
+</ul>
+<h3 class="ps">자산</h3>
+<ul>
+  <li>Git LFS 포인터 447 개 = <code>.usd</code> 167(로봇·탁자·물체 전부) + <code>.obj</code> 280. 학습 체크포인트는 저장소에 없음(<code>pretrained_ckpts/</code> 폴더 자체가 없음). 돌리려면 <code>git lfs pull</code> + fabrics_sim 설치 + 질감 zip 이 필요.</li>
+</ul>
+
+<h2 class="ps">10. 한계</h2>
+<ul>
+  <li>손가락 PCA 5 차원이라 손재주가 제한된다 (p.8).</li>
+  <li>장애물 회피를 모델(패브릭)에 넣어, 탁자 근처 탐색이 어렵다 → 낮은 물체 성능이 떨어진다. 감쇠 커리큘럼으로 일부 완화 (p.8, 부록 E.9).</li>
+  <li>한 번에 물체 하나. 어수선한 장면엔 분할 등이 필요 (p.8).</li>
+  <li>시드마다 전략·실기 성능이 다르고, 시뮬 성능으로 실기를 다 예측 못 한다 (부록 E.10).</li>
+  <li>"student ≈ teacher 99 %" 는 리셋 편향이 있는 묶음 평균. 물체별로는 80 vs 85 % (p.6–7).</li>
+  <li>비대칭 actor-critic(접촉은 critic 만)이 student 격차를 줄였다는 직접 실험이 없다 (p.5 는 "believe").</li>
+  <li>실기 깊이는 배경을 잘라 쓰고 햇빛을 막은 통제 조건 (DextrAH-RGB p.7).</li>
+  <li>카메라가 탁자에 고정 → 물체 위치 예측 좌표계가 고정. 몸에 붙은 카메라에는 바로 안 옮겨진다(추론).</li>
+</ul>
+
+<h2 class="ps">11. 우리에게 가져올 것</h2>
+<div class="take"><ol>
+  <li><b>actor 에서 student 가 못 보는 것을 뺀다</b>: actor = 고유감각 + 잡음 상자 자세(스텝마다 σ 2 cm·0.1 rad + 에피소드 편향 2 cm·0.1 rad, p.18) + 목표 + 직전 행동. 손–상자 접촉력, 관절 토크, 상자 참 자세·<b>속도</b>는 critic 만 (p.6, 부록 E.7). 상자 질량은 G 처럼 아예 주지 않거나 critic 만. 잡음은 카메라 좌표계에서 넣고 크기는 우리 D436 실측으로 정한다(추론). 첫 실험은 이 teacher 의 성공률이 v2 teacher 90 % 에서 얼마나 떨어지는지.</li>
+  <li><b>진척형 보상 minimize(e) = max(e<sub>best</sub> − e, 0)</b> 를 접근(손바닥–옆면 거리), 들기 높이에 쓴다: 가만히 서 있기로는 보상이 0, 항별 누적 최대 = 시작 오차라 가중치 사다리를 계산으로 맞출 수 있다(G 는 2.5 → 10 → 50 → 300 → 6,000 → 15,000, p.17–18).</li>
+  <li><b>한 손 밀기 차단은 게이트로</b>: G 는 "들림" 전에는 목표 보상을 꺼 탁자 위 밀기를 막았다(p.18). 우리는 상자 이동·높이 보상을 "두 손 접촉 ∧ 상자 바닥이 받침면에서 뜸"일 때만 켠다.</li>
+  <li><b>성공 = 유지 후 종료 + 남은 시간 보너스</b>: 목표 0.1 m 안 15 스텝(1 s) 연속 → 종료, 보너스 w × (T<sub>max</sub> − T), w 를 영역 안 보상보다 크게(100 vs 40) → 영역 드나들기 방지 (p.17–18).</li>
+  <li><b>student 보조 출력</b>: 상자 위치(골반 좌표계) 3 + yaw 를 β 0.1 로 함께 예측 (p.6). 실기 상태 기계가 "들렸다"를 이 예측으로 판단하고, 정책 붕괴 신호(G 는 손바닥 높이 튐)를 우리는 골반 높이·손 위치 이탈로 잡아 기본 서기 명령으로 되돌린다.</li>
+  <li><b>들고 난 뒤 고정 행동은 필터된 값으로</b>: G 코드는 PCA 행동 EMA(α 0.1, 60 Hz)를 얼려 운반에 썼다. 우리도 "들고 서기" 단계로 넘어갈 때 조이기 관련 출력은 필터값을 쓴다.</li>
+  <li><b>하위층 독립 실행</b>: 패브릭 노드가 정책과 따로 돌아 정책이 죽어도 명령을 유지했다(p.7). dev12 는 상위 정책과 다른 프로세스·주기로 두고, 상위 출력이 끊기거나 NaN 이면 마지막 안전 명령을 잡는다.</li>
+  <li><b>깊이 증강 함수</b>: 드롭·무작위 p 0.003, 상관 잡음(σ<sub>s</sub> 0.5 px, σ<sub>d</sub> 1/6, 시차 양자화), 법선 잡음 σ<sub>θ</sub> 0.01 을 <code>depth_augs.py</code> 에서 가져온다. 막대 길이는 해상도 비율로 줄인다: 160 px 폭의 18 px → 64 px 폭이면 약 7 px (계산). 카메라 회전 ±3°·위치 ±3 cm 는 출발점이고, 목 각도·장착 오차 실측으로 키운다.</li>
+  <li><b>DAgger 세부</b>: 6 스텝(G 15 Hz 에서 0.4 s) BPTT, env 가 끝날 때 갱신, 순환 student(GRU 1024). 우리 6 프레임 입력은 이력을 이미 담으므로 짧은 BPTT 로 충분할 것(추론).</li>
+  <li><b>여러 시드, 고정 평가셋으로 고르기</b>: 시드마다 전략이 다르다(부록 E.10). 최소 3 시드를 같은 Isaac·MuJoCo 평가셋으로 비교하고, 고른 것과 이웃 저장본을 함께 본다.</li>
+  <li><b>행동 공간을 의심한다</b>: 관절 공간 행동이 4 배 느리고 다물체 실패(부록 C). 상체 11 관절 목표를 그대로 내는 대신 "기본 팔 자세 + 손바닥 위치(좌우 각 3) + 조임 폭"을 IK 로 펴는 저차원 행동을 검토(추론). K1 팔은 5 자유도라 손바닥 방향까지 고정하면 안 풀리는 자세가 있어 방향은 비워 둔다.</li>
+</ol></div>
+
+<h3 class="ps">가져오지 말 것</h3>
+<ul>
+  <li><b>무작위 렌치 크기 그대로</b>: 50·m(p 0.1)이면 2 kg 상자에 100 N, 코드판 10 m/s² 도 20 N. 우리 손당 조임 어림 10–16 N(보고서 계산)보다 크다. 0 에서 시작해 "조임 마찰 여유 = 2μN − mg" 안에서만 올린다. 예: μ 0.6, 손당 20 N, 2 kg → 24 − 19.6 = 4.4 N, 약 2.2 m/s² (계산).</li>
+  <li><b>물체 μ 를 0.7 로 낮추기</b>: G 는 마찰 의존을 줄이려 했지만 우리 조이기는 마찰이 유일한 지지다. 손–상자 μ 는 실측 전까지 넓게 무작위화하고, Newton 의 마찰 결합 규칙(max 결합이면 상자 μ 만 낮춰서는 실효 μ 가 안 내려감)을 먼저 확인한다.</li>
+  <li><b>기하 패브릭 자체</b>: Kuka·Allegro 전용, 외부 패키지, NVIDIA License. 우리 하위층은 학습된 dev12 이고 충돌 보장이 없다. 가져올 것은 "하위층이 안전·한계를 맡고 상위는 저차원 목표만 낸다"는 원칙뿐.</li>
+  <li><b>물체 one-hot</b>: 상자 하나라 의미 없음. 상자 크기를 무작위화하면 크기 벡터를 actor 에 준다.</li>
+  <li><b>탁자 고정 좌표계의 위치 예측·상태 기계 임계값</b>(z &gt; 0.45 m 등): 우리 카메라는 몸과 함께 움직이므로 골반 좌표계로 다시 정의.</li>
+  <li><b>cspace 감쇠 커리큘럼</b>: 패브릭 전용. 대신 같은 생각(초기엔 제약을 풀어 탐색, 성공률 90 % 마다 조임)을 받침대 높이 0.3 → 0 m 순서의 성공률 게이트 커리큘럼으로 옮길 수 있다(추론).</li>
+  <li><b>4.7 B 프레임·68 시간</b> 규모: 140 물체 일반화 비용이다. 상자 하나인 우리 기준으로 쓰지 않는다.</li>
+</ul>
+
+<p class="src">출처 표기: (p.N), (표 N), (그림 N), (식 N), (부록 X), 코드는 파일 경로·줄. 논문에 없는 값은 "논문에 없음", 계산·추론은 그렇게 표시.</p>
+</main>
+</body>
+</html>

@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Embrace — 논문 상세</title>
+<link rel="stylesheet" href="paper.css">
+</head>
+<body>
+<main class="wrap">
+<a class="back" href="../index.html#catalog">← 자료 목록으로</a>
+
+<header class="ph">
+  <h1>Embrace: 큰 물체를 팔과 몸통으로 끌어안아 나르는 휴머노이드 전신 조작 RL</h1>
+  <p class="orig">Embracing Bulky Objects with Humanoid Robots: Whole-Body Manipulation with Reinforcement Learning</p>
+  <p class="meta">Chunxin Zheng, Kai Chen, Zhihai Bi, Yulin Li, Liang Pan, Jinni Zhou, Haoang Li, Jun Ma · HKUST (Guangzhou), HKU · 사전 공개 (arXiv 2025-09-16) · Unitree H1-2 · Isaac Sim 학습, MuJoCo sim2sim</p>
+  <div class="chips">
+    <a class="chip loc" href="../reference/embrace/paper.pdf">로컬 PDF</a>
+    <a class="chip" href="https://arxiv.org/abs/2509.13534" target="_blank" rel="noopener">arXiv 2509.13534</a>
+    <span class="simv s3">유사도 3</span>
+    <span class="badge only">논문만 (코드 없음)</span>
+  </div>
+</header>
+
+<div class="callout blue tldr">AMASS 사람 동작을 H1-2 에 옮겨 PHC teacher → PULSE 식 VAE(디코더·prior 동결)로 동작 사전을 만들고, 상위 PPO 가 잠재 z 를 내 4 m 접근 → 안기 → 4 m 운반을 한다. 상자 중심에서 상체 15 링크까지의 거리(NSDF)를 관측·보상에 넣은 것이 핵심: 빼면 MuJoCo 성공 0 %, 넣으면 3 kg 100 %, 7 kg 80–93 %. 단계별 무작위 초기화로 학습 정체 구간을 없앰.</div>
+
+<h2 class="ps">우리와 무엇이 같고 다른가</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>이 논문</th><th>우리 (dev10 pelvis_pick)</th></tr></thead>
+  <tbody>
+    <tr><td>하위 제어기</td><td>PULSE 식 VAE 디코더 D + 학습된 prior R, 둘 다 동결. 고유감각 s^d(87) + z → 27 관절 목표 (p.4)</td><td>dev12 하체 RL 동결, 골반 vx·vy·ωz·높이·pitch·roll 추종, 상체 11 외부 PD</td></tr>
+    <tr><td>상위 출력</td><td>잠재 z (차원 논문에 없음). 최종 행동 a = D(z + μ_prior) — prior 평균에 대한 잔차 (식 7–8)</td><td>상체 11 + 골반 명령 (명시 명령)</td></tr>
+    <tr><td>과제·물체</td><td>4 m 접근 → 몸 전체로 안기 → 4 m 운반. 학습 물체는 Φ42×40 cm 원통 하나 (질량 논문에 없음), 탁자 위에서 시작 (p.5)</td><td>바닥·받침대 0–0.3 m 박스 37×40.5×29 cm, 0.5–2 kg, 쪼그려·숙여 집고 서서 유지</td></tr>
+    <tr><td>접촉 방식</td><td>팔·몸통 여러 점으로 감싸기 (그림 4). 손 끝은 물체 가까이 두는 보상만</td><td>두 손바닥으로 옆면 조이기 (손가락 없는 고무 공 손)</td></tr>
+    <tr><td>지각·증류</td><td>상태 기반 (상자·목표 거리·방향 + NSDF 15). 실기는 모션 캡처로 로봇·물체 자세. 영상 student 없음. 논문의 "teacher-student" 는 동작 사전 증류 (PHC → VAE) 를 말함</td><td>특권 teacher → D436 깊이(26×64, 6 프레임) + 고유감각 student (DAgger)</td></tr>
+    <tr><td>로봇</td><td>Unitree H1-2, 행동 27 관절 (표 I)</td><td>K1 35.7 kg, 23 자유도, 팔 kp 22.3 / kd 1.42</td></tr>
+    <tr><td>시뮬</td><td>Isaac Sim 4,096 env, RTX 4080 하나. MuJoCo 로 sim2sim 평가 (p.5–6)</td><td>Isaac Lab + Newton 학습, MuJoCo sim2sim</td></tr>
+  </tbody>
+</table></div>
+<p>요약: "동결 하위 + 상위 RL" 꼴은 같지만 하위가 잠재 공간이고 접촉 전략(안기)이 다르다. 가져올 것은 <b>단계별 무작위 초기화</b>, <b>물체–링크 거리 특징</b>, <b>두 손 거리를 한 exp 안에 넣는 보상</b>이다.</p>
+
+<h2 class="ps">1. 문제와 과제</h2>
+<ul>
+  <li>부피 큰 물체를 손끝만이 아니라 팔·몸통 전체로 감싸 드는 전신 조작(WBM). 세 단계: 접근 → 안기(여러 점 접촉 + 전신 안정화하며 들기) → 목표로 운반 (그림 1, p.1).</li>
+  <li>집기 구역(pick-up zone): 물체 중심 반지름 d_p = 0.35 m 원. 접근과 조작의 경계 (p.5).</li>
+  <li>안쪽 3.5 m · 바깥 4.0 m 고리: 로봇 시작 구역이자 운반 목표 구역 (p.5).</li>
+  <li>학습 환경: 물체는 Φ42 cm × 40 cm 원통, 로봇에서 4 m. 목표는 물체 원래 위치에서 4 m (p.5). 물체는 탁자 위에 놓여 시작 (p.5).</li>
+  <li>성공 (MuJoCo 평가): 물체 무게중심이 목표 0.1 m 이내, 넘어짐 없음. 조건마다 30 회 (p.6).</li>
+</ul>
+
+<h2 class="ps">2. 시스템 구조</h2>
+<div class="fig">
+  <p><b>① 데이터</b></p>
+  <div class="flow">
+    <span class="node">AMASS 모캡</span><span class="arr">→</span>
+    <span class="node">MaskedMimic 으로 거르기 (자기충돌·발 미끄럼)</span><span class="arr">→</span>
+    <span class="node">H2O 리타겟 → 로봇 참조 D_r</span>
+  </div>
+  <p><b>② 동작 사전 증류</b></p>
+  <div class="flow">
+    <span class="node">PHC teacher (MLP, PPO)<br>s^p 90 + s^g → a* ∈ R²⁷</span><span class="arr">→ 모방 →</span>
+    <span class="node">VAE: 인코더 E(z | s^p, s^g) · 디코더 D(a | s^d, z) · prior R(z | s^d)</span><span class="arr">→</span>
+    <span class="node frozen">D, R 동결</span>
+  </div>
+  <p><b>③ 안기 정책 학습 · 실행</b></p>
+  <div class="flow">
+    <span class="node">s^s 19 (+ s^d 87)</span><span class="arr">→</span>
+    <span class="node">π_task (PPO, 학습) → z^s</span><span class="arr">+</span>
+    <span class="node frozen">R(s^d) → μ^p</span><span class="arr">→</span>
+    <span class="node frozen">D(z^s + μ^p)</span><span class="arr">→</span>
+    <span class="node">a^s ∈ R²⁷ 관절 목표 → PD (실기 50 Hz)</span>
+  </div>
+</div>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>부분</th><th>학습 / 고정</th><th>비고</th></tr></thead>
+  <tbody>
+    <tr><td>PHC teacher</td><td>PPO 로 학습, 증류 후 안 씀</td><td>참조 동작 추종 (식 1)</td></tr>
+    <tr><td>VAE 인코더 E</td><td>증류 때만 사용</td><td>미래 참조를 봄</td></tr>
+    <tr><td>디코더 D · prior R</td><td>증류 후 동결</td><td>"새 저차원 행동 공간" (p.4)</td></tr>
+    <tr><td>π_task (안기 정책)</td><td>PPO 로 학습</td><td>단계 무작위 초기화 + 과제 보상 (p.4–5)</td></tr>
+    <tr><td>NSDF 망 f_θ</td><td>미리 학습 (SAMP [26])</td><td>상자 중심 → 링크 최단 거리 (식 6)</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">3. 관측과 행동</h2>
+<h3 class="ps">기호 (표 I)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>기호</th><th>차원</th><th>뜻</th></tr></thead>
+  <tbody>
+    <tr><td>a_t</td><td>R²⁷</td><td>관절 목표 위치</td></tr>
+    <tr><td>v_t, ω_t, g_t</td><td>R³ 각각</td><td>루트 선속도, 각속도, 투영 중력</td></tr>
+    <tr><td>q_t, q̇_t, a_{t−1}</td><td>R²⁷ 각각</td><td>관절 위치, 속도, 직전 행동</td></tr>
+    <tr><td>p̂_{t+1}, p̂_{t+1} − p_t</td><td>R³ˣ²⁷ 각각</td><td>참조 몸체 위치, 위치 차이</td></tr>
+  </tbody>
+</table></div>
+<h3 class="ps">관측 묶음</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>묶음</th><th>구성</th><th>차원</th><th>누가 봄</th></tr></thead>
+  <tbody>
+    <tr><td>s^p</td><td>v, ω, g, q, q̇, a*_{t−1}</td><td>90</td><td>PHC teacher, 인코더</td></tr>
+    <tr><td>s^g</td><td>p̂_{t+1} − p_t, p̂_{t+1}</td><td>2×3×27</td><td>PHC teacher, 인코더</td></tr>
+    <tr><td>s^d</td><td>ω, g, q, q̇, a_{t−1} (루트 선속도 v 제외 — sim2real 용)</td><td>87</td><td>디코더, prior, 안기 정책</td></tr>
+    <tr><td>s^s</td><td>몸통→상자 중심 거리·방향각, 몸통→목표 거리·방향각, NSDF d_t</td><td>19 (= 2 + 2 + 15)</td><td>안기 정책</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>NSDF d_t ∈ R¹⁵: 고른 목표점(상자 중심)과 로봇 상체 링크(몸통 + 팔, 15 개) 메시 사이 최단 거리. 미리 학습한 망 f_θ 로 계산 (식 6, 그림 3).</li>
+  <li>과제 관측 s^task = {s^d, s^s} 라고 쓰지만 식 7 은 z^s = π_task(s^s) 로만 씀. 그림 2(c) 에서는 두 입력이 다 들어감 → 106 차원으로 보는 것이 맞아 보임 (논문 내부 불일치).</li>
+</ul>
+<h3 class="ps">행동</h3>
+<ul>
+  <li>상위 행동 = 잠재 z^s. 최종 관절 목표 a^s = D(z^s + μ^p), μ^p 는 동결 prior R(z | s^d) 의 평균 (식 7–8). 즉 상위는 "prior 가 지금 예상하는 동작"에 더하는 잔차를 낸다.</li>
+  <li>D 는 고정 대각 공분산 가우시안을 출력 (식 4).</li>
+  <li>잠재 차원, z 범위 제한, PD 이득: 논문에 없음.</li>
+</ul>
+
+<h2 class="ps">4. 보상 · 종료 · 커리큘럼</h2>
+<h3 class="ps">매끄러움 · 물리 한계 (표 II)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항</th><th>정의</th><th>가중치</th></tr></thead>
+  <tbody>
+    <tr><td>Torque</td><td>‖τ‖²</td><td>−1e-7</td></tr>
+    <tr><td>Joint Acceleration</td><td>‖q̈‖²</td><td>−2.5e-8</td></tr>
+    <tr><td>Action Rate</td><td>‖a_{t−1} − a_t‖²</td><td>−0.5</td></tr>
+    <tr><td>Feet Slippage</td><td>Σ |v_foot| · (|f_contact| &gt; 1)</td><td>−0.05</td></tr>
+    <tr><td>Feet Contact Force</td><td>Σ max(0, |f_contact| − F_max) (F_max 값 논문에 없음)</td><td>−1e-5</td></tr>
+    <tr><td>Joint Angle Limitation</td><td>Σ [−min(0, q − q_lower) + max(0, q − q_upper)]</td><td>−1e-3</td></tr>
+  </tbody>
+</table></div>
+<h3 class="ps">과제 보상 r_task = r_walk + r_carry + r_arm + r_NSDF</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항</th><th>집기 구역 밖</th><th>집기 구역 안</th><th>출처</th></tr></thead>
+  <tbody>
+    <tr><td>r_walk</td><td>exp(−‖σ p̂^box‖) + exp(−‖σ θ̂^box‖) + exp(−‖σ v̂^body‖)</td><td>1 (상수)</td><td>식 9</td></tr>
+    <tr><td>r_carry</td><td>0</td><td>exp(−‖σ p̂^target‖) + exp(−‖σ θ̂^target‖) + exp(−‖σ v̂^box‖)</td><td>식 10</td></tr>
+    <tr><td>r_arm</td><td>0</td><td>exp(−σ(‖p̂^lh‖ + ‖p̂^rh‖)) + exp(−σ(‖ĥ^lh‖ + ‖ĥ^rh‖))</td><td>식 11</td></tr>
+    <tr><td>r_NSDF</td><td colspan="2">식 논문에 없음 ("상체가 물체와 계속 닿도록 안내")</td><td>p.2, p.5</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>p̂^lh, p̂^rh = 왼·오른손 끝과 물체 사이 거리. ĥ^lh, ĥ^rh 는 정의 없음 (높이 차로 보임, 추정). σ 값, 과제 항 가중치: 논문에 없음.</li>
+  <li>r_arm 은 두 손 거리의 합을 exp 하나 안에 넣는다. exp(−σ(a + b)) = exp(−σa) · exp(−σb) 이므로 한 손만 가까우면 점수가 크게 깎이는 "부드러운 AND" 꼴 (해석).</li>
+</ul>
+<h3 class="ps">초기화 (커리큘럼 역할)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>장면</th><th>물체</th><th>로봇</th><th>집중하는 단계</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>탁자 위</td><td>시작 고리 안 무작위 위치</td><td>접근</td></tr>
+    <tr><td>2</td><td>탁자 위</td><td>집기 구역 안, 상체 관절을 "안기 직전 자세"로</td><td>집기</td></tr>
+    <tr><td>3</td><td>팔 안에 생성</td><td>관절을 "안은 자세"로</td><td>운반</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>리셋마다 셋 중 하나를 무작위 선택 (p.5). 비율은 균등으로 읽힘, 수치는 논문에 없음.</li>
+  <li>종료 조건: 논문에 없음.</li>
+</ul>
+
+<h2 class="ps">5. 학습 설정 (알고리즘 · 망 · 무작위화)</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>값</th><th>출처</th></tr></thead>
+  <tbody>
+    <tr><td>알고리즘</td><td>PPO (PHC teacher, 안기 정책 둘 다)</td><td>p.4</td></tr>
+    <tr><td>시뮬 · env 수</td><td>Isaac Sim, 4,096 병렬 agent</td><td>p.5</td></tr>
+    <tr><td>하드웨어</td><td>RTX 4080 하나 (모든 학습·실험)</td><td>p.5</td></tr>
+    <tr><td>학습 길이</td><td>그림 5 가로축 "Number of Iterations" 0–1.0×10⁶. 시간은 논문에 없음</td><td>그림 5</td></tr>
+    <tr><td>망</td><td>teacher 는 MLP. 층·폭, 잠재 차원은 논문에 없음</td><td>p.4</td></tr>
+    <tr><td>VAE 계수 α, β</td><td>논문에 없음</td><td>식 5</td></tr>
+    <tr><td>학습 물체</td><td>Φ42×40 cm 원통 하나 고정 크기. 학습 질량은 논문에 없음</td><td>p.5–6</td></tr>
+    <tr><td>도메인 무작위화</td><td>언급 없음</td><td>–</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">6. teacher → student / 증류</h2>
+<p>지각 student 는 없다. 논문의 teacher → student 는 <b>동작 사전 증류</b>다.</p>
+<ul>
+  <li>teacher: PHC 로 학습한 동작 추종 MLP, a* = π_teacher(s^p, s^g) (식 1).</li>
+  <li>student: PULSE 를 따른 VAE. 인코더 E(z | s^p, s^g) = N(μ^e, σ^e), prior R(z | s^d) = N(μ^p, σ^p), 디코더 D(a | s^d, z) = N(μ^d, σ̂^d) (식 2–4).</li>
+  <li>손실 L_all = L_action + α L_regu + β L_KL. L_action = ‖a* − a‖², L_regu = ‖μ^e_t − μ^e_{t−1}‖² (잠재 시간 연속성), L_KL = 인코더 분포 ↔ prior (식 5).</li>
+  <li>디코더·prior 는 루트 선속도 없는 s^d 만 봐서 실기에서 쓸 수 있게 함 (p.4).</li>
+  <li>온라인(DAgger 식)인지 오프라인인지는 쓰지 않음.</li>
+</ul>
+
+<h2 class="ps">7. 결과</h2>
+<h3 class="ps">NSDF 제거 (그림 4, 표 III)</h3>
+<ul>
+  <li>같은 설정에서 NSDF 관측과 NSDF 보상을 <b>둘 다</b> 뺌. 같은 epoch 학습 후 NSDF 없는 정책은 몸통만 물체에 붙고 팔이 감싸지 못해 운반 실패. NSDF 있는 정책은 상체 여러 관절로 다점 접촉 (p.6).</li>
+</ul>
+<h3 class="ps">MuJoCo sim2sim 성공률 (표 III, 조건당 30 회)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>물체</th><th>크기 (cm)</th><th>질량 (kg)</th><th>성공률 (%)</th><th>NSDF</th></tr></thead>
+  <tbody>
+    <tr><td>원통</td><td>Φ42×40</td><td>3</td><td>0</td><td>없음</td></tr>
+    <tr><td>직육면체</td><td>42×42×42</td><td>3</td><td>0</td><td>없음</td></tr>
+    <tr><td>구</td><td>Φ42</td><td>3</td><td>0</td><td>없음</td></tr>
+    <tr class="ours"><td>원통</td><td>Φ42×40</td><td>1 / 3 / 7</td><td>100 / 100 / 93</td><td>있음</td></tr>
+    <tr><td>원통</td><td>Φ50×40</td><td>3</td><td>100</td><td>있음</td></tr>
+    <tr class="ours"><td>직육면체</td><td>42×42×42</td><td>1 / 3 / 7</td><td>100 / 100 / 80</td><td>있음</td></tr>
+    <tr><td>직육면체</td><td>30×30×30</td><td>3</td><td>100</td><td>있음</td></tr>
+    <tr class="ours"><td>구</td><td>Φ42</td><td>1 / 3 / 7</td><td>100 / 100 / 87</td><td>있음</td></tr>
+    <tr><td>구</td><td>Φ30</td><td>3</td><td>100</td><td>있음</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>원통 한 가지로만 학습했는데 직육면체·구, 더 크거나 작은 크기에서도 3 kg 100 %.</li>
+  <li>7 kg 직육면체가 가장 낮음 (80 %). 저자 설명: 평평한 면 (p.7).</li>
+</ul>
+<h3 class="ps">단계 무작위 초기화 (그림 5, 그래프 판독 대략값)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>반복 (×10⁶)</th><th>무작위 초기화 있음</th><th>없음 (고정 시작)</th></tr></thead>
+  <tbody>
+    <tr><td>0.1</td><td>약 140</td><td>약 70</td></tr>
+    <tr><td>0.2–0.4</td><td>약 155–170</td><td>약 75–80 에서 정체, 0.4 부근 약 65 로 떨어짐</td></tr>
+    <tr><td>0.6</td><td>약 175</td><td>약 150</td></tr>
+    <tr><td>1.0</td><td>약 180</td><td>약 180</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>최종 보상은 비슷하고, 차이는 <b>수렴 속도와 정체 구간</b>이다.</li>
+  <li>주의: 그림 5 캡션은 "빨강 = 제안 방법"이라 쓰지만 범례와 본문은 "파랑 = 무작위 초기화 있음". 범례를 따름 (p.6).</li>
+</ul>
+
+<h2 class="ps">8. 실기 · sim2real</h2>
+<ul>
+  <li>Unitree H1-2, 탑재 Intel i7 컴퓨터에서 정책 50 Hz (p.7).</li>
+  <li>로봇과 물체의 전역 자세는 고정밀 모션 캡처로 실시간 추적 (p.7).</li>
+  <li>물체: Φ40 cm × 60 cm 원통 (질량 논문에 없음). 0–2 s 접근, 4 s 집기 구역 진입, 6 s 까지 안아 들고 운반 시작 (그림 7).</li>
+  <li>시행 횟수·성공률: 보고 없음 (정성 시연 1 건).</li>
+</ul>
+
+<h2 class="ps">9. 코드에서 확인한 것</h2>
+<p>해당 없음 — 코드 미공개 (<code>reference/embrace/</code> 에 code/ 폴더 없음).</p>
+
+<h2 class="ps">10. 한계</h2>
+<ul>
+  <li>학습 물체가 원통 하나, 안기 정책의 무작위화가 없음. 일반화는 MuJoCo 30 회씩만 확인.</li>
+  <li>실기는 모션 캡처 의존, 성공률 없음.</li>
+  <li>NSDF 제거 실험은 관측과 보상을 함께 뺐다. 어느 쪽이 결정적인지 모른다.</li>
+  <li>재현 값이 많이 빠짐: r_NSDF 식, σ, 과제 항 가중치, 망 크기, 잠재 차원, α·β, F_max, 학습 질량, 종료 조건.</li>
+  <li>식 7 과 그림 2(c) 의 관측 정의 불일치, 그림 5 캡션 색 오류.</li>
+  <li>저자 결론에 따로 한계 절은 없음.</li>
+</ul>
+
+<h2 class="ps">11. 우리에게 가져올 것</h2>
+<div class="take"><ol>
+  <li><b>단계별 무작위 리셋 3 종.</b> 리셋마다 균등하게: (a) 상자 앞 기본 서기 자세, (b) 쪼그린·숙인 자세에서 두 손바닥이 옆면 몇 cm 밖에 있는 "조이기 직전", (c) 이미 조여서 받침에서 조금 들린 상태. Embrace 는 이것 없이 0.1–0.4×10⁶ 반복 동안 보상이 절반에서 정체했다 (그림 5). (c) 는 손바닥을 옆면에 살짝 파고들게 두고 몇 스텝 안정화해 만든다 (우리 적용안). dev10 v2 의 단계 스냅숏 리셋 권고와 같은 방향.</li>
+  <li><b>물체–링크 거리 특징을 teacher 에.</b> 우리는 학습 망 없이 해석적으로 계산할 수 있다: 왼·오른 손바닥 중심에서 해당 옆면까지 부호 거리 2, 아래팔 2, 몸통 1 정도. teacher actor 관측과 손 보상 둘 다에 쓴다. 근거는 0 % → 100 % (표 III) 이지만 관측·보상을 함께 뺀 결과임에 주의. student 는 깊이로 상자 자세를 보고 관절각(FK)과 합쳐 같은 양을 추정할 수 있으므로 흉내 가능한 특권 정보다 (추론).</li>
+  <li><b>두 손 거리를 한 exp 안에.</b> r = exp(−σ(d_L + d_R)) 는 두 손 커널의 곱이라 한 손 밀기 해에 점수를 적게 준다. 두 exp 의 합(한 손만 닿아도 절반)을 쓰지 말 것. dev10 v2 의 한 손 밀기 국소해 대책 중 하나로 넣는다.</li>
+  <li><b>구역 게이트.</b> 접근 보상은 집기 구역 밖에서만, 팔·운반 보상은 안에서만 (d_p = 0.35 m). 지금의 정면 집기(발끝 앞 0.04–0.30 m)에서는 거리 대신 단계 판정(손바닥 접촉 여부, 상자 들림 여부)으로 같은 게이트를 건다. 나중 접근 단계에서는 반지름 게이트를 그대로 쓸 수 있다.</li>
+  <li><b>행동 변화율 벌점을 크게.</b> Action Rate −0.5 는 과제 exp 항(각 최대 1)과 견줄 만한 크기다. 우리 상위 출력(골반 명령 + 상체 11)에 같은 꼴의 변화율 벌점을 두면 dev10 v2 의 켜짐/꺼짐 포화를 줄이는 데 도움 (계수는 우리 출력 단위로 다시 정할 것).</li>
+  <li><b>"prior 평균 + 잔차" 행동.</b> a = D(z + μ_prior) 의 발상을 명시 명령으로 옮기면 "단계별 명목 골반 높이·pitch·팔 자세 + 작은 잔차"가 된다. 출력이 처음부터 dev12 가 따라갈 수 있는 영역 안에 있게 하는 장치.</li>
+</ol>
+<p><b>가져오지 말 것</b></p>
+<ul>
+  <li>AMASS → PHC → VAE 동작 사전 파이프라인 전체: 비용이 크고, 우리는 dev12 의 명시 명령 공간이 있어 잠재 공간으로 바꾸면 dev12 도달 영역으로 자르기가 어려워진다.</li>
+  <li>몸통까지 쓰는 안기 전략: 우리 과제 정의는 손바닥 옆면 조이기다. 2 kg 에서 손바닥 마찰이 모자라면 아래팔·몸통 접촉을 허용하는 대안으로만 검토 (추론).</li>
+  <li>발 미끄럼·발 접촉력·토크·관절 가속 벌점: 다리는 동결 dev12 가 맡으므로 상위에는 필요 없다.</li>
+  <li>모션 캡처 기반 실기 상태 입력.</li>
+</ul></div>
+
+<p class="src">출처 표기: (p.N), (표 N), (그림 N), (식 N). 코드는 없음. 논문에 없는 값은 "논문에 없음", 그래프 판독값은 "대략값", 우리 쪽 해석은 "우리 적용안·추론·해석"으로 표시.</p>
+</main>
+</body>
+</html>

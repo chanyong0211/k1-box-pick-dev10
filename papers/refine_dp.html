@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>REFINE-DP — 논문 상세</title>
+<link rel="stylesheet" href="paper.css">
+</head>
+<body>
+<main class="wrap">
+<a class="back" href="../index.html#catalog">← 자료 목록으로</a>
+
+<header class="ph">
+  <h1>REFINE-DP: 확산 정책 계획기와 RL 하위 제어기를 RL 로 함께 미세조정하는 휴머노이드 이동 조작</h1>
+  <p class="orig">REFINE-DP: Diffusion Policy Fine-tuning for Humanoid Loco-manipulation via Reinforcement Learning</p>
+  <p class="meta">Zhaoyuan Gu, Yipu Chen, Zimeng Chai et al. (Ye Zhao 교신) · Georgia Institute of Technology, IRIM · IEEE RA-L 2026 (PDF 머리말 "Accepted July, 2026", 로컬 PDF = arXiv v3 2026-07-30) · Booster T1 (29 자유도) · Isaac Lab</p>
+  <div class="chips">
+    <a class="chip loc" href="../reference/refine_dp/paper.pdf">로컬 PDF</a>
+    <a class="chip" href="https://arxiv.org/abs/2603.13707" target="_blank" rel="noopener">arXiv 2603.13707</a>
+    <a class="chip" href="https://refine-dp.github.io/REFINE-DP/" target="_blank" rel="noopener">프로젝트 페이지</a>
+    <span class="simv s4">유사도 3–4</span>
+    <span class="badge">코드 미공개</span>
+  </div>
+</header>
+
+<div class="callout blue tldr">시연 50 개(+휴리스틱 롤아웃 → 1000 개)로 사전학습한 확산 정책(DP, 10 Hz)이 기저 속도 + 두 손 SE(3) 자세를 내고, RL 하위 제어기(50 Hz)가 관절 목표로 바꾼다. DP 를 DPPO 로 미세조정하면 시뮬 성공률 50–70 % → 95–98 %, 하위까지 함께 PPO 로 갱신하면 성공률은 그대로지만 손 추종 오차가 줄고(방향 오차 최대 50 % 감소) 90 % 도달 반복이 40 → 20 회. 실기 T1 70 / 50 / 75 % (N = 20).</div>
+
+<h2 class="ps">우리와 무엇이 같고 다른가</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>이 논문</th><th>우리 (dev10 pelvis_pick)</th></tr></thead>
+  <tbody>
+    <tr><td>하위 제어기</td><td>분리형 RL 두 개, 50 Hz: π<sub>lower</sub> = 발 디딤 명령 추종(다리 12), π<sub>upper</sub> = 루트 좌표 두 손 SE(3) 추종(팔 14). 상위 미세조정 때 <b>동결</b>(DiT-FT) 또는 <b>원래 보상으로 함께 PPO 갱신</b>(공동 최적화) (p.3–5)</td><td>dev12 하체 RL(Isaac Lab + Newton, rsl_rl PPO, 다리 AMP), 골반 vx ±0.8, vy ±0.4, ωz ±1.0, 높이 0.335–0.77 m, pitch ±45°, roll ±10° 추종, 상체 11 목표는 외부 PD. 동결 예정, 스모크 시험만</td></tr>
+    <tr><td>상위 출력</td><td>행동 묶음 12 스텝 × 0.1 s: 기저 속도 + 두 손 SE(3) + 그리퍼 상태. 기저 속도는 "속도→발 디딤 계획기"가 발 디딤 열로 바꿈. <b>몸 높이·pitch 명령 없음</b> (p.4–5)</td><td>상체 11 관절 목표 + 골반 명령(속도·높이·pitch·roll)</td></tr>
+    <tr><td>과제·물체</td><td>탁자 위 물체 집기, 40 s 집어 옮기기, 문 열고 통과, 디딤판 올라 물건 집기. 그리퍼 사용. 물체 크기·질량 논문에 없음 (p.5–6)</td><td>바닥·받침대 0–0.3 m 박스 37×40.5×29 cm, 0.5–2 kg, 손가락 없는 공 손으로 두 손 옆면 조이기, 쪼그리기·숙이기</td></tr>
+    <tr><td>지각·증류</td><td>상태 기반 DP(물체 자세 입력). 실기 물체 자세 = 모캡 90 Hz 또는 머리 D435i RGB + AprilTag 30 Hz. teacher–student 없음 (p.5)</td><td>특권 teacher → D436 깊이 student (DAgger)</td></tr>
+    <tr><td>상위 학습 방식</td><td>행동 복제(확산) 사전학습 → DPPO + <b>희소 보상</b> 미세조정. 사전학습 성공률 50–70 % 가 있어야 미세조정이 됨 (p.7)</td><td>밀집 보상 PPO teacher 를 처음부터</td></tr>
+    <tr><td>주기</td><td>DP 10 Hz(TensorRT), 하위 50 Hz (p.5)</td><td>상위 주기 미정</td></tr>
+    <tr><td>실기 결과</td><td>Task 1 70 %, Task 2 50 %, Task 3 75 % (N = 20), 속도 상한 0.2 m/s·손 0.05 m/s (p.7)</td><td>v2: teacher 90 %, student 69 %(Isaac), MuJoCo sim2sim 50 %</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">1. 문제와 과제</h2>
+<ul>
+  <li><b>문제</b>: 오프라인 시연으로 학습한 DP 계획기는 하위 제어기와 따로 학습되어 (1) 명령 추종이 나쁘고 (2) 분포 이동·오차 누적으로 장기 과제가 실패한다. 시연을 늘리는 해법은 휴머노이드에서 너무 비싸다 (p.1).</li>
+  <li><b>주장</b>: 시뮬레이션에서 RL 로 DP 를 미세조정(RLFT)하면 희소 보상만으로도 성공률이 크게 오르고, 하위 제어기까지 함께 갱신하면 "계획기가 내는 움직이는 명령"이 하위의 학습 분포 안으로 들어와 추종이 좋아진다 (p.1–2, p.5).</li>
+  <li><b>하위 동결의 부작용을 수치로 보임</b>: DP 만 미세조정하면 DP 가 "excessive commands"(과한 명령)를 내도록 배워 추종 정확도가 떨어지고 큰 힘·접촉 변화 때 거친 움직임이 생긴다 (p.7, 그림 5).</li>
+</ul>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>과제</th><th>내용</th><th>비고</th></tr></thead>
+  <tbody>
+    <tr><td>Task 1 물체 집기</td><td>탁자까지 걸어가 상자를 집음</td><td>그림 3(b) 사진의 물체는 노란 받침(탁자 역할) 위의 작고 납작한 물체로 보임. 크기·질량 논문에 없음 (p.5–6)</td></tr>
+    <tr><td>Task 2 장기 집어 옮기기</td><td>Task 1 + 다른 탁자에 내려놓기, 약 40 s</td><td>(p.5–6)</td></tr>
+    <tr><td>Task 3 문 열고 통과</td><td>손잡이 잡고 열고 걸어 통과</td><td>"DP 를 휴머노이드 문 통과에 처음 적용" 주장 (p.6)</td></tr>
+    <tr><td>Task 4 디딤판 물건 집기</td><td>높은 받침에 올라가 물건 집기</td><td>울퉁불퉁한 지형, 발 디딤 하위가 필요한 이유 (p.6)</td></tr>
+  </tbody>
+</table></div>
+<p>DP 는 단계 신호 없이 물체 위치로부터 단계를 스스로 추론한다(StageACT 와 다름) (p.5).</p>
+
+<h2 class="ps">2. 시스템 구조</h2>
+<p>세 단계: (a) 동결 하위로 시연 수집 → (b) DP 사전학습 → (c) 목표 환경에서 DP 와 하위 공동 최적화 (그림 1, p.2–3).</p>
+<div class="fig">
+  <p><b>(a) 시연 수집</b> (원 환경, 하위 동결)</p>
+  <div class="flow">
+    <span class="node">VR 텔레옵 50 개 + 과제별 휴리스틱 계획기 롤아웃</span><span class="arr">→</span>
+    <span class="node">g<sub>t</sub> = 기저 속도 + 두 손 SE(3)</span><span class="arr">→</span>
+    <span class="node frozen">π<sub>loco_manip</sub> (사전학습, 동결)</span><span class="arr">→</span>
+    <span class="node">Isaac Lab</span><span class="arr">→</span>
+    <span class="node">성공 궤적만 저장 (총 1000)</span>
+  </div>
+  <p><b>(b) DP 사전학습</b></p>
+  <div class="flow">
+    <span class="node">(S<sub>t</sub> 8 스텝, A<sup>0</sup><sub>t</sub> 12 스텝) 쌍</span><span class="arr">→</span>
+    <span class="node">DiT 잡음 예측망 ε<sub>θ</sub>, 식 1 최소화 (학습)</span>
+  </div>
+  <p><b>(c) 공동 최적화</b> (목표 환경, 둘 다 학습)</p>
+  <div class="flow">
+    <span class="node">상태 S<sub>t</sub>: 손·발 자세(몸 좌표), 그리퍼, 물체</span><span class="arr">→</span>
+    <span class="node">DP π̄<sub>θ</sub> 10 Hz — DPPO, 과제 보상 R̄ (학습)</span><span class="arr">→</span>
+    <span class="node">행동 묶음 12 × 0.1 s</span><span class="arr">→</span>
+    <span class="node">속도→발 디딤 계획기</span><span class="arr">→</span>
+    <span class="node">π<sub>lower</sub> + π<sub>upper</sub> 50 Hz — PPO, 원래 보상 R̂ (학습)</span><span class="arr">→</span>
+    <span class="node">q<sub>target</sub> = q<sub>def</sub> + a (26) → PD</span>
+  </div>
+  <p><b>(c′) DiT-FT 설정</b>: 같은 흐름에서 하위만 동결</p>
+  <div class="flow">
+    <span class="node">DP π̄<sub>θ</sub> — DPPO (학습)</span><span class="arr">→</span>
+    <span class="node frozen">π<sub>loco_manip</sub> (동결)</span>
+  </div>
+  <p class="src">점선 = 동결. 출처: 그림 1 (p.2), §III (p.3–5), Alg. 1 (p.5)</p>
+</div>
+
+<h3 class="ps">공동 최적화 루프 (Alg. 1, p.5)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>단계</th><th>무엇을</th><th>보상</th></tr></thead>
+  <tbody>
+    <tr><td>바깥 반복</td><td>L = 2 회, 한 번에 9 h, 하위·DP 갱신에 시간을 반씩</td><td>–</td></tr>
+    <tr><td>1. 하위 갱신</td><td>DP 로 롤아웃 → 버퍼 D → 미니배치 M 회 PPO 로 π<sub>loco_manip</sub> 갱신</td><td>R̂: 하위 사전학습 때의 추종·정규화 보상 (표 II·III)</td></tr>
+    <tr><td>2. DP 갱신</td><td>다시 롤아웃 → 버퍼 D̄ → 미니배치 N 회 DPPO 로 π̄<sub>θ</sub> 갱신</td><td>R̄: 과제 보상(희소)</td></tr>
+  </tbody>
+</table></div>
+<p>하위가 사전학습 때 본 명령은 "독립적으로 뽑은 정지 명령"이고, DP 명령은 "연속 궤적을 따라 움직이는 목표"라 분포가 다르다. 공동 최적화는 하위에게 계획기 명령을 보여 줘 이 차이를 없앤다 (p.5).</p>
+
+<h2 class="ps">3. 관측과 행동</h2>
+<h3 class="ps">상위 DP</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>내용</th><th>출처</th></tr></thead>
+  <tbody>
+    <tr><td>관측 S<sub>t</sub></td><td>몸 좌표 손·발 자세, 그리퍼 상태, 물체 정보(몸통 기준 물체 자세). 관측 지평 8 스텝 × 0.1 s = 0.8 s</td><td>p.4–5</td></tr>
+    <tr><td>행동 A<sub>t</sub></td><td>원하는 두 손 자세(SE(3)), 그리퍼 상태, 기저 속도 명령. 묶음 12 스텝 × 0.1 s = 1.2 s</td><td>p.4–5</td></tr>
+    <tr><td>차원·범위</td><td>논문에 없음. 묶음 중 몇 스텝을 실행하고 다시 계획하는지도 논문에 없음</td><td>–</td></tr>
+    <tr><td>실기 속도 상한</td><td>이동 0.2 m/s, 손 0.05 m/s 로 자름</td><td>p.7</td></tr>
+  </tbody>
+</table></div>
+<h3 class="ps">하위 π<sub>loco_manip</sub> = [π<sub>lower</sub>; π<sub>upper</sub>]</h3>
+<ul>
+  <li><b>행동</b>: a<sub>t</sub> = [a<sup>lower</sup> ∈ R<sup>12</sup> (다리); a<sup>upper</sup> ∈ R<sup>14</sup> (팔)], 고정 기본 자세 q<sub>def</sub> 에 더하는 관절 오프셋, q<sub>target</sub> = q<sub>def</sub> + a<sub>t</sub> 를 PD 로 추종 (p.4). T1 29 자유도 중 나머지 3 개의 처리, 행동 배율, PD 게인은 논문에 없음.</li>
+  <li><b>발 디딤 명령 g<sup>lower</sup></b>: (1) 어느 발이 스윙인지, (2) 1 → 0 으로 줄어드는 정규화 위상 카운트다운, (3) 지지발 좌표의 목표 스윙발 자세 (x, y, z, yaw) (p.3, p.9).</li>
+  <li><b>손 명령 g<sup>upper</sup></b>: 루트 좌표 두 손 SE(3) 목표. 학습용 명령은 충돌 없는 관절 자세를 뽑아 순기구학으로 만든 "도달 가능한" 손 자세 (p.4).</li>
+  <li>손 자세만 주는 인터페이스는 여유 자유도 때문에 몸통 자세가 이상해지므로, 손 자세 + 하체 명령을 함께 준다(OmniH2O·SONIC 과 같은 생각) (p.4).</li>
+</ul>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>관측 (표 I, p.9)</th><th>Actor</th><th>Critic</th></tr></thead>
+  <tbody>
+    <tr><td colspan="3"><b>조작(π<sub>upper</sub>)</b></td></tr>
+    <tr><td>투영 중력, 팔 관절 위치·속도, 직전 행동</td><td>✓</td><td>✓</td></tr>
+    <tr><td>손 자세 명령 (p<sup>cmd</sup><sub>L</sub>, p<sup>cmd</sup><sub>R</sub>)</td><td>✓</td><td>✓</td></tr>
+    <tr><td>현재 손 자세 (p<sub>L</sub>, p<sub>R</sub>)</td><td>✓</td><td>✓</td></tr>
+    <tr><td><b>손 추종 오차</b> (e<sub>L</sub>, e<sub>R</sub>)</td><td>✓</td><td>✓</td></tr>
+    <tr><td colspan="3"><b>보행(π<sub>lower</sub>)</b></td></tr>
+    <tr><td>발 디딤 명령, 기저 각속도, 투영 중력, 다리 관절 위치·속도, 직전 행동</td><td>✓</td><td>✓</td></tr>
+    <tr><td>참조 발 위치, 현재 발 위치, 기저 선속도, 발 렌치</td><td></td><td>✓ (특권)</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">4. 보상 · 종료 · 커리큘럼</h2>
+<h3 class="ps">상위 DP 미세조정 보상</h3>
+<ul>
+  <li>과제 성공 기반 <b>희소 보상</b>만 사용 ("with only a sparse reward", p.1, p.7). 정확한 식은 논문에 없음.</li>
+  <li>확장 MDP 에서 보상은 잡음 제거 마지막 단계(k = 0)에서만 R<sub>t</sub>(S<sub>t</sub>, A<sup>0</sup><sub>t</sub>), 나머지 k &gt; 0 은 0 (식 3, p.5).</li>
+  <li>종료 조건: 논문에 없음.</li>
+</ul>
+<h3 class="ps">하위 π<sub>lower</sub> 보상 (표 II, p.10)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>식</th><th>가중치</th></tr></thead>
+  <tbody>
+    <tr><td>발 위치 추종 (발마다, σ = 0.05)</td><td>exp(−‖p − p<sup>ref</sup>‖² / σ²)</td><td>+5.0</td></tr>
+    <tr><td>발 yaw (σ = 0.1)</td><td>exp(−(ψ − ψ<sup>ref</sup>)² / σ²)</td><td>+3.0</td></tr>
+    <tr><td>기저 속도 (σ = 0.25)</td><td>exp(−‖v − v<sup>ref</sup>‖² / σ²)</td><td>+1.0</td></tr>
+    <tr><td>관절 위치 (σ = 0.3)</td><td>exp(−‖q − q<sup>ref</sup>‖² / σ²)</td><td>+0.5</td></tr>
+    <tr><td>관절 속도 (σ = 1.0)</td><td>exp(−‖q̇ − q̇<sup>ref</sup>‖² / σ²)</td><td>+0.3</td></tr>
+    <tr><td>행동 평활 (커리큘럼)</td><td>‖a<sub>t</sub> − a<sub>t−1</sub>‖²</td><td>−0.001 → −0.5</td></tr>
+    <tr><td>관절 가속도 (커리큘럼)</td><td>‖q̈‖²</td><td>−10<sup>−7</sup> → −10<sup>−5</sup></td></tr>
+    <tr><td>토크 한계</td><td>max(0, |τ| − τ<sub>max</sub>)</td><td>−0.5</td></tr>
+    <tr><td>관절 한계</td><td>max(0, |q| − q<sub>max</sub>)</td><td>−10<sup>−4</sup></td></tr>
+    <tr><td>발목 자세</td><td>‖q − q<sub>def</sub>‖²</td><td>−2.0</td></tr>
+    <tr><td>기저 방향 (σ = 0.2)</td><td>exp(−‖g<sub>xy</sub>‖² / σ²)</td><td>+3.0</td></tr>
+    <tr><td>발 체공 (τ = 0.4)</td><td>Σ<sub>i</sub> c<sub>i</sub>(t<sup>air</sup><sub>i</sub> − τ)</td><td>+20.0</td></tr>
+    <tr><td>기저 높이 범위</td><td>[max(0, h<sub>min</sub> − h)]² + [max(0, h − h<sub>max</sub>)]²</td><td>−3.0</td></tr>
+  </tbody>
+</table></div>
+<h3 class="ps">하위 π<sub>upper</sub> 보상 (표 III, p.10)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>식</th><th>가중치</th></tr></thead>
+  <tbody>
+    <tr><td>손 위치 거침 (손마다, σ = 0.4)</td><td>exp(−‖p − p<sup>cmd</sup>‖² / σ²)</td><td>+2.0</td></tr>
+    <tr><td>손 위치 중간 (σ = 0.1)</td><td>같은 식</td><td>+2.0</td></tr>
+    <tr><td>손 위치 정밀 (σ = 0.08)</td><td>같은 식</td><td>+2.0</td></tr>
+    <tr><td>손 방향 거침 (σ = 0.8)</td><td>exp(−‖e<sub>quat</sub>‖² / σ²)</td><td>+1.0</td></tr>
+    <tr><td>손 방향 중간 (σ = 0.5)</td><td>같은 식</td><td>+1.0</td></tr>
+    <tr><td>손 방향 정밀 (σ = 0.3)</td><td>같은 식</td><td>+1.0</td></tr>
+    <tr><td>자세 사전</td><td>‖q − q<sub>nom</sub>‖<sub>1</sub></td><td>−0.2</td></tr>
+    <tr><td>행동 평활 (커리큘럼)</td><td>‖a<sub>t</sub> − a<sub>t−1</sub>‖²</td><td>−0.01 → −0.1</td></tr>
+    <tr><td>관절 속도 (커리큘럼)</td><td>‖q̇‖²</td><td>−10<sup>−3</sup> → −2×10<sup>−3</sup></td></tr>
+    <tr><td>관절 가속도 (커리큘럼)</td><td>‖q̈‖²</td><td>−10<sup>−6</sup> → −3×10<sup>−6</sup></td></tr>
+    <tr><td>손 끝 가속도</td><td>‖p̈<sub>ee</sub>‖²</td><td>−1.4×10<sup>−2</sup></td></tr>
+    <tr><td>토크 한계</td><td>max(0, |τ| − τ<sub>max</sub>)</td><td>−0.1</td></tr>
+    <tr><td>관절 한계</td><td>max(0, |q| − q<sub>max</sub>)</td><td>−4.0</td></tr>
+  </tbody>
+</table></div>
+<p>정규화 가중치 커리큘럼("→")의 진행 일정은 논문에 없음.</p>
+
+<h3 class="ps">미세조정 커리큘럼 (OOD 초기 위치)</h3>
+<ul>
+  <li>로봇 초기 위치를 물체 기준 (i) 거리, (ii) 극각, (iii) 로봇 heading 으로 매개화. 미세조정 범위 = 사전학습 범위의 <b>320 % / 125 % / 600 %</b> (p.7). 그림 10 축: 거리 0.40–0.90 m(분포 안) → 2.00 m, heading ±30°(분포 안) → 180° (p.10).</li>
+  <li>규칙: 현재 범위에서 성공률 90 % 에 닿으면 무작위 범위를 <b>10 %</b> 넓힘 (p.10).</li>
+  <li>최대 범위에서 사전학습 정책 0 % → 커리큘럼 미세조정 80 % 이상 (p.7).</li>
+  <li>커리큘럼 없이 최대 범위로 바로 학습해도 성공률은 오르지만, 초기의 큰 무작위에서 PPO 확률 행동이 증폭돼 OOD 구역 팔 jerk 가 사전학습 수준으로 높다. 커리큘럼 쪽은 모든 구역에서 jerk 가 안정 (그림 10(b), p.10–11).</li>
+</ul>
+
+<h2 class="ps">5. 학습 설정 (알고리즘 · 망 · 무작위화)</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>값</th><th>출처</th></tr></thead>
+  <tbody>
+    <tr><td>시뮬레이터·GPU</td><td>Isaac Lab, NVIDIA H200 한 장</td><td>p.5</td></tr>
+    <tr><td>하위 RL 사전학습</td><td>4096 병렬 환경, 10 h. 하체는 LIPM + 하체 IK 로 만든 계단 높이·너비별 참조 발걸음(사전 스윙·스윙·사후 스윙, 3차 스플라인 스윙발, 궤적 최적화)을 DeepMimic 식으로 모방. 팔 자세를 무작위로 두고 학습해 상체 교란에 대비</td><td>p.3–4, p.9</td></tr>
+    <tr><td>상체 무작위화</td><td>하중·외력 무작위 (범위 논문에 없음)</td><td>p.4</td></tr>
+    <tr><td>DP 구조</td><td>DiT(트랜스포머, 교차 주의) 잡음 예측망, ᾱ<sub>k</sub> 코사인 일정, 관측 지평 8, 행동 묶음 12, 간격 0.1 s. 잡음 단계 수 K, 층 수·폭 논문에 없음</td><td>p.2, p.5</td></tr>
+    <tr><td>DP 사전학습</td><td>100 궤적(시연 3 h) 데이터에 18 h. 식 1: L<sub>diff</sub> = E‖ε − ε<sub>θ</sub>(A<sup>k</sup><sub>t</sub>, S<sub>t</sub>, k)‖²</td><td>p.4–5</td></tr>
+    <tr><td>DP 미세조정</td><td>DPPO: 잡음 제거 단계를 결정 단계로 넣은 확장 MDP. s̄ = (S<sub>t</sub>, A<sup>k+1</sup><sub>t</sub>), ā = A<sup>k</sup><sub>t</sub>, 시간 색인 t̄ = tK + (K − 1 − k), 가우시안 전이라 PPO 의 우도비 계산 가능, GAE 사용</td><td>식 2–3, p.4–5</td></tr>
+    <tr><td>공동 최적화</td><td>L = 2 바깥 반복 × 9 h(반은 하위, 반은 DP)</td><td>p.5</td></tr>
+    <tr><td>전체 시간</td><td>"사전학습부터 완전 미세조정까지 22 h" — 위 18 h + 2×9 h 와 합이 맞지 않음(무엇을 포함하는지 논문에 없음)</td><td>p.5</td></tr>
+    <tr><td>PPO 초매개변수 (lr, clip, 배치, 엔트로피), 미세조정 환경 수</td><td>논문에 없음 ("자세한 관측·보상은 웹사이트")</td><td>p.4</td></tr>
+  </tbody>
+</table></div>
+<h3 class="ps">기준선 구성 (p.6)</h3>
+<ul>
+  <li>모든 기준선은 같은 <b>동결</b> π<sub>loco_manip</sub> 사용.</li>
+  <li><b>MLP-FT</b>: 결정적 MLP 출력을 평균으로 보고 OU 식으로 확률화. A<sup>k−1</sup> = (1 − λ<sub>k</sub>)A<sup>k</sup> + λ<sub>k</sub>μ̃<sub>θ</sub>(S<sub>t</sub>) + σ̃<sub>k</sub>ε<sub>k</sub>, λ<sub>k</sub> 선형, σ̃<sub>k</sub> 감소 일정.</li>
+  <li><b>하위 std 로 탐색하면 실패</b>: 계획기 대신 π<sub>loco_manip</sub> 의 표준편차로 탐색하면 관절 수준 잡음이 너무 커서 과제를 못 끝내고 성공 신호가 0 (p.6).</li>
+  <li><b>Residual RL</b>: 동결 DP 출력에 가우시안 잔차 정책(PPO)이 작은 보정을 더함.</li>
+  <li><b>Pure RL</b>(무작위 초기화 + 희소 보상): 개선이 거의 없음, 수치는 논문에 없음 (p.7).</li>
+</ul>
+
+<h2 class="ps">6. teacher → student / 증류</h2>
+<p>해당 없음 — teacher–student 증류가 없다. DP 는 처음부터 물체 자세(상태) 입력이고, 실기에서는 머리 D435i RGB + AprilTag 로 같은 물체 자세를 채운다 (p.5). 저자들도 RGB 조건 DP 를 향후 과제로 남김 (p.8).</p>
+
+<h2 class="ps">7. 결과</h2>
+<h3 class="ps">시뮬 성공률 (%) (그림 4, p.6)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>방법</th><th>Task 1</th><th>Task 2</th><th>Task 3</th><th>Task 4</th></tr></thead>
+  <tbody>
+    <tr><td>LSTM 계획기</td><td>89</td><td>40</td><td>51</td><td>33</td></tr>
+    <tr><td>DiT 계획기 (사전학습 DP)</td><td>68</td><td>64</td><td>73</td><td>56</td></tr>
+    <tr><td>MLP 계획기</td><td>44</td><td>24</td><td>18</td><td>57</td></tr>
+    <tr><td>MLP-FT</td><td>81</td><td>43</td><td>45</td><td>64</td></tr>
+    <tr><td>Residual RL</td><td>86</td><td>85</td><td>91</td><td>70</td></tr>
+    <tr class="ours"><td><b>DiT-FT</b> (DP 만, 하위 동결)</td><td>97</td><td>98</td><td>95</td><td>98</td></tr>
+    <tr class="ours"><td><b>공동 최적화</b></td><td>97</td><td>97</td><td>96</td><td>99</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>공동 최적화는 성공률을 더 올리지 않고 움직임 질을 올린다 (p.6).</li>
+  <li>LSTM 은 짧은 Task 1 에서만 DiT 와 비슷하고 장기 과제에서 급락 (p.7).</li>
+  <li>미세조정은 사전학습 성공률이 약 50–70 % 일 때 효과적 (p.7).</li>
+</ul>
+<h3 class="ps">공동 최적화의 효과 (p.7)</h3>
+<ul>
+  <li>사전학습 DP 롤아웃 D 로 <b>하위만</b> 최적화해도 Task 2 성공률 +18 % (절대 %p 인지 상대인지 논문에 없음).</li>
+  <li>공동 최적화된 하위 위에서는 DP 미세조정이 90 % 에 닿는 반복 수가 <b>40 → 20</b>.</li>
+  <li>손 자세 오차 최대 50 % 감소, 손 끝 속도 평균 15 % 감소(100 회 평균).</li>
+  <li>DP 만 미세조정하면 4 과제 모두에서 손 위치 오차가 사전학습 DP 보다 커짐(아래 표).</li>
+</ul>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>과제</th><th>손 위치 오차 cm: DiT / DiT-FT / 공동</th><th>손 방향 오차 rad: DiT / DiT-FT / 공동</th><th>손 끝 속도 m/s: DiT / DiT-FT / 공동</th></tr></thead>
+  <tbody>
+    <tr><td>Task 1</td><td>1.9 / 2.4 / 1.7</td><td>0.042 / 0.055 / 0.030</td><td>0.32 / 0.29 / 0.27</td></tr>
+    <tr><td>Task 2</td><td>1.85 / 2.15 / 1.7</td><td>0.060 / 0.040 / 0.030</td><td>0.32 / 0.28 / 0.26</td></tr>
+    <tr><td>Task 3</td><td>2.5 / 2.8 / 1.7</td><td>0.060 / 0.075 / 0.040</td><td>0.25 / 0.29 / 0.22</td></tr>
+    <tr><td>Task 4</td><td>1.8 / 2.2 / 1.6</td><td>0.055 / 0.062 / 0.053</td><td>0.33 / 0.35 / 0.28</td></tr>
+  </tbody>
+</table></div>
+<p class="src">그림 5 (p.7) 막대에서 읽은 근삿값, 위치 ±0.1 cm·방향 ±0.005 rad·속도 ±0.02 m/s 정도 오차. 표준편차 없음.</p>
+
+<h3 class="ps">시연 수 대 미세조정 (그림 6, p.8)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>사전학습 시연 수</th><th>50</th><th>100</th><th>200</th><th>500</th><th>1000</th><th>DiT-FT (50 개에서)</th></tr></thead>
+  <tbody>
+    <tr><td>문 과제 (%)</td><td>69</td><td>86</td><td>87</td><td>93</td><td>91</td><td><b>95</b></td></tr>
+    <tr><td>장기 상자 과제 (%)</td><td>74</td><td>76</td><td>71</td><td>82</td><td>90</td><td><b>97</b></td></tr>
+  </tbody>
+</table></div>
+<p>사전학습만으로 90 % 에는 약 1000 궤적이 필요, 50 궤적 + 미세조정이 95 % 이상 (p.7). 그림 4 의 "DiT 계획기"가 몇 개 시연으로 학습됐는지는 논문에 없음(Task 2 64 % 는 그림 6 의 50 개 74 % 와도 다름).</p>
+
+<h3 class="ps">과제 시간 (그림 9, p.10)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>과제</th><th>DiT (s)</th><th>DiT-FT (s)</th><th>변화</th></tr></thead>
+  <tbody>
+    <tr><td>Task 2</td><td>23.5</td><td>21.6</td><td>−8.1 %</td></tr>
+    <tr><td>Task 3</td><td>26.6</td><td>19.7</td><td>−25.8 %</td></tr>
+    <tr><td>Task 4</td><td>32.2</td><td>28.7</td><td>−10.8 %</td></tr>
+  </tbody>
+</table></div>
+<p>평균 15 % 단축(p.9–10). 본문은 상자 집기 약 10 %, 문 열기 약 20 % 빨라졌다고 함 (p.7). 머뭇거리는 동작이 사라진 효과.</p>
+
+<h3 class="ps">하체 인터페이스 비교: 속도 추종 vs 발 디딤 (그림 8, p.9)</h3>
+<p>같은 상체·같은 PD 몸통 위치 되먹임, 하체 정책만 바꿔 목표 위치 도달을 10 회 시험.</p>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>하체 정책</th><th>몸통 위치 오차 (m)</th><th>yaw 오차 (°)</th></tr></thead>
+  <tbody>
+    <tr><td>속도 추종</td><td>0.0380 ± 0.0245</td><td>10.62 ± 7.45</td></tr>
+    <tr><td>발 디딤</td><td>0.0118 ± 0.0109</td><td>5.12 ± 3.03</td></tr>
+  </tbody>
+</table></div>
+<p>속도 추종의 문제: 느린 명령에서 제자리걸음, 지나침, 데드존을 두면 작은 명령에 반응 없음 (p.9).</p>
+
+<h2 class="ps">8. 실기 · sim2real</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>내용</th></tr></thead>
+  <tbody>
+    <tr><td>로봇·연산</td><td>Booster T1 29 자유도, 정책 PC = AMD 7945HX + RTX 4060. 하위 50 Hz, DP 10 Hz (TensorRT). 관절각·IMU 는 T1 내장 PC 에서 받음 (p.5)</td></tr>
+    <tr><td>물체 지각</td><td>모캡 90 Hz, 또는 머리 RealSense D435i RGB + AprilTag 6D 자세 30 Hz (p.5)</td></tr>
+    <tr><td>안정화</td><td>이동 속도 0.2 m/s, 손 속도 0.05 m/s 상한 (p.7)</td></tr>
+    <tr><td>성공률 (N = 20)</td><td>Task 1 70 %, Task 2 50 %, Task 3 75 %. Task 4 실기 수치 없음 (p.7)</td></tr>
+    <tr><td>실패 유형</td><td>하위 제어기가 가끔 발이 걸려 비틀거림(tripping), 상자·손잡이 쥐기 실패 (p.7)</td></tr>
+    <tr><td>격차 원인</td><td>(1) 물체 관측의 체계적 오프셋(자세 보정) + 접촉 구간 가림으로 인한 치우침, (2) 동역학 차이로 보행 떨림·미끄러짐 (p.7)</td></tr>
+    <tr><td>복구 행동</td><td>물체를 옮기면 계획을 다시 세워 계속, 손잡이를 놓치면 작은 걸음으로 다가가 재시도. 사전학습 DP 는 멈춰 버림 (p.7)</td></tr>
+    <tr><td>관측 잡음 실험</td><td>DP 상태에 평균 0 가우시안 잡음 σ 1 cm / 3 cm 를 넣고 미세조정 → 실기 Task 1 70 % → 25 % / 20 %. 손 자세 예측이 과하고 혼란스러워짐. 생성형 계획기의 조건 신호를 망가뜨린다고 해석 (p.11)</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">9. 코드에서 확인한 것</h2>
+<p>해당 없음 — 로컬 code/ 없음(코드 미공개).</p>
+
+<h2 class="ps">10. 한계</h2>
+<ul>
+  <li>DP 가 상태 조건이라 물체 자세가 명시적으로 필요(모캡 또는 마커) (p.8).</li>
+  <li>VR 텔레옵 + 과제별 휴리스틱 계획기에 기대는 데이터 수집 (p.8).</li>
+  <li>실기 성공률 50–75 % 로 시뮬 90 % 이상과 격차, 매우 느린 속도 상한(0.2 m/s, 0.05 m/s) (p.7).</li>
+  <li>재현에 필요한 값이 빠짐: 과제 보상 식, 종료 조건, 망 크기, PPO·DPPO 초매개변수, K, 무작위화 범위, 커리큘럼 일정, 행동 차원. 관측·보상 일부는 웹사이트로 미룸 (p.4).</li>
+  <li>그림 5 에 분산 없음, "+18 %" 의 기준(절대·상대) 불명, 학습 시간 합이 서로 맞지 않음 (p.5, p.7).</li>
+  <li>공동 최적화 L = 2 회뿐이라 더 길게 돌렸을 때 하위가 원래 명령 분포를 잊는지는 보이지 않음(논문에 없음).</li>
+</ul>
+
+<h2 class="ps">11. 우리에게 가져올 것</h2>
+<div class="take"><ol>
+  <li><b>dev12 추종 오차를 상위 학습 내내 기록</b>: teacher 가 낸 명령에서의 골반 높이 오차, vx·vy·ωz 오차, pitch 오차, 상체 11 관절 추종 오차를 dev12 자체 명령 분포에서의 값과 나란히 로그. REFINE-DP 에서 하위 동결 + 상위만 미세조정하면 손 위치 오차가 4 과제 모두 커졌다(예: Task 3 2.5 → 2.8 cm, 그림 5). v2 의 "추종기가 못 따라가는 출력"과 같은 현상을 숫자로 먼저 잡는다.</li>
+  <li><b>하위를 고칠 때는 Alg. 1 식 교대</b>: (1) teacher 를 고정하고 그 명령으로 롤아웃 → dev12 를 <b>원래 추종·AMP·정규화 보상</b>으로 PPO 갱신, (2) dev12 를 고정하고 teacher 를 과제 보상으로 갱신, 이것을 2 회 정도 반복. 근거: 하위만 갱신해도 Task 2 +18 %, 이후 상위 90 % 도달 40 → 20 반복 (p.7). 과제 보상을 하위에 넣지 않는 점이 핵심.</li>
+  <li><b>탐색은 상위 명령 수준에서, 하위는 평균 행동으로</b>: 하위 std 로 탐색하면 성공 신호가 0 이었다 (p.6). teacher 학습 중 dev12 는 확률 샘플이 아닌 결정적 평균 행동으로 돌리는지 확인.</li>
+  <li><b>손 목표 보상은 여러 폭의 exp 커널을 합친다</b>: 손 위치 σ = 0.4 / 0.1 / 0.08 m 각 +2.0, 방향 σ = 0.8 / 0.5 / 0.3 각 +1.0 (표 III). 우리 "손 → 상자 옆면 중심" 접근 보상에 그대로 쓰면 먼 거리(0.3–0.5 m)에서도 기울기가 있고 마지막 몇 cm 에서 정밀도를 요구할 수 있다(추론). 양손 각각 따로 계산.</li>
+  <li><b>배치 범위 확장 커리큘럼</b>: 고정 평가셋 성공률 90 % 마다 무작위 범위를 10 % 넓힘 (p.10). 우리 박스 범위(앞 0.04–0.30 m, 옆 ±0.15 m, yaw ±40°, 받침 0/0.1/0.2/0.3 m, 0.5–2 kg)를 좁은 중심에서 시작해 넓히면, 최대 범위로 바로 학습할 때 생기는 팔 jerk 증가를 피할 수 있다 (그림 10).</li>
+  <li><b>dev12 의 "작은 거리 접근" 정밀도를 따로 잰다</b>: 속도 추종 하체는 몸통 위치 3.8 ± 2.5 cm, yaw 10.6 ± 7.5° 오차(발 디딤은 1.2 cm, 5.1°) (그림 8). 상자 0.04–0.30 m 앞에서 두 손으로 37 cm 폭을 조이려면 몇 cm 가 중요하므로, dev12 에 PD 위치 되먹임으로 0.1–0.5 m 앞 목표에 서는 시험을 10 회 돌려 같은 지표로 비교. 저속 제자리걸음·지나침이 보이면 상위가 아니라 하위 문제로 분류.</li>
+  <li><b>실기 첫 배치는 느린 상한</b>: 이동 0.2 m/s, 손 0.05 m/s 로 묶어 성공률을 올렸다 (p.7). 우리도 집기 단계 vx 상한을 낮게 두되, teacher 학습 분포에 같은 상한을 넣어 학습 밖 동작이 되지 않게 한다.</li>
+</ol></div>
+<h3 class="ps">가져오지 말 것</h3>
+<ul>
+  <li><b>확산 정책 + DPPO 자체</b>: 시연 50–1000 개와 사전학습 성공률 50–70 % 가 전제다 (p.7). 우리는 쪼그려 두 손 조이기 시연 수집 수단이 없고, teacher 를 밀집 보상 RL 로 처음부터 학습한다.</li>
+  <li><b>희소 보상만으로 상위 학습</b>: 무작위 초기화 + 희소 보상은 실패 (p.7). 우리 teacher 는 접근·두 손 접촉·들어올림 단계 보상이 필요.</li>
+  <li><b>처음부터 공동 최적화</b>: 이 논문도 DP 사전학습 뒤에만 함께 갱신했다. 우리 dev12 는 스모크 시험만 된 상태라, 먼저 동결 + 추종 오차 계측(1번)으로 문제가 보일 때만 2번을 쓴다.</li>
+  <li><b>발 디딤 하체로 교체</b>: 근거는 있지만(그림 8) dev12 는 속도 인터페이스로 이미 학습·동결 예정이다. 하위 재설계는 6번 측정 결과가 나쁠 때의 선택지로만 둔다.</li>
+  <li><b>상태 입력에 일괄 가우시안 잡음</b>: 생성형 DP 에서 σ 1–3 cm 잡음이 실기 70 % → 20–25 % 로 떨어뜨렸다 (p.11). 우리 student 는 가우시안 정책이라 그대로 적용되진 않지만, teacher 특권 상자 자세에 근거 없는 큰 잡음을 넣기보다 D436 실측 잡음 모형을 student 입력 쪽에 넣는 편이 맞다(추론).</li>
+  <li><b>그리퍼 기반 쥐기·실패 유형</b>: 그리퍼로 작은 물체를 잡는 설정이라 공 손 옆면 조이기의 미끄러짐·한 손 밀기 문제에는 정보가 없다.</li>
+</ul>
+
+<p class="src">출처 표기: (p.N), (표 N), (그림 N), (식 N), 코드는 파일 경로. 논문에 없는 값은 "논문에 없음".</p>
+</main>
+</body>
+</html>

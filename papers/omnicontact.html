@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OmniContact — 논문 상세</title>
+<link rel="stylesheet" href="paper.css">
+</head>
+<body>
+<main class="wrap">
+<a class="back" href="../index.html#catalog">← 자료 목록으로</a>
+
+<header class="ph">
+  <h1>OmniContact: 규칙 기반 키프레임 생성기(CF-Gen)와 "접촉 흐름" 추적 정책(CF-Track)으로 메타 기술을 이어 붙이는 G1 로코매니퓰레이션</h1>
+  <p class="orig">OmniContact: Chaining Meta-Skills via Contact Flow for Generalizable Humanoid Loco-Manipulation</p>
+  <p class="meta">Runyi Yu, Xiaoyi Lin (공동 1저자), Ji Ma, Yinhuai Wang, … , Qifeng Chen, Lei Han et al. · Noitom Robotics, HKUST, Wuhan Univ., HKU · CoRL 2026 채택(README), arXiv 2026-06 · Unitree G1 29 DoF, 고무 손 · Isaac Lab 2.1.1 (학습), MuJoCo (sim2sim)</p>
+  <div class="chips">
+    <a class="chip loc" href="../reference/omnicontact/paper.pdf">로컬 PDF</a>
+    <a class="chip loc" href="../reference/omnicontact/code/">로컬 코드</a>
+    <a class="chip" href="https://arxiv.org/abs/2606.26201" target="_blank" rel="noopener">arXiv 2606.26201</a>
+    <a class="chip gh" href="https://github.com/Ingrid789/OmniContact" target="_blank" rel="noopener">Ingrid789/OmniContact</a>
+    <a class="chip gh" href="https://github.com/Ingrid789/OmniContact_sim2sim" target="_blank" rel="noopener">Ingrid789/OmniContact_sim2sim</a>
+    <a class="chip" href="https://omnicontact.github.io/" target="_blank" rel="noopener">프로젝트 페이지</a>
+    <span class="simv s3">유사도 3</span>
+    <span class="badge">LICENSE 없음</span>
+  </div>
+</header>
+
+<div class="callout blue tldr">MoCap 22.3 시간으로 "미래 손·몸통·발목 목표 + 4 개 접촉 비트(접촉 흐름)"를 추적하는 단일 RL 정책(CF-Track)을 학습하고, 실행 때는 규칙·IK 로 상자 기하에서 그 목표를 만들어(CF-Gen) 50 Hz 로 다시 계획. 시뮬 Carry Box 98.70 %(재계획 시 99.7 %), PhysHSI 87.00 %, SONIC 3.38 % (p.7 표 2, p.8 표 3).</div>
+
+<h2 class="ps">우리와 무엇이 같고 다른가</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>이 논문</th><th>우리 (dev10 pelvis_pick)</th></tr></thead>
+  <tbody>
+    <tr><td>하위 제어기</td><td>CF-Track: 29 관절 PD 목표를 내는 범용 추적 정책(학습 대상). 입력 = 접촉 흐름 + 고유감각 + 물체 자세</td><td class="ours">dev12 하체 RL(동결), 골반 vx·vy·ωz·높이·pitch·roll 추종, 상체 11 외부 PD</td></tr>
+    <tr><td>상위 출력</td><td>CF-Gen(<strong>학습 없음</strong>, 규칙 + IK): 손목·몸통·발목 미래 목표 11 시점 + 접촉 4 비트</td><td class="ours">상체 11 + 골반 명령 (RL teacher)</td></tr>
+    <tr><td>과제·물체</td><td>Carry Box(6 단계), Push Suitcase, Stack Boxes 등. 평가 상자 각 변 0.20–0.50 m, 중심 높이 반높이–0.8 m (p.17–18)</td><td class="ours">바닥·받침대 0–0.3 m 박스 37×40.5×29 cm, 0.5–2 kg, 두 손 옆면 조이기</td></tr>
+    <tr><td>지각·증류</td><td>증류 없음. 물체 6D 자세·바운딩 박스를 직접 입력, 실기는 Noitom MoCap(100 Hz)</td><td class="ours">특권 teacher → D436 깊이 student (DAgger)</td></tr>
+    <tr><td>로봇·손</td><td>G1, 고무 손(rubber hand 링크), 손가락 없음</td><td class="ours">K1 23 DoF, 고무 공 손</td></tr>
+    <tr><td>시뮬레이터·물리</td><td>Isaac Lab(PhysX), dt 5 ms, decimation 4</td><td class="ours">Isaac Lab + Newton</td></tr>
+    <tr><td>학습 방식</td><td>MoCap HOI 추적 PPO + AMP(0.15), Transformer actor-critic</td><td class="ours">과제 보상 PPO, 참조 동작 없음</td></tr>
+    <tr><td>성공 정의</td><td>상자에 접촉 → 들거나 안정적으로 나름 → 목표 근처로 이동 (p.18)</td><td class="ours">집어 들고 서서 유지</td></tr>
+    <tr><td>실기</td><td>G1 + Noitom MoCap 시연(정량 실기 표 없음) (p.15)</td><td class="ours">아직 없음</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">1. 문제와 과제</h2>
+<ul>
+  <li>문제 (p.2): 긴 로코매니퓰레이션에는 메타 기술(나르기·밀기·차기)을 실행하는 것 외에 그것들을 닫힌 루프로 잇고 실패에서 스스로 회복하는 능력이 필요하다.</li>
+  <li>기존 표현의 딜레마: 조밀한 HOI 궤적(HDMI, OmniRetarget)은 정밀하지만 계획하기 어렵고, 암묵적 기술 임베딩(LessMimic)은 압축적이지만 해석·조합이 어렵다 (p.2, 표 1).</li>
+  <li>제안: <strong>접촉 흐름(contact flow)</strong> = 소수 몸체의 미래 목표 + 손·발 4 개 이진 접촉 신호. 계획(CF-Gen)과 실행(CF-Track)이 이 표현 하나로 연결된다 (p.4).</li>
+  <li>평가 과제 (p.7, 부록 B): 메타 기술 Carry Box, Push Suitcase(+ Slide Box, Kick Ball, Relocate Ball), 연결 Stack Boxes(상자 3 개 쌓기), Push-Stack Boxes(여행가방 밀고 그 위에 상자).</li>
+</ul>
+<h3 class="ps">Carry Box 6 단계 (부록 B.1, p.13–14)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>단계</th><th>접촉</th><th>내용</th></tr></thead>
+  <tbody>
+    <tr><td>1 Approach</td><td>없음</td><td>조작 가능한 거리까지 걸어감</td></tr>
+    <tr><td>2 Crouch and Grasp</td><td>없음 → 손 접촉</td><td>몸을 낮추고 손을 상자에 안정적으로 댐</td></tr>
+    <tr><td>3 Lift</td><td>접촉</td><td>바닥·탁자에서 운반 높이로 들어 올림</td></tr>
+    <tr><td>4 Transport</td><td>접촉</td><td>접촉·균형을 유지하며 목표로 걸어감</td></tr>
+    <tr><td>5 Crouch and Place</td><td>접촉</td><td>목표 위치에 내려놓고 지지를 넘김</td></tr>
+    <tr><td>6 Recover Standing</td><td>없음</td><td>기본 서기 자세로 복귀</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">2. 시스템 구조</h2>
+<div class="fig">
+  <p><strong>학습 (Isaac Lab, RTX 4090 × 4, 16,384 env, 약 36 시간)</strong></p>
+  <div class="flow">
+    <span class="node frozen">OmniContact MoCap 데이터 22.3 h (90 Hz, 로봇 + 물체 6D)</span><span class="arr">→</span>
+    <span class="node">G1 리타게팅 → 접촉 흐름 F<sub>t</sub> 추출</span><span class="arr">→</span>
+    <span class="node">CF-Track (Transformer actor-critic, 학습)</span><span class="arr">→</span>
+    <span class="node">29 관절 PD 목표 50 Hz</span><span class="arr">→</span>
+    <span class="node">물리 200 Hz</span>
+  </div>
+  <div class="flow" style="margin-top:8px">
+    <span class="node">보상 = 0.85 × 추적(몸통·손목·물체·손–물체·접촉 일치) + 0.15 × AMP 판별기</span>
+  </div>
+  <p style="margin-top:12px"><strong>실행 (시뮬 평가·실기)</strong></p>
+  <div class="flow">
+    <span class="node">(선택) VLM: 물체별 목표 위치·기술 선택</span><span class="arr">→</span>
+    <span class="node">CF-Gen (규칙, 학습 없음): 단계 템플릿 → 접촉 앵커 → IK 키프레임(최대 20 반복) → 보간</span><span class="arr">→</span>
+    <span class="node">미래 11 시점 질의 → 접촉 흐름</span><span class="arr">→</span>
+    <span class="node frozen">CF-Track (학습 끝, 고정)</span><span class="arr">→</span>
+    <span class="node">G1</span>
+  </div>
+  <div class="flow" style="margin-top:8px">
+    <span class="node">물체 관측(MoCap 100 Hz) vs 계획 물체 상태 편차 δ<sub>t</sub> &gt; ε</span><span class="arr">→</span>
+    <span class="node">CF-Gen 50 Hz 감시 → 현재 상태에서 재계획</span>
+  </div>
+</div>
+
+<h3 class="ps">CF-Gen 세부 (p.5–6)</h3>
+<ul>
+  <li><strong>단계 템플릿</strong>: 기술마다 손으로 만든 단계 블록(접촉 의미 포함) 순서. 긴 과제는 상위 단계 상태가 물체·기술·목표를 바꿈.</li>
+  <li><strong>키프레임</strong>: 각 단계의 끝 자세를 물체 기하로 정함. 걷기 단계는 발목 목표만, 나머지 관절은 기본 자세. 접촉 단계는 접근 방향과 접촉 앵커를 골라 발목·손목 끝 자세를 정하고 나머지는 제약 IK 로 풂.</li>
+  <li><strong>IK</strong> (식 1): 변수 = 골반 높이 z<sub>pelvis</sub>, 골반 pitch θ<sub>pitch</sub>, 모든 관절 q. <strong>허리 roll·yaw 는 몸통 안정을 위해 제외</strong>. 손실 = Σ<sub>e∈{손목, 발목}</sub> ‖FK<sub>e</sub> − x<sub>e</sub><sup>tar</sup>‖² + λ‖q − q<sub>default</sub>‖², 최대 20 반복.</li>
+  <li><strong>보간</strong>: 골반 위치·관절은 선형, 골반 회전은 SLERP, α = t / T.</li>
+  <li><strong>접촉 흐름 구성</strong>: 보간된 조밀 궤적을 미래 오프셋 T = {0, 1, 2, 3, 4, 8, 12, 16, 24, 32, 50} 프레임에서 뽑아 현재 몸통 yaw 기준으로 변환.</li>
+  <li><strong>재계획</strong>: 50 Hz 로 관측 물체 상태와 계획 물체 상태의 거리 δ<sub>t</sub> 를 보고 ε 넘으면(떨어뜨림, 접촉 실패) 즉시 현재 상태에서 다시 계획. ε 값은 논문에 없음.</li>
+</ul>
+
+<h2 class="ps">3. 관측과 행동</h2>
+<h3 class="ps">CF-Track 관측 (p.20 표 14, 코드 <a href="../reference/omnicontact/code/source/omnicontact/omnicontact/tasks/omnicontact/env_cfg.py"><code>env_cfg.py</code></a>)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>그룹</th><th>항목</th><th>차원</th><th>코드 잡음 (균일)</th></tr></thead>
+  <tbody>
+    <tr><td rowspan="7">(a) 추적 목표 = 접촉 흐름 (이력 없음)</td><td>참조 몸통 위치</td><td>11 × 3</td><td rowspan="7">–</td></tr>
+    <tr><td>참조 몸통 자세(6D)</td><td>11 × 6</td></tr>
+    <tr><td>참조 고무 손 위치</td><td>11 × (2 × 3)</td></tr>
+    <tr><td>참조 고무 손 자세</td><td>11 × (2 × 6)</td></tr>
+    <tr><td>참조 발목 roll 위치</td><td>11 × (2 × 3)</td></tr>
+    <tr><td>참조 발목 roll 자세</td><td>11 × (2 × 6)</td></tr>
+    <tr><td>참조 접촉 [왼발, 오른발, 왼손, 오른손]</td><td>11 × 4</td></tr>
+    <tr><td rowspan="6">(b) 고유감각 (이력 K = 5)</td><td>끝단 위치(손 2·발 2)</td><td>4 × 3</td><td>±0.1 m</td></tr>
+    <tr><td>몸통 각속도</td><td>3</td><td>±0.2</td></tr>
+    <tr><td>중력 방향</td><td>3</td><td>±0.05</td></tr>
+    <tr><td>관절 위치</td><td>29</td><td>±0.01</td></tr>
+    <tr><td>관절 속도</td><td>29</td><td>±0.5</td></tr>
+    <tr><td>직전 행동</td><td>29</td><td>–</td></tr>
+    <tr><td rowspan="3">(c) 물체 (이력 5)</td><td>로봇 기준 물체 위치</td><td>3</td><td>±0.05 m</td></tr>
+    <tr><td>로봇 기준 물체 자세(6D)</td><td>6</td><td>±0.1</td></tr>
+    <tr><td>로봇 기준 바운딩 박스 8 꼭짓점</td><td>8 × 3</td><td>±0.05 m</td></tr>
+    <tr><td rowspan="3">(d) critic 전용</td><td>몸통 위치 오차</td><td>3</td><td rowspan="3">없음</td></tr>
+    <tr><td>몸통 자세 오차</td><td>6</td></tr>
+    <tr><td>몸통 선속도</td><td>3</td></tr>
+  </tbody>
+</table></div>
+<p>접촉 흐름 한 시점 = 몸통 9 + 손 18 + 발목 18 + 접촉 4 = 49, × 11 시점 = 539 차원(표 14 를 합한 값). 물체 바운딩 박스 크기는 자산 이름("18-24-12" → 0.18×0.24×0.12 m)에서 읽는다(코드 <code>commands.py</code>).</p>
+
+<h3 class="ps">행동</h3>
+<ul>
+  <li>29 관절 위치 목표, 기본 자세 오프셋 사용. 배율 = 0.25 × 토크 한계 / 강성 (BeyondMimic 식) (<a href="../reference/omnicontact/code/assets/robots/omnicontact_rubberhand.py"><code>assets/robots/omnicontact_rubberhand.py</code></a>).</li>
+  <li>PD 이득 = 전기자 관성 × (2π·10 Hz)², 감쇠비 2.0. 정책 50 Hz(dt 5 ms × 4).</li>
+</ul>
+
+<h3 class="ps">AMP 판별기 관측 (p.16)</h3>
+<p>한 프레임 = 몸통 높이 1 + 관절 29 + 중력 3 + 로봇 기준 상자 위치 3 + 접촉 4 + AMP 도메인 id 1 = 41, 10 프레임 → 410. 코드 <a href="../reference/omnicontact/code/source/omnicontact/omnicontact/tasks/omnicontact/amp_env_cfg.py"><code>amp_env_cfg.py</code></a> 에는 도메인 id 항이 없다(40 × 10).</p>
+
+<h2 class="ps">4. 보상 · 종료 · 커리큘럼</h2>
+<p>r = λ<sub>track</sub>·r<sup>track</sup> + λ<sub>amp</sub>·r<sup>amp</sup> + λ<sub>reg</sub>·r<sup>reg</sup> (p.5). 추적:AMP = 0.85 : 0.15 (p.8 표 5, p.18 표 11 "Task Reward Lerp 0.85").</p>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항 (p.19 표 12)</th><th>식</th><th>가중</th><th>대상</th></tr></thead>
+  <tbody>
+    <tr><td>Torso position</td><td>exp(−‖p<sup>ref</sup> − p‖² / 0.3²)</td><td>0.2</td><td>몸통 앵커 (전역)</td></tr>
+    <tr><td>Torso orientation</td><td>exp(−d<sub>q</sub>² / 0.4²)</td><td>0.2</td><td>몸통 앵커</td></tr>
+    <tr><td>Local body position</td><td>exp(−mean ‖p<sub>rel</sub><sup>ref</sup> − p<sub>rel</sub>‖² / 0.3²)</td><td>0.2</td><td>추적 몸체 14 개</td></tr>
+    <tr><td>Local body orientation</td><td>exp(−mean d<sub>q</sub>² / 0.4²)</td><td>0.2</td><td>추적 몸체</td></tr>
+    <tr><td>Wrist position</td><td>exp(−mean ‖·‖² / 0.3²)</td><td><strong>0.4</strong></td><td>양 고무 손 (전역)</td></tr>
+    <tr><td>Wrist orientation</td><td>exp(−mean d<sub>q</sub>² / 0.4²)</td><td><strong>0.4</strong></td><td>양 고무 손</td></tr>
+    <tr><td>Object position</td><td>exp(−‖p<sub>o</sub><sup>ref</sup> − p<sub>o</sub>‖² / 0.3²)</td><td><strong>1.0</strong></td><td>운반 물체</td></tr>
+    <tr><td>Object orientation</td><td>exp(−d<sub>q</sub>² / 0.3²)</td><td><strong>1.0</strong></td><td>운반 물체</td></tr>
+    <tr><td>Interaction position</td><td>mean<sub>h</sub> exp(−‖Δp<sub>h,o</sub> − Δp<sub>h,o</sub><sup>ref</sup>‖² / σ²)</td><td>0.4</td><td>손–물체 상대 위치 (코드 σ 0.3)</td></tr>
+    <tr><td>Interaction orientation</td><td>mean<sub>h</sub> exp(−(Δd − Δd<sup>ref</sup>)² / σ²)</td><td>0.4</td><td>손–물체 상대 자세</td></tr>
+    <tr><td>Contact matching</td><td>exp(−MSE(c, c<sup>ref</sup>) / 1.0²)</td><td><strong>1.0</strong></td><td>손·발 접촉 4 비트. 코드: 손목 yaw 링크–물체 힘 &gt; 5 N 이면 손 접촉</td></tr>
+    <tr><td>Action rate</td><td>‖a<sub>t</sub> − a<sub>t−1</sub>‖²</td><td>−0.1</td><td></td></tr>
+    <tr><td>Elbow/wrist torque</td><td>Σ τ²</td><td>−5e−3</td><td>팔꿈치·손목</td></tr>
+    <tr><td>Joint limit</td><td>Σ 한계 초과량</td><td>−10.0</td><td>소프트 한계</td></tr>
+    <tr><td>Foot slip</td><td>Σ<sub>접촉 발</sub> ‖v<sub>xy</sub>‖</td><td>−0.1</td><td>접촉 중인 발목</td></tr>
+  </tbody>
+</table></div>
+<p>AMP 보상(코드): 0.5 × max(0, 1 − 0.25·(D − 1)²) (최소제곱 GAN 꼴) (<a href="../reference/omnicontact/code/rsl_rl/rsl_rl/modules/amp.py"><code>rsl_rl/rsl_rl/modules/amp.py</code></a>).</p>
+
+<h3 class="ps">종료 (코드; 논문에 없음)</h3>
+<ul>
+  <li>시간 10 s (에피소드).</li>
+  <li>몸통 높이(z) 참조 오차 &gt; 0.5 m.</li>
+  <li>양손·양발목·머리(mid360) 중 하나의 높이(z) 오차 &gt; 0.5 m.</li>
+  <li>물체 높이(z) 참조 오차 &gt; 0.5 m.</li>
+</ul>
+<p style="font-size:13px;color:var(--muted)">출처: <a href="../reference/omnicontact/code/source/omnicontact/omnicontact/tasks/omnicontact/mdp/terminations.py"><code>mdp/terminations.py</code></a></p>
+
+<h3 class="ps">초기화 · 표본 추출</h3>
+<ul>
+  <li>MoCap 클립의 임의 시점에서 시작(RSI). 로봇 자세 ±0.05 m(z ±0.01)·roll·pitch ±0.1·yaw ±0.2 rad, 물체도 같은 범위, 관절 ±0.1 rad, 속도 ±0.5 m/s·±0.52–0.78 rad/s.</li>
+  <li>표본 방식 <code>uniform_bin</code>(클립을 구간으로 나눠 균등). 실패가 많은 구간을 더 뽑는 <code>adaptive_bin</code>(커널 3, λ 0.8, 균등 비율 0.1)도 구현돼 있다.</li>
+  <li>커리큘럼 없음.</li>
+</ul>
+
+<h2 class="ps">5. 학습 설정 (알고리즘 · 망 · 무작위화)</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>논문 (p.15, p.18 표 11)</th><th>코드</th></tr></thead>
+  <tbody>
+    <tr><td>하드웨어 · 시간</td><td>RTX 4090 × 4, GPU 당 4096 env(16,384), 약 36 시간</td><td>–</td></tr>
+    <tr><td>iteration</td><td>최대 50,000</td><td>AMP 50,000 / PPO 단독 10,000</td></tr>
+    <tr><td>rollout · 배치</td><td>24 스텝, 배치 98,304, mini-batch 24,576 (4 개)</td><td>24, mini-batch 4</td></tr>
+    <tr><td>PPO</td><td>γ 0.99, λ 0.95, clip 0.2, 가치 손실 1.0(clipped), entropy 0.005, epoch 5, grad norm 1.0, lr 1e−3 적응(KL 0.01), 초기 std 1.0, 관측 정규화</td><td>같음</td></tr>
+    <tr><td>actor-critic</td><td>Transformer, hidden [512, 256, 128], 층 3, head 8, dropout 0, ELU</td><td>Transformer embed 256, head 8, 층 3, FF 512, SiLU (MLP 판은 [512, 256, 128] ELU)</td></tr>
+    <tr><td>AMP</td><td>판별기 [256, 256], Adam lr 1e−3, 리플레이 100,000, 보상 계수 0.5, 손실 계수 1.0, GP 계수 1.0·λ 1.0, 관측 정규화, 이력 10</td><td>같음. 단 추적 가중 <strong>0.9</strong>(논문 0.85)</td></tr>
+  </tbody>
+</table></div>
+
+<h3 class="ps">도메인 무작위화 (p.20 표 13)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>분류</th><th>항목</th><th>범위</th></tr></thead>
+  <tbody>
+    <tr><td rowspan="2">외란</td><td>밀기 간격</td><td>1–3 s</td></tr>
+    <tr><td>밀기 속도</td><td>vx·vy U[−0.5, 0.5] m/s, vz U[−0.2, 0.2] m/s (코드는 roll·pitch ±0.52, yaw ±0.78 rad/s 도)</td></tr>
+    <tr><td rowspan="6">로봇</td><td>torso COM</td><td>x ±0.025 m, y·z ±0.05 m</td></tr>
+    <tr><td>엔코더 바이어스</td><td>U[−0.01, 0.01] (코드: 기본 관절 위치 ±0.01 rad, 몸통 rpy 관측 바이어스 roll·pitch ±5°, yaw ±8°)</td></tr>
+    <tr><td>기본 관절 오프셋</td><td>±0.01 rad</td></tr>
+    <tr><td>관절 강성·감쇠</td><td>로그 균일 ×0.75–1.5</td></tr>
+    <tr><td>몸체 마찰</td><td>정 0.3–1.6, 동 0.3–1.2</td></tr>
+    <tr><td>몸체 반발</td><td>0–0.5</td></tr>
+    <tr><td rowspan="6">물체</td><td>밀기 물체 마찰</td><td>정 0.2–0.4, 동 0.1–0.3</td></tr>
+    <tr><td>차기 공</td><td>정 0.06–0.12, 동 0.04–0.08</td></tr>
+    <tr><td>옮기기 공</td><td>정 0.5–0.8, 동 0.4–0.7</td></tr>
+    <tr><td>기본 물체(상자)</td><td>정 0.5–0.8, 동 0.3–0.6</td></tr>
+    <tr><td>반발</td><td>0</td></tr>
+    <tr><td>질량</td><td>기본 질량 × U[0.5, 1.5], 관성 재계산</td></tr>
+  </tbody>
+</table></div>
+
+<h3 class="ps">데이터 (부록 A, p.12–13 표 6)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>OmniContact</th><th>OMOMO</th></tr></thead>
+  <tbody>
+    <tr><td>유효 시퀀스 / 총 길이</td><td>1,274 / 22.29 h</td><td>6,435 / 약 10 h</td></tr>
+    <tr><td>동기화</td><td>90 Hz 사람 BVH + 물체 6-DoF</td><td>30 Hz</td></tr>
+    <tr><td>평균 길이 / 물체 이동</td><td>62.98 s / 19.76 m</td><td>5.69 s / 2.67 m</td></tr>
+    <tr><td>기술</td><td>carry, push, relocate, slide, kick</td><td>물체 조작</td></tr>
+    <tr><td>물체 범주</td><td>4</td><td>15</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">6. teacher → student / 증류</h2>
+<p>해당 없음 — 증류 단계가 없다. CF-Track actor 가 물체 6D 자세·바운딩 박스를 직접 받고(실기는 MoCap), critic 만 몸통 오차·선속도를 더 본다. 코드 rsl_rl 포크에 <code>distillation.py</code>·<code>student_teacher.py</code> 가 있지만 등록된 과제는 PPO·AMP 뿐이다.</p>
+
+<h2 class="ps">7. 결과</h2>
+<h3 class="ps">시뮬 비교 (p.7 표 2, 시드 5 × 200 쌍)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>방법</th><th>Carry Box 성공 %</th><th>E<sub>obj</sub><sup>T</sup> (m)</th><th>N<sub>hoi</sub></th><th>Push Suitcase %</th><th>Stack 단계 1/2/3 %</th><th>Push-Stack 1/2 %</th></tr></thead>
+  <tbody>
+    <tr><td>SONIC</td><td>3.38 ± 1.5</td><td>5.21</td><td>1.25</td><td>0.00</td><td>0 / 0 / 0</td><td>0 / 0</td></tr>
+    <tr><td>HDMI</td><td>0.00</td><td>5.35</td><td>0.00</td><td>0.00</td><td>0 / 0 / 0</td><td>0 / 0</td></tr>
+    <tr><td>PhysHSI</td><td>87.00 ± 2.4</td><td>0.58</td><td>6.62</td><td>–</td><td>82.0 / 56.5 / 0.0</td><td>–</td></tr>
+    <tr><td>LessMimic</td><td>34.00 ± 3.4 (xy 만)</td><td>2.60</td><td>3.24</td><td>12.50</td><td>21.0 / 3.5 / 0.0</td><td>9.0 / 0.0</td></tr>
+    <tr><td><strong>OmniContact</strong></td><td><strong>98.70 ± 0.6</strong></td><td>0.07</td><td>7.75</td><td>82.50</td><td>89.0 / 87.0 / 56.5</td><td>91.5 / 76.5</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>저자 설명 (p.7): SONIC 은 걷기는 잘 따라가지만 숙이기·쪼그리기에서 크게 불안정해 들지 못함. HDMI 는 단일 궤적 정책이 학습 상태에 과적합해 무작위 시험 상태에서 즉시 실패. LessMimic 은 높이 내려놓기가 없어 xy 평면만 평가, 밀기는 물체를 손에 든 상태에서 시작.</li>
+  <li>N<sub>hoi</sub> = Gemini-3.1-Pro 가 영상을 보고 매긴 0–10 자연스러움 점수 (p.18).</li>
+  <li>공정성 부분 집합(MoCap 초기·경유·목표 고정, p.21 표 15): Carry Box SONIC 1.66, HDMI 0.00, PhysHSI 83.91, LessMimic 38.00, OmniContact 99.08 %.</li>
+</ul>
+
+<h3 class="ps">재계획 (p.8 표 3) · 외란 (p.15 표 8)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>과제</th><th>열린 루프 %</th><th>재계획 %</th><th>평균 재계획 횟수</th></tr></thead>
+  <tbody>
+    <tr><td>Carry Box</td><td>98.7</td><td>99.7</td><td>0.01</td></tr>
+    <tr><td>Push Suitcase</td><td>82.5</td><td>94.5</td><td>0.77</td></tr>
+    <tr><td>Stack Boxes</td><td>56.6</td><td>80.5</td><td>0.96</td></tr>
+    <tr><td>Push-Stack Boxes</td><td>76.5</td><td>84.5</td><td>0.84</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>외란: 나르는 중 상자를 강제로 바닥에 떨어뜨림 → 최종 92.5 %(재계획 1.64 회, 오차 0.107 m). 계획 직후 물체 위치 ±10 cm·회전 ±90° 이동 → Carry Box 97.5 %, Push Suitcase 89.5 %.</li>
+  <li>장시간(표 10): 한 물체 연속 목표 40 분 생존 100 %(1,063 회 기술), 물체·목표 재표본 40 분 29.5 %, 물체 5 개 순차 40 분 10.0 %.</li>
+</ul>
+
+<h3 class="ps">절제 (p.8 표 4, 5)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>추적 목표 (T 몸통, EE 끝단, C 접촉, O 물체, Dof 관절, FB 전신)</th><th>CF-Gen 성공 %</th><th>CF-Gen E<sub>obj</sub></th></tr></thead>
+  <tbody>
+    <tr><td>몸통만</td><td>0.50</td><td>1.83</td></tr>
+    <tr><td>[T, EE]</td><td>11.50</td><td>1.53</td></tr>
+    <tr><td>[T, EE, O]</td><td>6.50</td><td>1.29</td></tr>
+    <tr><td>[T, EE, C, O]</td><td>22.50</td><td>0.72</td></tr>
+    <tr><td>[T, EE, C, O, Dof]</td><td>0.00</td><td>1.92</td></tr>
+    <tr><td>[T, FB, C, O, Dof]</td><td>0.50</td><td>1.89</td></tr>
+    <tr><td><strong>[T, EE, C] (최종)</strong></td><td><strong>98.70</strong></td><td>0.15</td></tr>
+  </tbody>
+</table></div>
+<p>학습·시험셋(MoCap 참조)에서는 모든 조합의 오차가 비슷하지만, 규칙으로 만든 CF-Gen 목표를 따라갈 때는 관절·전신·물체 목표를 넣을수록 실패한다(과제약). 접촉 비트 C 를 넣는 것이 [T, EE] 11.5 % → 98.7 % 의 차이.</p>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>CF-Gen 구성 (Carry Box)</th><th>접촉 면 선택 없음</th><th>몸통 적응 없음</th><th>손목 적응 없음</th><th>재계획 없음</th><th>전체</th></tr></thead>
+  <tbody>
+    <tr><td>E<sub>obj</sub> / 성공 %</td><td>0.14 / 84.3</td><td>0.70 / <strong>77.0</strong></td><td>0.14 / 96.9</td><td>0.07 / 98.70</td><td>0.05 / 99.70</td></tr>
+  </tbody>
+</table></div>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>추적–AMP 가중</th><th>0.3–0.7</th><th>0.5–0.5</th><th>0.7–0.3</th><th>1.0–0.0</th><th>0.85–0.15 (최종)</th></tr></thead>
+  <tbody>
+    <tr><td>성공 %</td><td>1.60</td><td>0.10</td><td>53.70</td><td>88.90</td><td><strong>98.70</strong></td></tr>
+    <tr><td>안정 %</td><td>73.60</td><td>82.70</td><td>71.60</td><td>46.30</td><td>58.80</td></tr>
+    <tr><td>E<sub>torso</sub></td><td>1.32</td><td>1.40</td><td>0.34</td><td>0.08</td><td>0.12</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>데이터 규모 (그림 4): 2.2 h(10 %) → 22.3 h(100 %) 로 늘리면 성공률·물체 오차 모두 좋아짐.</li>
+  <li>걷기만 (p.15 표 7, 83 개 동작): OmniContact 성공 100 %, 최종 몸통 오차 0.199 m. SONIC 100 %·0.248, PhysHSI 81.9 %, LessMimic 96.4 %, HDMI 0 %.</li>
+  <li>추가 기술 (p.16 표 9): Relocate Ball 72.5 → 89.0 %(재계획), Slide Box 81.5 → 92.4 %, Kick Ball 76.5 %.</li>
+</ul>
+
+<h2 class="ps">8. 실기 · sim2real</h2>
+<ul>
+  <li>배치 전 MuJoCo sim2sim 으로 확인 (p.15). 실기: Unitree G1, Noitom MoCap 추적기를 골반과 물체에 붙여 전역 자세를 받음. 정책 50 Hz, MoCap 100 Hz (p.15).</li>
+  <li>실기 성공률 표는 없다. 그림 1 의 시연: 초기 높이 20 cm, 상자 20×20×15 – 55×40×30 cm, 여러 잡기 자세, VLM 연동(하트 모양 배치, 원통을 상자에) (p.1).</li>
+  <li>VLM 관련 실패(그림 9): 색이 다른 목표에 상자를 놓음, 바구니를 먼저 원통 쪽으로 옮기지 않고 밀어 원통을 넘어뜨림, 지나친 회전으로 넘어짐(하위 실행 실패).</li>
+</ul>
+
+<h2 class="ps">9. 코드에서 확인한 것</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>파일</th><th>내용</th></tr></thead>
+  <tbody>
+    <tr><td><a href="../reference/omnicontact/code/source/omnicontact/omnicontact/tasks/omnicontact/env_cfg.py"><code>source/omnicontact/omnicontact/tasks/omnicontact/env_cfg.py</code></a></td><td>장면(상자 + 받침 2 개, 손목·발목–물체 접촉 센서), 관측 그룹, DR, 보상 가중, 종료, dt 0.005·decimation 4·에피소드 10 s</td></tr>
+    <tr><td><a href="../reference/omnicontact/code/source/omnicontact/omnicontact/tasks/omnicontact/amp_env_cfg.py"><code>amp_env_cfg.py</code></a></td><td>AMP 관측 그룹(이력 10)</td></tr>
+    <tr><td><a href="../reference/omnicontact/code/source/omnicontact/omnicontact/tasks/omnicontact/agents/amp_rsl_rl_cfg.py"><code>agents/amp_rsl_rl_cfg.py</code></a>, <a href="../reference/omnicontact/code/source/omnicontact/omnicontact/tasks/omnicontact/agents/rsl_rl_ppo_cfg.py"><code>rsl_rl_ppo_cfg.py</code></a></td><td>PPO·AMP·Transformer 하이퍼파라미터</td></tr>
+    <tr><td><a href="../reference/omnicontact/code/source/omnicontact/omnicontact/tasks/omnicontact/mdp/commands.py"><code>mdp/commands.py</code></a></td><td>MoCap 로더, 미래 프레임 (0, 1, 2, 3, 4, 8, 12, 16, 24, 32, 50), 구간 표본, 접촉 정보</td></tr>
+    <tr><td><a href="../reference/omnicontact/code/source/omnicontact/omnicontact/tasks/omnicontact/mdp/rewards.py"><code>mdp/rewards.py</code></a></td><td>추적·상호작용·접촉 일치 보상</td></tr>
+    <tr><td><a href="../reference/omnicontact/code/rsl_rl/rsl_rl/algorithms/amp_ppo.py"><code>rsl_rl/rsl_rl/algorithms/amp_ppo.py</code></a></td><td>보상 혼합 = w·과제 + (1 − w)·스타일</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>이 저장소는 <strong>CF-Track 학습만</strong> 담는다. CF-Gen(IK·템플릿·재계획)과 sim2sim 은 별도 저장소 OmniContact_sim2sim (README).</li>
+  <li>MoCap 데이터·G1 USD·가중치는 Google Drive·Hugging Face 에서 따로 받아야 하며 로컬 사본에는 <strong>없다</strong>(가중치 파일 0 개).</li>
+  <li>논문과 다른 곳: 추적:AMP 0.9 : 0.1(논문 0.85 : 0.15), AMP 관측에 도메인 id 없음(41 → 40), Transformer 활성화 SiLU(논문 ELU), 표 13 의 "엔코더 바이어스"는 코드에서 기본 관절 오프셋 + 몸통 rpy 관측 바이어스(±5°, ±5°, ±8°)로 구현.</li>
+</ul>
+
+<h2 class="ps">10. 한계</h2>
+<ul>
+  <li>저자 (p.9): 손가락 없는 손이라 정밀 조작 한계, 규칙 기반 CF-Gen 은 매우 동적인 상황에 약함 → 학습형 앵커 생성이 다음 과제.</li>
+  <li>물체 자세를 MoCap 으로 받음. 시각 입력·증류 없음.</li>
+  <li>CF-Track 은 22 시간 MoCap 에 의존. 데이터를 줄이면 성능이 떨어짐(그림 4).</li>
+  <li>실기 정량 결과가 없다. 성공 정의 "목표 근처"의 거리 임계도 논문에 없음.</li>
+  <li>공의 낮은 마찰 때문에 공 과제 성공률이 낮고 차기는 재계획 불가 (p.14).</li>
+</ul>
+
+<h2 class="ps">11. 우리에게 가져올 것</h2>
+<div class="take"><ol>
+  <li><strong>가져올 것 — 단계 구조와 명목 자세를 IK 로</strong>: Carry Box 의 접근 → 쪼그려 잡기 → 들기 → (운반) → 서기를 우리 1 단계(집기·서기·유지)에 그대로 대응시키고, 각 단계 끝 자세를 상자 기하에서 IK 로 구한다. IK 변수를 <strong>골반 높이·골반 pitch·팔 관절</strong>로 두고 허리 roll·yaw 는 빼는 것은 우리 행동 공간(골반 높이 0.335–0.77 m, pitch ±45° + 상체 11)과 거의 같다. 이 IK 해를 상위 정책의 "명목 명령"으로 두고 정책은 그 위 델타만 내면 탐색 공간이 줄어든다.</li>
+  <li><strong>근거 — 허리 회전은 빼라</strong>: OmniContact 는 몸통 안정을 위해 IK 에서 허리 roll·yaw 를 제외했다. dev10 v2 에서 추종기가 허리 출력을 못 따라간 문제와 같은 방향의 판단이므로, 우리 허리 yaw 는 고정하거나 작은 범위로 묶는다.</li>
+  <li><strong>근거 — 몸통(골반) 자세를 상자에 맞춰야 한다</strong>: CF-Gen 에서 몸통 적응을 빼면 Carry Box 99.7 → 77.0 %(표 5), 가장 큰 하락. 골반 높이·pitch 를 상자 높이(받침 0/0.1/0.2/0.3 m)와 앞 거리(0.04–0.30 m)에 따라 정하는 것이 손 목표보다 중요하다는 근거.</li>
+  <li><strong>가져올 것 — 손 접촉 이진 신호</strong>: 추적 목표에 손·발 접촉 비트를 넣자 11.5 → 98.7 %. 우리 teacher 에는 단계 상태기(접근/잡기/들기/유지)가 원하는 접촉 비트를 관측으로 주고, 보상은 exp(−MSE(실제 접촉, 원하는 접촉)) 꼴(손 접촉 = 손–상자 힘 &gt; 5 N)로 줄 수 있다. 실제 접촉 비트는 student 가 못 보므로 critic 전용.</li>
+  <li><strong>참고 — 과제약 금지</strong>: 관절·전신 목표까지 주면 규칙 생성 목표를 못 따라감(0–0.5 %). 상위가 하위에 줄 명령은 적을수록 좋다는 근거로, 우리도 상체 11 관절을 모두 정밀하게 지정하기보다 손 위치(옆면) 중심으로 보상하고 관절은 명목 + 작은 델타로 둔다.</li>
+  <li><strong>참고 — 재계획 감시</strong>: 물체 관측과 계획의 편차가 ε 을 넘으면 50 Hz 로 재계획. 나중 운반 단계에서 상자 낙하 시 "다시 접근" 상태로 돌아가는 상태기 규칙으로 쓸 수 있다(낙하 외란에서 92.5 % 회복).</li>
+  <li><strong>참고 — DR 값</strong>: 몸통 rpy 관측 바이어스 ±5°/±5°/±8°, 1–3 s 마다 ±0.5 m/s 밀기, 관절 강성·감쇠 로그 균일 ×0.75–1.5, 상자 마찰 정 0.5–0.8·동 0.3–0.6, 질량 ×0.5–1.5. 우리 상자 마찰 무작위 범위를 정할 때 하한(동 0.3)이 낮으면 손당 필요 조임이 커진다는 점을 함께 계산한다.</li>
+  <li><strong>가져오지 말 것 — MoCap 추적기 학습</strong>: CF-Track 은 22 시간 MoCap 으로 전신을 학습하는 하위 정책이다. 우리는 dev12 하체를 고정하므로 이 부분은 대응하지 않는다. AMP 를 추적 0.85 : 스타일 0.15 로 섞는 비율만 참고(스타일이 0.5 이상이면 성공 0 %).</li>
+  <li><strong>가져오지 말 것 — 규칙만으로 상위를 대체</strong>: CF-Gen 이 잘 된 것은 CF-Track 이 사람 운반 동작을 이미 알고 있어서다. 우리 하위(dev12)는 다리만 알고 손 조작 사전이 없으므로, 규칙 + IK 는 명목 자세로만 쓰고 접촉·조임은 RL teacher 가 배워야 한다.</li>
+  <li><strong>비교 수치 해석 주의</strong>: 표 2 의 SONIC 3.38 %, HDMI 0 % 는 저자 측정이며 조밀 참조를 규칙으로 합성해 준 조건이다. 우리 dev10 v2(동결 SONIC + teacher)가 teacher 90 % 를 냈던 것과 직접 비교할 수 없다. 우리 상자(37×40.5×29 cm)는 평가 범위(각 변 0.20–0.50 m) 안이다.</li>
+  <li><strong>라이선스</strong>: LICENSE 없음. 아이디어·수치만 참고.</li>
+</ol></div>
+
+<p class="src">출처 표기: (p.N), (표 N), (그림 N), (식 N), 코드는 파일 경로. 논문에 없는 값은 "논문에 없음".</p>
+</main>
+</body>
+</html>

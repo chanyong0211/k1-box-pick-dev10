@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lin et al. 레시피 — 논문 상세</title>
+<link rel="stylesheet" href="paper.css">
+</head>
+<body>
+<main class="wrap">
+<a class="back" href="../index.html#catalog">← 자료 목록으로</a>
+
+<header class="ph">
+  <h1>Lin et al. 레시피: 다지 손 휴머노이드의 시각 기반 sim2real RL — 자동 실-시뮬 맞춤 · 접촉 표식 보상 · 분할 정복 증류 · 위치 + 깊이 혼합 표현</h1>
+  <p class="orig">Sim-to-Real Reinforcement Learning for Vision-Based Dexterous Manipulation on Humanoids</p>
+  <p class="meta">Toru Lin, Kartik Sachdev, Linxi “Jim” Fan, Jitendra Malik, Yuke Zhu · UC Berkeley, NVIDIA, UT Austin · CoRL 2025 · Fourier GR-1 상체(팔 7 DoF × 2 + Fourier 손 / Inspire 손) · Isaac Gym</p>
+  <div class="chips">
+    <a class="chip loc" href="../reference/dexhumanoid_recipe/paper.pdf">로컬 PDF</a>
+    <a class="chip" href="https://arxiv.org/abs/2502.20396" target="_blank" rel="noopener">arXiv 2502.20396</a>
+    <a class="chip" href="https://toruowo.github.io/recipe" target="_blank" rel="noopener">프로젝트 페이지</a>
+    <span class="simv s3">유사도 2–3</span>
+    <span class="badge">코드 미공개</span>
+  </div>
+</header>
+
+<div class="callout blue tldr">GR-1 양팔·다지 손으로 집어 옮기기·두 손 상자 들기·건네기를 물체별 PPO 전문가(actor 는 물체 위치 + 관절만)로 학습하고, 성공 궤적만 걸러 diffusion policy 로 증류. student 에 3D 물체 위치 + 분할 깊이를 함께 주면 상자 들기 실기 10/10, 깊이만이면 0/10 (p.8, 표 3). 최종 상자 들기 80 %, 집어 옮기기 62.3 %, 건네기 52.5 % (p.8).</div>
+
+<h2 class="ps">우리와 무엇이 같고 다른가</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>이 논문</th><th>우리 (dev10 pelvis_pick)</th></tr></thead>
+  <tbody>
+    <tr><td>하위 제어기</td><td>없음. 팔·손 관절 목표를 PD 로 직접. 다리·보행 제어는 논문에 없고 시뮬 그림은 상체만 (p.1, 그림 1)</td><td>dev12 하체 RL, 골반 vx·vy·ωz·높이·pitch·roll 추종, 상체 11 외부 PD</td></tr>
+    <tr><td>상위 출력</td><td>전문가: 관절 각 (팔 7 × 2 + 손 6 × 2). student(diffusion): 팔 7 DoF 절대 관절 목표 × 2 (정규화) + 손 6 DoF 0–1 정규화 목표 × 2 (p.14–15)</td><td>상체 11 + 골반 명령</td></tr>
+    <tr><td>과제·물체</td><td>탁상에서 한 손으로 못 잡는 상자를 두 손으로 들기 (상자 크기·색·질량·초기 위치·yaw 무작위). 시뮬 물체 질량 0.03–0.1 kg (p.6, 표 4)</td><td>바닥·받침대 0–0.3 m 박스 37×40.5×29 cm, <b>0.5–2 kg</b>, 쪼그림·숙임, 두 손바닥으로 옆면 조이기</td></tr>
+    <tr><td>손</td><td>다지 손: Fourier(구동 6 + 비구동 5) / Inspire(구동 6 + 비구동 6). 보상은 손가락 끝 4 점 기준 (p.4–5)</td><td>손가락 없는 고무 공 손, 손바닥 패드로 조이기</td></tr>
+    <tr><td>지각·증류</td><td>teacher(전문가) actor = 물체 위치 + 관절; critic = 속도·손끝·물체 방향·속도·DR 척도. student = 관절 + 3D 물체 위치(3 인칭 D435 + SAM2) + 머리 D435 분할 깊이, 성공 궤적 BC (DAgger 아님) (p.14–15)</td><td>특권 RL teacher → 머리 D436 깊이 26×64 × 6 장 + 고유감각, DAgger. 3 인칭 카메라 없음</td></tr>
+    <tr><td>제어 주기</td><td>정책 약 5 Hz (지각 파이프라인을 "정책 제어 주기에 맞춰" 5 Hz) (p.6)</td><td>하위 50 Hz, 상위 주기는 설계 중</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">1. 문제와 과제</h2>
+<p>다지 손 휴머노이드의 시각 기반 조작을 sim2real RL 로 풀 때 네 난점을 짚고 각각 처방한다 (p.2).</p>
+<div class="tbl-wrap"><table>
+  <thead><tr><th></th><th>난점</th><th>처방</th></tr></thead>
+  <tbody>
+    <tr><td>A</td><td>값싸고 잡음 많은 모터의 sim2real</td><td>자동 실-시뮬 맞춤(autotune), 실기 데이터 4 분 미만</td></tr>
+    <tr><td>B</td><td>양손 협응 보상 설계</td><td>"접촉 목표 + 물체 목표", 접촉 표식(contact sticker)</td></tr>
+    <tr><td>C</td><td>탐색</td><td>사람이 시뮬에서 "놀아 본" 손 자세로 초기 상태, 물체별 전문가 → 증류(분할 정복)</td></tr>
+    <tr><td>D</td><td>물체 지각</td><td>성긴 3D 위치 + 밀집 분할 깊이를 함께, 모달리티별 무작위화</td></tr>
+  </tbody>
+</table></div>
+<h3 class="ps">과제 (p.6, §4.2)</h3>
+<ul>
+  <li><b>Grasp-and-reach</b>: 한 손으로 탁상 물체를 집어 목표 위치로. 시작 때 스크립트가 물체에 가까운 손을 고름. 물체 모양·질량·부피·마찰·색·무늬 다양.</li>
+  <li><b>Box lift</b>: 한 손으로 못 잡을 만큼 큰 상자를 두 손으로 들기. 상자 크기·색·질량·초기 자세(위치, yaw) 무작위. 구체 크기·질량 값은 논문에 없음.</li>
+  <li><b>Bimanual handover</b>: 한 손으로 집어 반대 손에 건넴(반대 손은 물체에 직접 닿지 못함).</li>
+</ul>
+
+<h2 class="ps">2. 시스템 구조</h2>
+<div class="fig">
+  <p><b>학습 파이프라인</b></p>
+  <div class="flow">
+    <span class="node">실기 보정 궤적 (4 분 미만)</span><span class="arr">→</span>
+    <span class="node">autotune: 시뮬 파라미터 묶음 K 개 병렬 재생 → 추종 MSE 최소 선택</span><span class="arr">→</span>
+    <span class="node">물체(군)별 전문가 PPO<br>초기 상태 = 사람 놀이 손 자세</span><span class="arr">→</span>
+    <span class="node">성공 궤적만 저장 (100 env × 5,000 스텝)</span><span class="arr">→</span>
+    <span class="node">generalist diffusion policy (BC)</span>
+  </div>
+  <p><b>배포 (실기)</b></p>
+  <div class="flow">
+    <span class="node">3 인칭 D435 (삼각대)</span><span class="arr">→</span>
+    <span class="node">SAM2: 첫 프레임 마스크 → 추적 → 마스크 중심 + 깊이 = 3D 물체 질량 중심, 5 Hz</span>
+  </div>
+  <div class="flow">
+    <span class="node">머리 D435 깊이 → 물체 분할 깊이 → ResNet-18 (GroupNorm)</span><span class="arr">+</span>
+    <span class="node">관절 + 3D 위치 → MLP (512, 512, 512) ELU → 64</span><span class="arr">→</span>
+    <span class="node">diffusion (100 단계) → 팔 7 × 2 + 손 6 × 2 관절 목표</span><span class="arr">→</span>
+    <span class="node">관절 PD</span>
+  </div>
+  <p>학습이 끝난 전문가·autotune 값은 다음 단계에서 고정. 하위 보행 제어기는 없다.</p>
+</div>
+
+<h2 class="ps">3. 관측과 행동</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th></th><th>전문가 actor</th><th>전문가 critic (비대칭)</th><th>generalist (student)</th></tr></thead>
+  <tbody>
+    <tr><td>물체</td><td>물체 위치 (3D)</td><td>+ 물체 방향, 선속도, 각속도</td><td>3D 물체 위치 (3 인칭 카메라 추정) + 머리 카메라 분할 깊이</td></tr>
+    <tr><td>로봇</td><td>관절 위치</td><td>+ 팔·손 관절 속도, 모든 손가락 끝 위치</td><td>관절 상태</td></tr>
+    <tr><td>DR 척도</td><td>–</td><td>물체 질량·마찰·모양 무작위화 배율</td><td>–</td></tr>
+    <tr><td>행동</td><td colspan="2">로봇 관절 각 (팔 7 × 2, 손 구동 6 × 2)</td><td>정규화된 팔 절대 관절 목표 7 × 2 + 손 0–1 목표 6 × 2</td></tr>
+  </tbody>
+</table></div>
+<p class="src">(p.14, §6.3; p.15, §6.4)</p>
+<ul>
+  <li>actor 에 접촉력·질량은 <b>처음부터 없다</b>. 질량은 critic 의 "무작위화 배율"로만 들어가고, 접촉력은 어느 쪽에도 없음.</li>
+  <li>깊이 해상도, 프레임 쌓기, 행동 범위·정규화 세부는 논문에 없음.</li>
+  <li>비구동 관절은 q<sub>u</sub> = k · q<sub>a</sub> + b 선형 결합으로 근사하고 k, b 도 autotune 대상 (p.14, §6.1).</li>
+</ul>
+
+<h2 class="ps">4. 보상 · 종료 · 커리큘럼</h2>
+<h3 class="ps">보상 = 접촉 목표 + 물체 목표 (p.4, §3.2; p.14, §6.2)</h3>
+<pre>잡기·들기:   r(s_h, s_o) = r_contact(s_h, s_o) + r_goal(s_o)                                   (부록 식 1)
+
+r_contact = Σ_i [ 1 / (1 + α · d(X^L, F^L_i))  +  1 / (1 + β · d(X^R, F^R_i)) ]
+  X^L ∈ R^(n×3), X^R ∈ R^(m×3) : 왼·오른손용 접촉 표식 위치 (물체 표면 점)
+  F^L, F^R ∈ R^(4×3)           : 왼·오른손 손가락 끝 4 개 위치
+  d(A, x) = min_i ‖A_i − x‖₂    : 가장 가까운 표식까지 거리
+  α, β : 척도 하이퍼파라미터 (값 논문에 없음)
+
+r_goal : 물체 상태(예: xyz 위치)의 목표 상태 편차에 대한 벌점 (식·가중치 논문에 없음)
+
+건네기:     r = (1 − a) · (r_contact(s_hA, s_oA) + r_goal(s_oA)) + a · (r_contact(s_hB, s_oB) + r_goal(s_oB)),  a ∈ {0, 1}
+           단계를 마칠 때마다 보너스, 뒤 단계일수록 큼 (값 논문에 없음)                      (부록 식 2)</pre>
+<ul>
+  <li><b>접촉 표식</b>: 시뮬 물체 표면에 "원하는 접촉 위치" 점들을 붙이는 것. 상자는 상자 치수에서 옆면·모서리를 따라 절차적으로 생성 (p.7, §4.4).</li>
+  <li><b>표식 위치가 행동을 바꾼다</b> (p.7, 그림 5): ① 좌·우 옆면 중심 → 두 손이 옆면을 양쪽에서 끼워 듦, ② 위·아래면 중심 → 위아래로 잡음, ③ 아래 모서리 → 밑을 받쳐 듦. 같은 과제에서 표식만 바꿔 접촉 양상을 고를 수 있다는 정성 결과.</li>
+  <li>r_contact 는 손별 항의 <b>합</b>이다 — 한 손만 표식에 가도 보상의 절반 가까이를 받는 꼴. 한 손 밀기 같은 국소해를 어떻게 막는지는 논문에 없음.</li>
+</ul>
+<h3 class="ps">종료 · 커리큘럼</h3>
+<ul>
+  <li>종료 조건, 에피소드 길이: 논문에 없음.</li>
+  <li><b>사람 놀이 초기화</b> (p.5, §3.3): 시뮬 원격조종으로 과제를 염두에 두고 대충 "놀아" 기록한 상태(물체 자세 + 로봇 관절)를 에피소드 초기 상태로 무작위 추출. 시연 궤적이 아니라 상태만, 과제당 30 초 미만.</li>
+  <li>그 밖의 난이도 커리큘럼은 논문에 없음.</li>
+</ul>
+
+<h2 class="ps">5. 학습 설정 (알고리즘 · 망 · 무작위화)</h2>
+<h3 class="ps">전문가 RL (p.14, §6.3)</h3>
+<ul>
+  <li>PPO + 비대칭 actor-critic. actor · critic 모두 MLP (512, 512, 512).</li>
+  <li>PPO 하이퍼파라미터, env 수, 반복 수, 학습 시간: <b>논문에 없음</b>. 그림 4 학습 곡선 가로축(env 스텝) 눈금은 읽을 수 없을 만큼 작다.</li>
+  <li>물체는 원기둥·정육면체·구 같은 기본 도형 + 물리 파라미터 무작위. 복잡한 형상보다 빨리 수렴하고 처음 보는 실물로 일반화 (p.6–7, 그림 4 왼쪽).</li>
+</ul>
+<h3 class="ps">autotune (p.4, 알고리즘 1)</h3>
+<ol>
+  <li>조정할 파라미터 집합 E 와 초기 로봇 모델 M 으로 파라미터 공간 P 를 만든다. 시뮬 쪽(관절 강성·감쇠·armature·effort, 마찰 등)과 URDF 쪽(링크 원점·질량·관성, 관절 원점·한계)을 함께.</li>
+  <li>P 에서 K 개(모집단)를 뽑아 시뮬 env K 개를 만든다.</li>
+  <li>관절 목표 시퀀스 N 개를 만들어 실기에서 실행 → 실기 추종 오차 기록.</li>
+  <li>같은 시퀀스를 시뮬 K 개에서 실행 → 실기 추종 오차와의 MSE 가 가장 작은 파라미터를 고름.</li>
+</ol>
+<p>실기 데이터 4 분 미만(10 Hz 로 2,000 스텝) (p.4). 반복 최적화 없이 한 번 뽑아 고르는 무작위 탐색이다.</p>
+
+<h3 class="ps">도메인 무작위화 (p.15, 표 4)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>값</th></tr></thead>
+  <tbody>
+    <tr><td>물체 질량 (kg)</td><td>[0.03, 0.1]</td></tr>
+    <tr><td>물체 마찰</td><td>[0.5, 1.5]</td></tr>
+    <tr><td>물체 모양</td><td>× U(0.95, 1.05)</td></tr>
+    <tr><td>물체 초기 위치 (표기 "cm")</td><td>+ U(−0.02, 0.02) — 단위 표기와 값이 어긋남 (m 로 보임)</td></tr>
+    <tr><td>물체 초기 z 방향</td><td>+ U(−0.75, 0.75) (rad 로 보임)</td></tr>
+    <tr><td>손 마찰</td><td>[0.5, 1.5]</td></tr>
+    <tr><td>PD P 이득</td><td>× U(0.8, 1.1)</td></tr>
+    <tr><td>PD D 이득</td><td>× U(0.7, 1.2)</td></tr>
+    <tr><td>무작위 힘: 크기 / 확률 / 감쇠</td><td>2.0 / 0.2 / 0.1 s 마다 0.99 배</td></tr>
+    <tr><td>물체 위치 관측 잡음</td><td>0.02</td></tr>
+    <tr><td>관절 관측 잡음</td><td>+ N(0, 0.4) (단위·정규화 여부 논문에 없음)</td></tr>
+    <tr><td>행동 잡음</td><td>+ N(0, 0.1)</td></tr>
+    <tr><td>프레임 지연 확률 / 행동 지연 확률</td><td>0.1 / 0.1</td></tr>
+    <tr><td>깊이 카메라 위치 잡음 (표기 "cm")</td><td>0.005</td></tr>
+    <tr><td>깊이 카메라 회전 잡음</td><td>5.0°</td></tr>
+    <tr><td>깊이 카메라 화각</td><td>5.0°</td></tr>
+  </tbody>
+</table></div>
+<p>물체에 무작위 힘을 주는 이유는 시뮬이 구현하지 못한 물리 효과를 흉내 내려는 것 (p.14). 동역학 sim2real 은 이 단순 DR 외에 새 기법이 없다고 저자 스스로 적음 (p.9).</p>
+
+<h2 class="ps">6. teacher → student / 증류</h2>
+<ul>
+  <li><b>방식</b>: 전문가마다 100 env × 5,000 스텝을 평가하며, 에피소드 리셋 때 <b>성공한 궤적만</b> 디스크에 저장 → 이것을 "시연"으로 삼아 과제별 generalist 를 Diffusion Policy 로 BC. DAgger 처럼 student 상태에 다시 라벨을 붙이지 않는다 (p.14–15, §6.4).</li>
+  <li><b>망</b>: 고유감각 + 물체 위치 → 3 층 MLP (512, 512, 512), ELU, 출력 64. 깊이 → ResNet-18, BatchNorm 을 모두 GroupNorm 으로 교체. 특징을 이어 diffusion 모델 입력으로.</li>
+  <li><b>diffusion 설정</b>: 제곱 코사인 잡음 일정, 학습 확산 단계 100 (Diffusion Policy 와 같음). AdamW 학습률 1e-4, weight decay 1e-5, 배치 128. 가중치 지수 이동 평균을 평가·배포에 사용.</li>
+</ul>
+<h3 class="ps">분할 정복 증류의 효과 (p.7–8, §4.5, 그림 4)</h3>
+<p>10 개 물체 집어 옮기기에서 학습 단위를 바꿔 비교:</p>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>설계</th><th>뜻</th><th>표본 효율 (그림 4)</th><th>실기 성공 (분포 안 물체, 30 회)</th></tr></thead>
+  <tbody>
+    <tr><td>all</td><td>정책 하나가 10 개 전부</td><td>3 위</td><td>23.3 %</td></tr>
+    <tr><td>shape</td><td>모양 비슷한 묶음 3 개</td><td>2 위</td><td>63.3 %</td></tr>
+    <tr class="ours"><td>mix</td><td>모양 섞인 묶음 3 개</td><td>4 위</td><td><b>90.0 %</b></td></tr>
+    <tr><td>single</td><td>물체 하나씩 10 개</td><td>1 위</td><td>40.0 %</td></tr>
+  </tbody>
+</table></div>
+<p>묶음을 줄이면 최종 성능은 비슷하게 수렴하지만 all 은 꾸준히 낮다. 실기에서는 "다양한 묶음"의 증류가 가장 좋았다. 본문은 "single 과 mix 의 낮은 성능은 특정 형상 과적합"이라고 적는데 mix 가 가장 높으므로 single · shape 의 오기로 보인다 (p.8).</p>
+
+<h2 class="ps">7. 결과</h2>
+<h3 class="ps">autotune 정확도와 실기 성공 (p.7, 표 1 — 같은 설정, 시드만 다른 체크포인트 10 개씩)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>autotune MSE</th><th>가장 낮음</th><th>중간</th><th>가장 높음</th></tr></thead>
+  <tbody>
+    <tr><td>집기 성공</td><td>8 / 10</td><td>3 / 10</td><td>0 / 10</td></tr>
+    <tr><td>도달 성공</td><td>7 / 10</td><td>3 / 10</td><td>0 / 10</td></tr>
+  </tbody>
+</table></div>
+<h3 class="ps">사람 놀이 초기화 (p.8, 표 2 — 과제·설정마다 시드 10 개, "성공한 정책" = 에피소드 성공 60 % 초과)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>성공한 정책 비율</th><th>잡기</th><th>들기</th><th>건네기</th></tr></thead>
+  <tbody>
+    <tr><td>사람 초기화 있음</td><td>80 %</td><td>90 %</td><td>30 %</td></tr>
+    <tr><td>없음</td><td>60 %</td><td>90 %</td><td>0 %</td></tr>
+  </tbody>
+</table></div>
+<p>들기는 초기화 유무와 무관하게 90 %. 효과는 건네기처럼 긴 과제에서 크다.</p>
+<h3 class="ps">물체 표현 (p.8, 표 3 — 실기 각 10 회)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>입력</th><th>지표</th><th>잡기</th><th>들기</th><th>건네기 A</th><th>건네기 B</th></tr></thead>
+  <tbody>
+    <tr class="ours"><td rowspan="2">깊이 + 위치</td><td>집어 올림</td><td>10 / 10</td><td>10 / 10</td><td>10 / 10</td><td>10 / 10</td></tr>
+    <tr class="ours"><td>과제 성공</td><td>10 / 10</td><td>10 / 10</td><td>9 / 10</td><td>5 / 10</td></tr>
+    <tr><td rowspan="2">깊이만</td><td>집어 올림</td><td>2 / 10</td><td>0 / 10</td><td>0 / 10</td><td>0 / 10</td></tr>
+    <tr><td>과제 성공</td><td>2 / 10</td><td>0 / 10</td><td>0 / 10</td><td>0 / 10</td></tr>
+  </tbody>
+</table></div>
+<p>물체 전체 형상을 정확히 알아야 하는 과제일수록 격차가 커진다 (p.8). 건네기는 길어서 두 칸(A, B)으로 나눔.</p>
+<h3 class="ps">최종 성공률 (p.8, §4.7 — 과제별 최고 정책, 시험 물체마다 10 회 평균)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>과제</th><th>성공률</th></tr></thead>
+  <tbody>
+    <tr><td>Grasp-and-reach</td><td>62.3 %</td></tr>
+    <tr class="ours"><td>Box lift</td><td>80 %</td></tr>
+    <tr><td>Bimanual handover</td><td>52.5 %</td></tr>
+  </tbody>
+</table></div>
+<p>서론 요약: 본 물체 90 %, 처음 보는 물체 60–80 %, 새 물체에서 표현 혼합으로 sim2real 성공 80–100 % 개선 (p.2). 시험 물체 목록·개수는 그림 1 에만 그림으로.</p>
+
+<h2 class="ps">8. 실기 · sim2real</h2>
+<ul>
+  <li><b>장비</b>: Fourier GR-1, 머리에 RealSense D435(1 인칭 깊이), 로봇 앞 삼각대에 D435(3 인칭). 시뮬 카메라 자세는 실기 카메라에 맞춰 보정 (p.6).</li>
+  <li><b>손 두 종류</b>: Fourier 손(엄지 비구동 1)으로 대부분, Inspire 손(엄지 비구동 2)에서도 집어 옮기기 이전 성공 — 정성(영상) (p.6).</li>
+  <li><b>외란</b>: 두드리기·당기기·밀기·끌기에도 버팀 — 정성 (p.7, 그림 6).</li>
+  <li><b>확장</b>: 집어 옮기기 정책 둘레에 스크립트 순서를 붙여 집어 놓기 시스템 시연 (p.8).</li>
+  <li><b>실패·약점</b>: 건네기 52.5 % 가 가장 낮음 — 가장 동적인 과제인데 동역학 격차를 단순 DR 로만 다뤘기 때문이라고 저자 추정 (p.9). 깊이만 쓴 정책은 들기를 한 번도 못 함 (표 3).</li>
+</ul>
+
+<h2 class="ps">9. 코드에서 확인한 것</h2>
+<p>해당 없음 — 공개 코드 링크가 없고(프로젝트 페이지만) 로컬 <code>reference/dexhumanoid_recipe/code/</code> 도 없다.</p>
+
+<h2 class="ps">10. 한계</h2>
+<ul>
+  <li><b>고정 기저 탁상 과제</b>: 다리·균형·쪼그림이 없다. 상자 들기는 탁상 위 상자를 팔만으로.</li>
+  <li><b>가벼운 물체</b>: 시뮬 물체 질량 0.03–0.1 kg (표 4). 우리 0.5–2 kg 조이기와는 접촉력 규모가 한두 자릿수 다르다.</li>
+  <li><b>3 인칭 카메라 의존</b>: 핵심 결과(표 3)의 "위치"는 삼각대 카메라 + SAM2 로 얻은 것. 이동하는 로봇에는 그대로 못 쓴다.</li>
+  <li><b>평가 규모</b>: 조건마다 10 회(분할 정복만 30 회). 시험 물체 수가 표로 안 나와 최종 % 의 표본 크기를 알 수 없다.</li>
+  <li><b>빠진 정보</b>: PPO 설정, env 수, 학습 시간, 상자 크기·실물 질량, 깊이 해상도, r_goal 식, α·β, 종료 조건. 표 4 단위 표기 어긋남.</li>
+  <li><b>저자 언급</b> (p.9): 보상에 시연 같은 더 강한 사람 사전을 넣을 여지, 토크 제어 미시험, 손 하드웨어 제약.</li>
+</ul>
+
+<h2 class="ps">11. 우리에게 가져올 것</h2>
+<div class="take"><ol>
+  <li><b>접촉 표식 보상을 "옆면 조이기" 꼴로</b>: 그림 5 의 "좌·우 옆면 중심" 표식이 우리 파지 그대로다. 손가락 끝 4 점 대신 손마다 <b>손바닥 패드 중심 1 점</b>(손끝 쪽 기준점은 패드 중심보다 7 cm 앞이었다는 내부 실측이 있으니 패드 중심으로)을 쓰고, 표식은 박스 치수·자세에서 좌·우 옆면 위에 격자로 여러 개 생성한다. d = 가장 가까운 표식까지 거리이므로 <b>표식을 옆면 중앙에만 두지 말고 도달 가능한 영역(쪼그림에서 중앙은 20 cm 모자란다는 v2 실측)까지 퍼뜨리면</b> "닿지 않는 중앙"을 쫓는 문제가 사라진다. 꼴은 1 / (1 + α d) 로 두고 α 는 d = 10 cm 에서 0.5 가 되도록 α = 10 m<sup>−1</sup> 에서 시작(우리 선택).</li>
+  <li><b>손별 항은 합이 아니라 min(또는 곱)으로</b>: 논문 식은 왼·오른 항의 합이라 한 손만 붙어도 절반을 받는다 — v2 의 한 손 밀기 국소해가 정확히 이 꼴이다. r = min(r<sub>L</sub>, r<sub>R</sub>) 로 바꾸고, 물체 목표(들어 올림·자세) 항은 두 손 모두 표식 근처일 때만 켠다.</li>
+  <li><b>student 에 박스 위치를 명시 입력으로</b>: 깊이만 0/10 대 깊이 + 위치 10/10(들기). K1 엔 3 인칭 카메라가 없으므로 ① D436 깊이에서 바닥 평면을 빼고 박스 점군 중심을 직접 계산해 넣거나(관측 잡음 0.02 m 수준으로 학습), ② student 에 "박스 위치 예측" 보조 머리를 붙인다. 가까이 가서 시야를 벗어나면 마지막 추정을 유지하는 처리가 함께 필요하다.</li>
+  <li><b>teacher actor 는 student 가 추정할 수 있는 것만</b>: 전문가 actor = 물체 위치 + 관절, 나머지(속도, 손끝, 물체 방향·속도, 질량·마찰·모양 배율)는 critic 전용. 우리도 박스 질량·마찰·손–박스 접촉력은 critic 으로 옮기고 actor 엔 박스 위치·yaw·크기(잡음 포함) + 고유감각만 남긴 teacher 를 한 번 학습해 성공률 하락 폭부터 잰다.</li>
+  <li><b>팔 autotune</b>: 같은 관절 목표 시퀀스를 실기 K1 팔(맨손 + 박스 0.5 / 2 kg 들고)과 Isaac(Newton) 모집단 K 개에 재생해 armature·감쇠·마찰·effort 를 추종 MSE 최소로 고른다. 4 분 미만 데이터로 실기 성공이 0/10 → 8/10 갈렸다(표 1). kp 22.3 팔은 조이기 힘이 추종 오차에서 나오므로 이 맞춤의 값어치가 다지 손보다 크다(추론). 실기 추종이 Isaac 보다 5–15 ms 늦다는 내부 실측도 같은 틀에 지연 파라미터로 넣는다.</li>
+  <li><b>"놀아 본" 상태로 리셋</b>: 건네기에서 학습 성공 시드 0 → 30 %. 우리는 시뮬 원격조종 대신 v2 teacher 의 성공 에피소드에서 쪼그린 채 두 손이 박스 옆면 가까이 온 상태를 모아 리셋 분포에 섞는다(추론 — 시연 궤적이 아니라 상태만이라는 점이 같다).</li>
+  <li><b>DR 값 중 옮길 만한 것</b>: PD P 이득 × U(0.8, 1.1), D 이득 × U(0.7, 1.2); 박스에 무작위 힘(확률 0.2, 0.1 s 마다 0.99 배 감쇠, 크기는 2 kg 박스에 맞춰 다시); 프레임·행동 지연 확률 각 0.1; 깊이 카메라 회전 잡음 5°(우리 실측 편차보다 크니 상한으로만).</li>
+  <li><b>분할 정복이 필요해지면 "다양한 묶음"으로</b>: 실기 최고가 물체 하나씩(40 %)도 전부 하나(23 %)도 아닌 모양 섞은 묶음(90 %)이었다. 단일 teacher 가 바닥 박스에서 막히면, 받침 높이 하나씩 전문가를 나누지 말고 각 전문가가 높이·yaw 를 고르게 섞어 갖게 나눈다(추론).</li>
+</ol>
+<h3 class="ps">가져오지 않을 것</h3>
+<ul>
+  <li><b>물체 질량 0.03–0.1 kg</b>: 우리는 0.5–2 kg. 조이기·미끄럼·팔 처짐이 전혀 다른 영역이다.</li>
+  <li><b>성공 궤적 BC(diffusion policy)</b>: 오프라인 BC 는 student 상태 분포를 고치지 못한다. 5 Hz 고정 기저 탁상 과제라 통했을 수 있다. 우리는 DAgger(+ student RL) 유지.</li>
+  <li><b>절대 관절 목표 출력</b>: v2 의 포화·추종 불가 문제가 절대 출력에서 나왔다. 증분 출력 유지.</li>
+  <li><b>관절 관측 잡음 N(0, 0.4)</b>: 단위·정규화가 불명이라 값 자체를 옮기면 위험하다.</li>
+  <li><b>3 인칭 카메라 + SAM2 파이프라인</b>: 접근·운반으로 갈 우리 과제엔 고정 카메라가 없다.</li>
+  <li><b>손가락 끝 기반 표식 거리</b>: 고무 공 손엔 손가락이 없다 — 패드 중심 1 점으로.</li>
+</ul>
+</div>
+
+<p class="src">출처 표기: (p.N), (표 N), (그림 N), (식 N), 코드는 파일 경로. 논문에 없는 값은 "논문에 없음".</p>
+</main>
+</body>
+</html>

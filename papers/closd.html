@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CLoSD — 논문 상세</title>
+<link rel="stylesheet" href="paper.css">
+</head>
+<body>
+<main class="wrap">
+<a class="back" href="../index.html#catalog">← 자료 목록으로</a>
+
+<header class="ph">
+  <h1>CLoSD: 확산 플래너와 물리 추적기를 폐루프로 묶은 다중 과제 캐릭터 제어</h1>
+  <p class="orig">CLoSD: Closing the Loop between Simulation and Diffusion for Multi-Task Character Control</p>
+  <p class="meta">Guy Tevet, Sigal Raab, Setareh Cohan, Daniele Reda, Zhengyi Luo, Xue Bin Peng, Amit H. Bermano, Michiel van de Panne · Tel-Aviv Univ., UBC, CMU, Simon Fraser Univ., NVIDIA · ICLR 2025 (README 표기 Spotlight, 로컬 PDF는 arXiv v1 2024-10) · SMPL 호환 시뮬 휴머노이드(24 몸체, 행동 69) · Isaac Gym</p>
+  <div class="chips">
+    <a class="chip loc" href="../reference/closd/paper.pdf">로컬 PDF</a>
+    <a class="chip loc" href="../reference/closd/code/">로컬 코드</a>
+    <a class="chip" href="https://arxiv.org/abs/2410.03441" target="_blank" rel="noopener">arXiv 2410.03441</a>
+    <a class="chip gh" href="https://github.com/GuyTevet/CLoSD" target="_blank" rel="noopener">GuyTevet/CLoSD</a>
+    <a class="chip" href="https://guytevet.github.io/CLoSD-page/" target="_blank" rel="noopener">프로젝트 페이지</a>
+    <span class="simv s4">유사도 4</span>
+    <span class="badge">MIT</span>
+  </div>
+</header>
+
+<div class="callout blue tldr">텍스트와 관절 목표로 조건화한 실시간 확산 플래너(DiP, 2 s 계획을 11.4 ms에 생성)가 PHC 추적기에 레퍼런스를 주고, 실제로 실행된 마지막 1 s를 다시 플래너 입력으로 되먹인다. 플래너를 고정한 채 추적기만 원래 추적 보상으로 4K epoch 미세조정하자 일어서기 성공률이 0.53 → 0.98, 치기 0.81 → 0.90 (표 1).</div>
+
+<h2 class="ps">우리와 무엇이 같고 다른가</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>이 논문</th><th>우리 (dev10 pelvis_pick)</th></tr></thead>
+  <tbody>
+    <tr><td>하위 제어기</td><td>PHC 단일 primitive 전신 추적기: 24 몸체 위치·속도 레퍼런스를 따라 PD 목표 69개를 30 Hz로 냄. AMASS 로 62K epoch 학습 후 <b>상위를 붙여 4K epoch 미세조정</b>(고정 아님) (p.6–8)</td><td>dev12 하체 RL, 골반 vx·vy·ωz·높이·pitch·roll 추종, 상체 11 외부 PD, <b>고정 예정</b></td></tr>
+    <tr><td>상위 출력</td><td>2 s(20 fps × 40 프레임) 분량의 전신 운동학 궤적 — 관절 목표가 아니라 미래 자세 전체. 상위는 RL 이 아니라 지도학습 확산 모델 (p.5–8)</td><td>상체 11 관절 목표 + 골반 명령 6, RL teacher</td></tr>
+    <tr><td>과제·물체</td><td>목표 도달, 샌드백 치기(손·발), 소파 앉기·일어서기. 물체를 쥐거나 드는 과제 없음 (p.8–9)</td><td>바닥·받침대 0–0.3 m 박스 37×40×29 cm, 0.5–2 kg, 두 손 옆면 조이기</td></tr>
+    <tr><td>지각·증류</td><td>특권 상태(목표 위치, 관절 위치)만. 시각 없음, 증류 없음. 시각 도입은 향후 과제로 명시 (p.10)</td><td>특권 teacher → D436 깊이 student (DAgger)</td></tr>
+    <tr><td>실기</td><td>없음 (애니메이션 캐릭터)</td><td>K1 실기 목표</td></tr>
+    <tr><td>핵심 공통점</td><td colspan="2">① 하위가 실제로 실행한 결과를 상위 입력으로 되먹임 ② 하위를 고칠 때는 과제 보상이 아니라 <b>원래 추종 보상을, 상위가 실제로 내는 명령 분포 위에서</b> 다시 최적화</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">1. 문제와 과제</h2>
+<ul>
+  <li><b>문제</b>: 텍스트-동작 확산 모델은 다양하고 텍스트로 조종되지만 물리·접촉이 없고 느리다(오프라인 생성). RL 추적기는 물리적이지만 과제마다 보상 설계가 필요하다 (p.1–2).</li>
+  <li><b>해법</b>: 확산 모델을 "그때그때 다시 세우는 범용 플래너"로 쓰고, 강건한 추적기가 실행. 둘을 폐루프로 연결 (p.2).</li>
+  <li><b>입력</b>: 텍스트 프롬프트(동작 종류·스타일) + 관절 하나의 목표 위치. 예: "high kick" + 오른발 목표 = 샌드백 중심 (p.4).</li>
+</ul>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>과제</th><th>조건(텍스트 · 목표 관절)</th><th>성공 기준</th><th>무작위화 · 거리</th></tr></thead>
+  <tbody>
+    <tr><td>목표 도달</td><td>"A person is walking." 등 + 골반 XY 목표(높이 강제 안 함)</td><td>골반 XY 가 목표에서 0.3 m 이내 (p.9)</td><td>목표 거리 1–3 m (코드 <code>closd_task.py</code>), 매 계획마다 중간 목표 최대 1.2 m 로 끊음 (코드 <code>calc_cur_target_multi_joint</code>)</td></tr>
+    <tr><td>샌드백 치기</td><td>손·발 중 하나 무작위 + 그에 맞는 텍스트, 목표 = 샌드백 중심</td><td>샌드백이 지면과 75° 미만 (p.9)</td><td>거리 1–1.5 m, 위치 섭동 (학습·평가 모두)</td></tr>
+    <tr><td>앉기</td><td>"sitting down on a bench" + 골반 목표 = 좌석 중심</td><td>골반이 좌석 영역 위 (p.9). 코드: 좌석 사각형 안 + 높이 0.3–0.5 m</td><td>소파 위치·방향 무작위, 거리 1–1.2 m</td></tr>
+    <tr><td>일어서기</td><td>"standing up from the sofa" + 골반 목표</td><td>목표에서 0.3 m 이내. 목표 = 소파 앞 0.3 m, 높이 0.9 m (p.9)</td><td>앉기 성공 후 2 s(60 스텝) 뒤 텍스트·목표 전환 (p.9, 코드 <code>state_transition_time = 60</code>)</td></tr>
+  </tbody>
+</table></div>
+<p>과제 전환은 단순 상태 기계: 과제마다 done 신호를 내고 다음 텍스트·목표로 바꾼다. 예: SIT → GET_UP → REACH → STRIKE_PUNCH → HALT (<a href="../reference/closd/code/closd/data/cfg/env/closd_sequence.yaml">closd_sequence.yaml</a>).</p>
+
+<h2 class="ps">2. 시스템 구조</h2>
+<div class="fig">
+  <div class="flow">
+    <span class="node">텍스트 + 관절 목표 c<sub>j</sub> + 방향 c<sub>θ</sub></span><span class="arr">→</span>
+    <span class="node frozen">DiP 확산 플래너<br>(미세조정 중 고정)</span><span class="arr">→</span>
+    <span class="node">계획 x<sub>pred</sub> 40 프레임 @20 fps = 2 s</span><span class="arr">→</span>
+    <span class="node">R2G 변환 → 30 Hz 60 프레임</span><span class="arr">→</span>
+    <span class="node">PHC 추적기 π (30 Hz, 미세조정 대상)</span><span class="arr">→</span>
+    <span class="node">PD 목표 69 → Isaac Gym 60 Hz</span>
+  </div>
+  <p><small>되먹임 경로</small></p>
+  <div class="flow">
+    <span class="node">실행된 24 관절 위치 버퍼</span><span class="arr">→</span>
+    <span class="node">마지막 1 s (30 Hz 30 프레임)</span><span class="arr">→</span>
+    <span class="node">G2R 변환 → 20 fps 20 프레임 = 접두 x<sub>prefix</sub></span><span class="arr">→</span>
+    <span class="node">다음 DiP 호출 (2 s 뒤)</span>
+  </div>
+</div>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>구성</th><th>값</th><th>출처</th></tr></thead>
+  <tbody>
+    <tr><td>물리 / 추적기</td><td>60 Hz / 30 Hz (controlFrequencyInv 2, substeps 2)</td><td><a href="../reference/closd/code/closd/utils/config.py">utils/config.py</a>, <a href="../reference/closd/code/closd/data/cfg/env/im_single_prim.yaml">im_single_prim.yaml</a></td></tr>
+    <tr><td>DiP 재계획 주기</td><td>2 s 마다 (= 추적기 60 스텝). 생성 Ng = 40, 접두 Np = 20 (20 fps)</td><td>p.8, <a href="../reference/closd/code/closd/env/tasks/closd.py">closd.py</a> <code>get_pred_pose</code></td></tr>
+    <tr><td>DiP 망</td><td>트랜스포머 디코더 8층, 잠재 512, 머리 4. 프레임 하나 = 토큰 하나. 텍스트는 고정 DistilBERT → 선형층</td><td>p.5, p.8</td></tr>
+    <tr><td>확산 단계</td><td>10 (MDM 50 → 10, 5배 빠름)</td><td>p.6</td></tr>
+    <tr><td>추론 속도</td><td>2 s 계획 11.4 ms, 3,500 프레임/s (실시간 175배), RTX 3090</td><td>p.6, p.8</td></tr>
+    <tr><td>Classifier-free guidance</td><td>DiP 단독 7.5, 과제 실험 2.5, 텍스트-동작 5</td><td>p.8</td></tr>
+  </tbody>
+</table></div>
+<h3 class="ps">DiP 조건과 손실</h3>
+<ul>
+  <li>목표 조건: 관절 집합 J = 골반 + 끝점(손목·발), 관절마다 3D 목표 c<sub>j</sub> 와 유효 비트 v<sub>j</sub>, 수평 방향 c<sub>θ</sub> 와 v<sub>θ</sub>. 과제가 바뀌면 유효 비트만 바꿔 다른 관절로 조건 (p.5).</li>
+  <li>조건 주입: (C<sub>t</sub> + C<sub>target</sub>, C<sub>text</sub>) 를 각 층 cross-attention 으로 (p.5).</li>
+  <li>손실: L = L<sub>simple</sub> + λ<sub>target</sub> L<sub>target</sub>. L<sub>simple</sub> = ‖x<sub>0</sub> − x̂<sub>0</sub>‖², L<sub>target</sub> = Σ v<sub>j</sub>‖R2G(x̂<sub>0</sub>[Ng])<sub>j</sub> − c<sub>j</sub>‖² + v<sub>θ</sub>‖방향 차‖² — 마지막 예측 프레임에서만 (p.5–6). λ<sub>target</sub> 값은 논문에 없음.</li>
+  <li>학습: HumanML3D, 600K 확산 step, RTX 3090 한 장. 200K 체크포인트가 최적이라 사용 (p.8).</li>
+  <li>표현: 프레임 = (루트 각속도, 루트 XY 속도, 루트 높이, 관절 위치 3(J−1), 회전 6(J−1), 속도 3J, 발 접촉 4) (p.8). 추적기 쪽은 전역 관절 위치·속도 (p.3).</li>
+</ul>
+
+<h2 class="ps">3. 관측과 행동</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>대상</th><th>내용</th><th>차원 · 범위</th><th>출처</th></tr></thead>
+  <tbody>
+    <tr><td>추적기 자기 관측</td><td>루트 높이 + 24 몸체 × (위치 3, 회전 6, 속도 3, 각속도 3) − 루트 위치 3</td><td>358</td><td>코드 <a href="../reference/closd/code/closd/env/tasks/humanoid.py">humanoid.py</a> (논문에 차원 없음)</td></tr>
+    <tr><td>추적기 과제 관측 (v7)</td><td>24 몸체 × (레퍼런스−실제 위치 차 3, 속도 차 3, 루트 기준 레퍼런스 위치 3), heading 좌표계. 회전 없음(keypoint-only)</td><td>216</td><td>p.6 s[n] = (x<sub>ref</sub> − x<sub>sim</sub>, x<sub>ref</sub>), 코드 <code>compute_imitation_observations_v7</code></td></tr>
+    <tr><td>레퍼런스 속도</td><td>연속 두 계획 프레임의 차분 (dt 1/30). 계획 경계에선 실제 자세를 이전 프레임으로</td><td>—</td><td><a href="../reference/closd/code/closd/env/tasks/closd.py">closd.py</a> <code>_get_state_from_gen_cache</code></td></tr>
+    <tr><td>추적기 행동</td><td>23 관절 × 3 PD 목표. pd = 중심 + scale·a, scale = 관절 범위의 0.7배(범위를 1.4배로 넓힘), 무릎은 5</td><td>69, a 는 대략 ±1</td><td>p.6, 코드 <code>_action_to_pd_targets</code></td></tr>
+    <tr><td>행동 분포</td><td>σ 고정, log σ = −2.9 (σ ≈ 0.055), 학습 안 함</td><td>—</td><td><a href="../reference/closd/code/closd/data/cfg/learning/im_big.yaml">im_big.yaml</a></td></tr>
+    <tr><td>μ 범위 벌점</td><td>bound loss: Σ(max(μ−1, 0)² + min(μ+1, 0)²), 계수 10</td><td>±1 밖만</td><td><a href="../reference/closd/code/closd/learning/common_agent.py">common_agent.py</a> <code>bound_loss</code></td></tr>
+    <tr><td>DiP 입력</td><td>실행된 마지막 30 프레임(30 Hz) → 20 fps HumanML3D 20 프레임 접두 + 텍스트 + 목표</td><td>—</td><td>p.6, <code>build_completion_input</code></td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">4. 보상 · 종료 · 커리큘럼</h2>
+<p>미세조정은 <b>과제 보상 없이</b> 원래 PHC 목표를 그대로 쓴다: 위치 추종 지수 보상 + AMP 판별기 보상 + 에너지 벌점 (p.6–7). 아래 가중치는 코드 기본값(논문에 없음).</p>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항</th><th>식</th><th>가중치</th></tr></thead>
+  <tbody>
+    <tr><td>몸체 위치</td><td>exp(−100 · 평균‖Δp‖²)</td><td>0.5</td></tr>
+    <tr><td>몸체 회전</td><td>exp(−10 · 평균 θ²)</td><td>0.3</td></tr>
+    <tr><td>몸체 속도</td><td>exp(−0.1 · 평균‖Δv‖²)</td><td>0.1</td></tr>
+    <tr><td>몸체 각속도</td><td>exp(−0.1 · 평균‖Δω‖²)</td><td>0.1</td></tr>
+    <tr><td>일률 벌점</td><td>−0.0005 · Σ|τ · q̇| (첫 3 스텝 제외)</td><td>더함</td></tr>
+    <tr><td>추종 : 판별기</td><td>task_reward_w : disc_reward_w, disc_reward_scale 2</td><td>0.5 : 0.5</td></tr>
+  </tbody>
+</table></div>
+<p><small>출처: <a href="../reference/closd/code/closd/env/tasks/humanoid_im.py">humanoid_im.py</a> (<code>reward_specs</code>, <code>power_coefficient</code>), <a href="../reference/closd/code/closd/data/cfg/learning/im_big.yaml">im_big.yaml</a></small></p>
+<ul>
+  <li><b>종료</b>: 논문은 "원래 PHC 리셋 조건" (p.7). PHC 사전학습 설정은 레퍼런스에서 0.25 m 벗어나면 종료 (<code>terminationDistance: 0.25</code>). CLoSD 코드의 <code>_compute_reset</code> 은 넘어짐만 본다: 허용 목록(무릎·발·몸통·팔·손) 밖 몸체가 닿고 그 몸체 높이가 0.15 m 미만이면 종료.</li>
+  <li><b>에피소드</b>: 400 스텝(13.3 s), 평가 500 스텝 (<a href="../reference/closd/code/closd/data/cfg/env/closd_multitask.yaml">closd_multitask.yaml</a>, README).</li>
+  <li><b>과제 혼합</b>: env 마다 [KICK, PUNCH, SIT, SIT, REACH, REACH] 중 하나 → 치기·앉기(+일어서기)·도달 각 1/3 (<a href="../reference/closd/code/closd/env/tasks/closd_multitask.py">closd_multitask.py</a>).</li>
+  <li><b>커리큘럼</b>: 없음. <b>무작위화</b>: 물체 위치·방향, 목표 각도 0–2π. 체형 재표본은 사실상 끔. 지면 마찰 1.0.</li>
+</ul>
+
+<h2 class="ps">5. 학습 설정 (알고리즘 · 망 · 무작위화)</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>값</th></tr></thead>
+  <tbody>
+    <tr><td>알고리즘</td><td>PPO + AMP 판별기 (rl_games 기반 <code>im_amp</code>)</td></tr>
+    <tr><td>actor / critic</td><td>MLP [2048, 1536, 1024, 1024, 512, 512] SiLU, 분리(separate)</td></tr>
+    <tr><td>판별기</td><td>MLP [1024, 512] ReLU, disc_coef 5, grad penalty 5, logit reg 0.01, weight decay 1e-4, 버퍼 200,000</td></tr>
+    <tr><td>PPO</td><td>lr 2e-5 고정, γ 0.99, λ 0.95, clip 0.2, horizon 32, minibatch 16,384, mini-epoch 6, critic_coef 5, grad norm 50, entropy 0, 가치 자르기 끔</td></tr>
+    <tr><td>정규화</td><td>입력·가치·이점 정규화 모두 켬</td></tr>
+    <tr><td>규모</td><td>3,072 env, A100 한 장. PHC 62K epoch → 폐루프 미세조정 4K epoch (p.8). 텍스트-동작용 미세조정은 1K epoch (README)</td></tr>
+    <tr><td>자원</td><td>학습·평가 GPU 메모리 약 50 GB, 실행만 약 4 GB (README). 벽시계 시간은 논문에 없음</td></tr>
+    <tr><td>도메인 무작위화</td><td>없음 (실기 목적 아님)</td></tr>
+  </tbody>
+</table></div>
+<p><small>출처: <a href="../reference/closd/code/closd/data/cfg/learning/im_big.yaml">im_big.yaml</a>, <a href="../reference/closd/code/README.md">README.md</a>, 논문 p.8</small></p>
+
+<h2 class="ps">6. teacher → student / 증류</h2>
+<p>해당 없음 — 시각 입력과 증류가 없다. 상위(DiP)는 텍스트-동작 데이터로 지도학습, 하위는 PPO 미세조정.</p>
+
+<h2 class="ps">7. 결과</h2>
+<h3 class="ps">과제 성공률 (표 1, 과제당 1K 에피소드)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>방법</th><th>목표 도달</th><th>치기</th><th>앉기</th><th>일어서기</th></tr></thead>
+  <tbody>
+    <tr><td>AMP reach (단일 과제)</td><td>0.88</td><td>–</td><td>–</td><td>–</td></tr>
+    <tr><td>AMP strike (단일 과제)</td><td>–</td><td>1.0</td><td>–</td><td>–</td></tr>
+    <tr><td>InterPhys sit (단일 과제)</td><td>–</td><td>–</td><td>0.76</td><td>–</td></tr>
+    <tr><td>UniHSI (다중, 12K epoch 재학습)</td><td>0.96</td><td>0.02</td><td>0.85</td><td>0.08</td></tr>
+    <tr class="ours"><td><b>CLoSD</b> (Ng 40 = 2 s)</td><td><b>1.0</b></td><td><b>0.9</b></td><td><b>0.88</b></td><td><b>0.98</b></td></tr>
+    <tr><td>짧은 루프 (Ng 10)</td><td>0.86</td><td>0.71</td><td>0.61</td><td>0.95</td></tr>
+    <tr><td>긴 루프 (Ng 80)</td><td>0.99</td><td>0.86</td><td>0.56</td><td>0.92</td></tr>
+    <tr><td>미세조정 없음</td><td>1.0</td><td>0.81</td><td>0.66</td><td>0.53</td></tr>
+    <tr><td>개루프 (DiP 가 자기 예측만 보고 생성)</td><td>1.0</td><td>0.8</td><td>0.19</td><td>0.23</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li><b>미세조정 효과는 상호작용 과제에만</b>: 도달은 1.0 그대로, 일어서기 +0.45, 앉기 +0.22, 치기 +0.09.</li>
+  <li><b>재계획이 필수</b>: 개루프는 앉기 0.19, 일어서기 0.23. 이동만 하는 도달은 개루프도 1.0.</li>
+  <li><b>루프 길이 절충</b>: 0.5 s 는 반응은 빠르지만 계획 품질이 떨어지고(앉기 0.61), 4 s 는 되먹임이 늦다(앉기 0.56).</li>
+  <li>UniHSI 는 접촉점 거리만 줄여 샌드백을 건드리기만 하고(0.02) 일어서는 대신 골반을 든다(0.08) (그림 4).</li>
+</ul>
+<h3 class="ps">DiP 소거 (표 2, HumanML3D)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>설정</th><th>R-precision top-3</th><th>FID</th><th>시간 (ms)</th><th>속도 (fps)</th></tr></thead>
+  <tbody>
+    <tr class="ours"><td>DiP (Np 20, Ng 40, 10 단계)</td><td>0.78</td><td>0.28</td><td>11.4</td><td>3.5·10³</td></tr>
+    <tr><td>확산 5 단계</td><td>0.76</td><td>0.32</td><td>6.1</td><td>6.6·10³</td></tr>
+    <tr><td>확산 20 단계</td><td>0.8</td><td>0.28</td><td>23</td><td>1.7·10³</td></tr>
+    <tr><td>Np = 40</td><td>0.74</td><td>0.7</td><td>13</td><td>3.1·10³</td></tr>
+    <tr><td>Ng = 20</td><td>0.78</td><td>0.26</td><td>11.4</td><td>1.7·10³</td></tr>
+    <tr><td>Ng = 80</td><td>0.74</td><td>1.18</td><td>16</td><td>5·10³</td></tr>
+  </tbody>
+</table></div>
+<details class="more"><summary>텍스트-동작 + 물리 지표 (표 3) <span class="cnt">9행</span></summary><div class="body">
+<div class="tbl-wrap"><table>
+  <thead><tr><th>방법</th><th>R-prec top-1/2/3</th><th>FID</th><th>MM dist</th><th>다양성</th><th>관통 mm</th><th>뜸 mm</th><th>미끄럼 mm</th></tr></thead>
+  <tbody>
+    <tr><td>Ground truth</td><td>0.405 / 0.632 / 0.746</td><td>0.001</td><td>2.95</td><td>9.51</td><td>0.0</td><td>22.9</td><td>206·10⁻³</td></tr>
+    <tr><td>MDM</td><td>0.406 / 0.603 / 0.719</td><td>0.423</td><td>3.53</td><td>9.52</td><td>0.147</td><td>28.6</td><td>330·10⁻³</td></tr>
+    <tr><td>MoConVQ</td><td>0.309 / 0.504 / 0.614</td><td>3.279</td><td>3.97</td><td>8.01</td><td>0.249</td><td>32.0</td><td>294·10⁻³</td></tr>
+    <tr class="ours"><td>CLoSD</td><td>0.381 / 0.566 / 0.689</td><td>1.798</td><td>3.65</td><td>8.12</td><td>0.022</td><td>20.0</td><td>2·10⁻³</td></tr>
+    <tr><td>DiP 단독</td><td>0.464 / 0.668 / 0.777</td><td>0.283</td><td>3.15</td><td>9.21</td><td>0.083</td><td>23.6</td><td>629·10⁻³</td></tr>
+    <tr><td>짧은 루프</td><td>0.303 / 0.473 / 0.586</td><td>3.481</td><td>4.18</td><td>7.93</td><td>0.018</td><td>21.5</td><td>0.3·10⁻³</td></tr>
+    <tr><td>긴 루프</td><td>0.369 / 0.559 / 0.674</td><td>1.671</td><td>3.72</td><td>8.20</td><td>0.015</td><td>19.8</td><td>1.2·10⁻³</td></tr>
+    <tr><td>개루프</td><td>0.367 / 0.557 / 0.672</td><td>1.445</td><td>3.71</td><td>9.38</td><td>0.007</td><td>19.9</td><td>1·10⁻³</td></tr>
+    <tr><td>미세조정 없음</td><td>0.367 / 0.555 / 0.670</td><td>2.154</td><td>3.75</td><td>9.34</td><td>0.016</td><td>20.2</td><td>1.6·10⁻³</td></tr>
+  </tbody>
+</table></div>
+<p>물리 시뮬을 거치면 미끄럼·관통은 크게 줄고 데이터 분포 지표(FID)는 나빠진다. 미세조정은 FID 를 2.154 → 1.798 로 개선 (p.10).</p>
+</div></details>
+
+<h2 class="ps">8. 실기 · sim2real</h2>
+<p>해당 없음 — 시뮬레이션 캐릭터 애니메이션 연구. 지연·잡음·도메인 무작위화가 없다.</p>
+
+<h2 class="ps">9. 코드에서 확인한 것</h2>
+<ul>
+  <li><b>폐루프 구현</b>: <a href="../reference/closd/code/closd/env/tasks/closd.py">closd.py</a> — <code>get_pred_pose</code> 가 추적기 60 스텝(2 s)마다 DiP 를 부르고, <code>_update_pose_buffer</code> 가 매 스텝 실제 몸체 위치를 쌓는다. 계획의 첫 프레임 직전 값은 예측이 아니라 실제 자세로 교체해 속도 차분이 튀지 않게 한다.</li>
+  <li><b>중간 목표 자르기</b>: <a href="../reference/closd/code/closd/env/tasks/closd_task.py">closd_task.py</a> <code>calc_cur_target_multi_joint(max_dist=1.2)</code> — 먼 목표를 현재 위치에서 1.2 m 이내 점으로 줄여 플래너에 준다(2 s 계획당 1.2 m ≈ 0.6 m/s 상한).</li>
+  <li><b>bound loss</b>: <a href="../reference/closd/code/closd/learning/common_agent.py">common_agent.py</a> — 평균 μ 가 ±1 을 넘는 만큼 제곱 벌점, 계수 10. σ 는 고정 0.055.</li>
+  <li><b>가중치</b>: 저장소에 없다. 첫 실행 때 HuggingFace <code>guytevet/CLoSD</code> 에서 받는다 (<a href="../reference/closd/code/closd/utils/hf_handler.py">hf_handler.py</a>). Git LFS 포인터가 아님.</li>
+</ul>
+<h3 class="ps">논문과 코드가 다른 곳</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>논문</th><th>코드</th></tr></thead>
+  <tbody>
+    <tr><td>일어서기 목표</td><td>소파 앞 0.3 m, 높이 0.9 m (p.9)</td><td><code>getup_distance = 1.</code> (1.0 m 앞), 높이 0.4 + 0.53 = 0.93 m (<a href="../reference/closd/code/closd/env/tasks/closd_multitask.py">closd_multitask.py</a>)</td></tr>
+    <tr><td>치기 성공</td><td>샌드백이 지면과 75° 미만 (p.9)</td><td>up·tar_up ≤ 0.25, 즉 수직에서 75.5° 이상 기울어야 성공(거의 쓰러짐)</td></tr>
+    <tr><td>DiP 체크포인트</td><td>200K step (p.8)</td><td>다중 과제 기본값 <code>DiP_multi-target_…/model000300000.pt</code> (300K), 텍스트-동작은 200K (<a href="../reference/closd/code/closd/data/cfg/env/closd_base.yaml">closd_base.yaml</a>, <a href="../reference/closd/code/closd/data/cfg/env/closd_t2m.yaml">closd_t2m.yaml</a>)</td></tr>
+    <tr><td>미세조정 리셋</td><td>원래 PHC 리셋 (p.7)</td><td>CLoSD 는 <code>Humanoid._compute_reset</code>(넘어짐)만 호출. PHC 의 0.25 m 추종 이탈 리셋은 쓰지 않음</td></tr>
+    <tr><td>보상 레퍼런스</td><td>DiP 계획을 추종 (p.7)</td><td>관측은 DiP 계획(<code>_get_state_from_gen_cache</code>)인데, <code>HumanoidIm._compute_reward</code> 는 <code>_get_state_from_motionlib_cache</code>(기본 <code>source='dataset'</code>)를 불러 motion lib(<code>amass_isaac_standing_upright_slim.pkl</code>) 기준으로 계산하는 것으로 읽힌다. 실행해 확인하지 않음</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">10. 한계</h2>
+<ul>
+  <li>저자 언급: 외부 지각(시각·높이 지도) 없음, 장기 계획 없음, 고정 루프 길이 (p.10).</li>
+  <li>쥐기·들기 같은 지속 접촉 과제가 없다. 상호작용은 치기·앉기 정도.</li>
+  <li>하위를 미세조정하므로 "하위 고정" 설계와 다르다. 미세조정 없는 추적기는 상호작용 과제에서 크게 떨어진다는 것이 이 논문의 핵심 증거.</li>
+  <li>2 s 계획 구간 안에서는 개루프라 접촉 변화에 늦게 반응한다(짧게 하면 품질 저하).</li>
+  <li>성공률은 과제당 1K 에피소드 단일 값, 시드 분산 보고 없음. 실기 없음.</li>
+</ul>
+
+<h2 class="ps">11. 우리에게 가져올 것</h2>
+<div class="take"><ol>
+  <li><b>dev12 를 고쳐야 할 때의 레시피</b>: 상위를 고정하고, dev12 의 <b>원래 골반 추종 보상</b>(+ 손 하중 0–5 kg 무작위 그대로)으로 PPO 미세조정, 명령 샘플러에 pelvis_pick 상위가 실제로 낸 명령 로그를 섞는다. 과제(박스) 보상은 섞지 않는다. 규모 감각: 사전학습의 약 6 %(62K → +4K epoch), 낮은 lr 유지(이 논문 2e-5 그대로). 1순위는 여전히 고정.</li>
+  <li><b>"미세조정 없음" 기준선을 먼저 잰다</b>: 같은 평가셋에서 고정 dev12 의 실패 중 몇 %가 하위 추종 실패(골반 높이·pitch 오차, 넘어짐)인지 기록. 이 논문에서 차이는 상호작용 과제에서만 났다(일어서기 0.53 → 0.98, 도달 변화 없음) — 우리도 박스 접촉 후 구간에서만 날 가능성.</li>
+  <li><b>실현값 되먹임</b>: 상위 관측에 명령이 아니라 dev12 가 실제로 만든 골반 높이·pitch·속도와 명령−실현 차이를 넣는다. 개루프는 앉기 0.19, 일어서기 0.23 이었다.</li>
+  <li><b>μ 범위 밖 제곱 벌점</b>: <code>Σ(max(μ−1,0)² + min(μ+1,0)²)</code>, 계수 10 — 정규화된 행동 [−1, 1] 밖으로 평균이 나가는 것을 손실에서 막는다. rsl_rl PPO 손실에 그대로 더할 수 있는 형태 (v2 의 "환경 안 자르기 + 벌점 없음" std 발산 처방과 같은 방향).</li>
+  <li><b>중간 목표 자르기</b>: 접근 단계를 붙일 때, 먼 박스 목표를 현재 골반에서 dev12 속도 한계(vx 0.8 m/s) × 계획 구간 이내의 중간 목표로 끊어 준다(CLoSD 1.2 m / 2 s).</li>
+  <li><b>상위가 여러 스텝 묶음을 내게 되면</b> 묶음 길이를 소거로 고른다: 이 논문은 0.5 s·4 s 모두 앉기 성공률이 떨어지고 2 s 가 절충이었다.</li>
+</ol>
+<p><b>가져오지 말 것</b></p>
+<ul>
+  <li>확산 플래너 자체: HumanML3D 텍스트-동작 데이터에 박스 집기·두 손 조이기가 없고, dev12 는 전신 키포인트가 아니라 골반 명령을 받으므로 출력 공간이 다르다.</li>
+  <li>고정 σ 0.055: 사전학습된 추적기를 미세조정할 때의 값. 처음부터 탐색해야 하는 teacher 에 쓰면 탐색이 거의 없다.</li>
+  <li>텍스트 조건·상태 기계, 2048 폭 6층 망(69차원 전신 추종용)은 단일 박스 과제에 과하다.</li>
+</ul>
+</div>
+
+<p class="src">출처 표기: (p.N), (표 N), (그림 N), (식 N), 코드는 파일 경로. 논문에 없는 값은 "논문에 없음".</p>
+</main>
+</body>
+</html>

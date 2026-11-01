@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SplitAdapter — 논문 상세</title>
+<link rel="stylesheet" href="paper.css">
+</head>
+<body>
+<main class="wrap">
+<a class="back" href="../index.html#catalog">← 자료 목록으로</a>
+
+<header class="ph">
+  <h1>SplitAdapter: 동결 상자 조작 정책에 하중·동역학 두 갈래 어댑터를 FiLM 으로 붙여 무거운 상자 견디기</h1>
+  <p class="orig">SplitAdapter: Load-Aware Humanoid Loco-Manipulation via Factorized Adaptation</p>
+  <p class="meta">Jeonguk Kang, Hanbyel Cho, Sanghyun Kang, Donghan Koo · Samsung Electronics Future Robot AI Group · 사전 공개 (arXiv v1 2026-06-02) · Unitree G1 29 DoF (실기 고마찰 장갑) · Isaac Gym (학습), MuJoCo (sim2sim)</p>
+  <div class="chips">
+    <a class="chip loc" href="../reference/splitadapter/paper.pdf">로컬 PDF</a>
+    <a class="chip" href="https://arxiv.org/abs/2606.03297" target="_blank" rel="noopener">arXiv 2606.03297</a>
+    <a class="chip" href="https://splitadapter.github.io/" target="_blank" rel="noopener">프로젝트 페이지</a>
+    <span class="simv s4">유사도 2–4</span>
+    <span class="badge only">논문만 (코드 없음)</span>
+  </div>
+</header>
+
+<div class="callout blue tldr">PhysHSI 식 AMP 상자 운반 정책(29 관절 목표)을 학습 후 고정하고, 50 스텝 이력에서 하중(질량·적재 여부)과 동역학 잠재를 따로 뽑는 어댑터를 FiLM 으로 정책 층에 끼워 같은 RL 보상으로 학습한다. MuJoCo 전 과정 71/90 → 86/90, 가장 어려운 6 kg·바닥 5/10 → 10/10, 실기 G1(검증 상자 0.30×0.43×0.30 m) 16/27 → 26/27 (p.6 표 1, p.8 표 2, p.14).</div>
+
+<h2 class="ps">우리와 무엇이 같고 다른가</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>이 논문</th><th>우리 (dev10 pelvis_pick)</th></tr></thead>
+  <tbody>
+    <tr><td>하위 제어기</td><td><strong>없음</strong>(계층 아님). 단일 AMP 정책이 29 관절 PD 목표를 직접 냄. 그 정책을 "고정 기본 정책"으로 두고 어댑터만 학습 (p.3, p.11)</td><td class="ours">dev12 하체 RL(동결 예정), 골반 vx·vy·ωz·높이·pitch·roll 추종, 상체 11 외부 PD, 손 하중 0–5 kg 로 학습</td></tr>
+    <tr><td>상위 출력</td><td>29 관절 목표(고정 정책) — 어댑터는 행동이 아니라 중간 특징을 FiLM 으로 변조 (p.5)</td><td class="ours">상체 11 + 골반 명령</td></tr>
+    <tr><td>과제·물체</td><td>접근 → 들기 → 운반 → 놓기. 학습 상자 x·y 0.25–0.45 m, z 0.25–0.35 m, <strong>0.5–5.0 kg</strong>, 집기·놓기 높이 0–0.6 m. 평가 2·4·6 kg × 0·30·60 cm (p.12, p.6)</td><td class="ours">바닥·받침대 0–0.3 m 상자 37×40.5×29 cm, 0.5–2 kg, 두 손 옆면 조이기 → 서서 유지</td></tr>
+    <tr><td>손</td><td>G1 손(실기에서 고마찰 장갑을 씌움). 시뮬 손 모양은 논문에 없음 (p.14)</td><td class="ours">고무 공 손, 팔 kp 22.3 / kd 1.42</td></tr>
+    <tr><td>지각·증류</td><td>증류 없음. 상자·목표 위치를 관측으로 직접 받고, 실기는 모캡(골반·상자 윗면 마커) (p.11, p.14)</td><td class="ours">특권 teacher → D436 깊이(26×64, 6 프레임) + 고유감각 student (DAgger)</td></tr>
+    <tr><td>실기 상자</td><td>0.30 × 0.43 × 0.30 m 고정 (p.14)</td><td class="ours">37 × 40.5 × 29 cm — 가장 비슷한 실기 상자</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">1. 문제와 과제</h2>
+<ul>
+  <li>문제: 무거운 상자·낮은 집기 높이에서 sim2real 이 깨진다. 기존 이력 기반 적응(RMA, 세계 모델 등)은 "하중 변화"와 "로봇 동역학 어긋남"을 한 잠재에 섞어 무거운 하중에서 약해진다 (p.2).</li>
+  <li>해결: 이미 학습된 상자 조작 정책을 다시 학습하지 않고 고정, 그 위에 <strong>하중 갈래</strong>와 <strong>동역학 갈래</strong>로 나눈 어댑터를 학습 (p.2–3).</li>
+  <li>과제(실기): 시작 위치 앞 약 2 m 의 상자로 걸어가 들고, 집은 곳 뒤 4 m 목표에 놓기 (p.14).</li>
+  <li>성공 지표: Lift-up(들기)과 Full-task(접근·들기·운반·놓기 전부)를 따로 셈 (p.6). 학습 중 성공 판정은 상자 기울기 ‖g<sub>box</sub><sup>xy</sup>‖ &lt; 0.1 그리고 최종 상자–목표 거리 &lt; 0.1 m (p.14).</li>
+</ul>
+
+<h2 class="ps">2. 시스템 구조</h2>
+<div class="fig">
+  <div class="flow">
+    <span class="node">이력 H<sub>t</sub>: 50 스텝 × (관측 123 + 행동)</span><span class="arr">→</span>
+    <span class="node">공유 시간 부호기 f<sub>hist</sub>: Conv1d(123→64, k6, s2)+ELU, Conv1d(64→32, k4, s2)+ELU → 320</span><span class="arr">→</span>
+    <span class="node">하중 갈래 f<sub>obj</sub>: z<sub>obj</sub> ∈ R<sup>16</sup>, 질량 m̂, 적재 ℓ̂</span><span class="arr">+</span>
+    <span class="node">동역학 갈래 f<sub>dyn</sub>: z<sub>dyn</sub> ∈ R<sup>16</sup></span><span class="arr">→</span>
+    <span class="node">FiLM 생성기 (은닉 128, soft-split): γ, β</span><span class="arr">→</span>
+    <span class="node frozen">고정 기본 정책 MLP [512, 256, 256] → 29 관절 목표</span><span class="arr">→</span>
+    <span class="node frozen">PD</span>
+  </div>
+  <p style="margin-top:8px;font-size:13px">점선 = 고정. 하중 FiLM((z<sub>obj</sub>, m<sub>eff</sub>) 에서 생성)은 <strong>앞쪽 층</strong>(들기 자세·전신 협응), 동역학 FiLM(z<sub>dyn</sub>)은 <strong>행동 머리 가까운 뒤쪽 층</strong>(동역학·환경 어긋남 보정)을 변조. h′ = γ(z) ⊙ h + β(z) (식 14). FiLM 층은 처음에 원래 동작을 그대로 내도록 초기화 (p.5, p.13 표 5).</p>
+</div>
+
+<h3 class="ps">보조 학습 신호 (p.3–5)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>모듈</th><th>입력 → 출력</th><th>손실 (식)</th></tr></thead>
+  <tbody>
+    <tr><td>하중 갈래</td><td>e<sub>t</sub> → (z<sub>obj</sub>, m̂, ℓ̂). 실효 하중 m<sub>eff</sub> = ℓ̂ · m̂</td><td>λ<sub>m</sub> L<sub>mass</sub> + λ<sub>ℓ</sub> L<sub>loaded</sub> (식 4), 선택적 L1 ‖z<sub>obj</sub>‖₁ (식 5)</td></tr>
+    <tr><td>물체 세계 모델 W<sub>obj</sub></td><td>(o<sub>t</sub>, a<sub>t</sub>, m̂, ℓ̂, z<sub>obj</sub>) → 물체 위치 변화 Δp, 회전 변화 ΔR (MLP [64, 64])</td><td>λ<sub>p</sub>‖Δp̂ − Δp‖₁ + λ<sub>R</sub> d<sub>R</sub>(ΔR̂, ΔR) (식 9)</td></tr>
+    <tr><td>로봇 세계 모델 W<sub>dyn</sub></td><td>(o<sub>t</sub>, a<sub>t</sub>, z<sub>dyn</sub>, m) → 다음 로봇 상태 79 차원 (MLP [128, 128])</td><td>‖ŝ<sub>t+1</sub> − s<sub>t+1</sub>‖₁ (식 11)</td></tr>
+    <tr><td>GRL 교차 적대</td><td>z<sub>dyn</sub> → 물체 변화 예측, z<sub>obj</sub> → 로봇 변화 예측. 둘 다 기울기 반전층(GRL) 뒤</td><td>각 잠재가 상대 갈래 정보를 품지 못하게 함 (식 12–13)</td></tr>
+  </tbody>
+</table></div>
+<p>두 세계 모델 모두 추정 하중을 조건으로 받아, 잠재가 질량을 중복해서 담을 필요를 줄인다 (p.5). 어댑터는 <strong>기본 정책과 같은 RL 목적·보상</strong>으로 학습한다 (p.5 §3.5).</p>
+
+<h2 class="ps">3. 관측과 행동</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>대상</th><th>구성 (차원)</th><th>출처</th></tr></thead>
+  <tbody>
+    <tr><td>과제 관측 o<sup>G</sup></td><td>로컬 상자 위치 3, 로컬 상자 회전 6D 6, 상자 크기 3, 로컬 목표 위치 3 = 15</td><td>p.11 A.1</td></tr>
+    <tr><td>정책 한 스텝</td><td>고유감각 108 + 과제 15 = 123</td><td>p.11</td></tr>
+    <tr><td>critic</td><td>123 + 몸통 선속도 3 = 126</td><td>p.11</td></tr>
+    <tr><td>어댑터</td><td>123 차원 관측 50 스텝 이력</td><td>p.11, p.13 표 5</td></tr>
+    <tr><td>행동</td><td>29 관절 위치 목표 → PD</td><td>p.11</td></tr>
+    <tr><td>관측 잡음</td><td>각속도 0.3, 투영 중력 0.05, 관절 위치 0.02, 관절 속도 2.0, 상자·목표 위치 ±0.05 m, 상자 회전 ±5°</td><td>p.12 표 3</td></tr>
+  </tbody>
+</table></div>
+<p>고유감각 108 의 구성은 논문에 없음(PhysHSI 를 따른다고만 함).</p>
+
+<h2 class="ps">4. 보상 · 종료 · 커리큘럼</h2>
+<p>PhysHSI 의 단계(접근·들기·옮기기·안정) 분해를 따르고, ∗ 표시 항이 이 논문이 더한 것 (p.11 A.1). 과제 보상 r<sup>G</sup> = r<sup>walk</sup> + r<sup>carryup</sup> + r<sup>relocation</sup> + r<sup>hold∗</sup> + r<sup>standup∗</sup> (식 15).</p>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>묶음</th><th>식</th><th>출처</th></tr></thead>
+  <tbody>
+    <tr><td>walk</td><td>상자까지 평면 거리 d<sub>ro</sub> &lt; 0.7 m 면 1.5, 아니면 r<sub>ro,vel</sub> + r<sub>ro,heading</sub>. r<sub>ro,vel</sub> = exp(−5(0.85 − v<sub>ro</sub>)²)</td><td>식 16</td></tr>
+    <tr><td><strong>carryup</strong></td><td>0.7 r<sup>hand_pos</sup> + 0.7 r<sup>hand_contact</sup> + 2.0 r<sup>box_height</sup> + 0.3 r<sup>pelvis_box</sup></td><td>식 17</td></tr>
+    <tr><td>· hand_pos</td><td>exp(−3‖p<sub>hand,avg</sub> − p<sub>box</sub>‖²) (두 손 평균 ↔ 상자 중심)</td><td>식 19</td></tr>
+    <tr><td>· box_height</td><td>exp(−3 · max(h<sup>⋆</sup><sub>box</sub> − h<sub>box</sub>, 0)) (모자랄 때만 깎음, h<sup>⋆</sup> 값은 논문에 없음)</td><td>식 19</td></tr>
+    <tr><td>· <strong>hand_contact</strong></td><td><strong>min(min<sub>k</sub> f<sub>hand,k</sub> / 20, 1) · 𝟙[∃k, f<sub>wrist,k</sub> &gt; 1.0]</strong> — 두 손 중 약한 쪽 힘, 20 에서 포화(단위 미표기, N 으로 보임)</td><td>식 20</td></tr>
+    <tr><td>· pelvis_box</td><td>exp(−0.75 |wrap(ψ<sup>⋆</sup><sub>ro</sub> − ψ<sub>pelvis</sub>)|)</td><td>식 21</td></tr>
+    <tr><td>relocation</td><td>1.0 r<sub>rg,vel</sub> + 0.5 r<sup>reloc_heading</sup> + 1.0 r<sub>og,pos</sub> + 1.0 r<sup>put</sup>; r<sub>rg,vel</sub> = exp(−5(v<sub>rg</sub> − 0.85)²), r<sub>og,pos</sub> = exp(−10 d<sub>og</sub>), r<sup>put</sup> = exp(−3|z<sub>box</sub> − z<sub>goal</sub>|)</td><td>식 18, 21–22</td></tr>
+    <tr><td><strong>hold∗</strong></td><td>exp(−0.3 e<sub>stand</sub>) − 0.05‖ω<sub>pelvis,xy</sub>‖² − 0.02‖ω<sub>torso,xy</sub>‖²</td><td>식 23</td></tr>
+    <tr><td>standup∗</td><td>0.5 r<sup>head_height</sup> + r<sup>standup_heading</sup> + 1.5 exp(−0.3 e<sub>stand</sub>) + 0.5 r<sup>hand_free</sup> − 0.05‖ω<sub>pelvis,xy</sub>‖² − 0.02‖ω<sub>torso,xy</sub>‖². hand_free = 두 손 다 떼면 1, 한 손 0.5, 둘 다 붙으면 0</td><td>식 24</td></tr>
+    <tr><td>ankle_roll_close∗</td><td>max(d<sup>ankle</sup><sub>th</sub> − d<sub>ankle,y</sub>, 0)² (발목 옆 간격이 좁으면 벌, 문턱값은 논문에 없음)</td><td>식 25</td></tr>
+    <tr><td><strong>low_box_time_penalty∗</strong></td><td>T<sub>low,t</sub> = T<sub>low,t−1</sub> + Δt (상자 근처에서 상자가 너무 낮으면) 아니면 0; 벌점 = max(T<sub>low,t</sub> − T<sub>grace</sub>, 0), <strong>T<sub>grace</sub> = 2.0 s</strong></td><td>식 26–27</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>정규화 항 가중, ankle·low_box 벌점의 가중, "근처"·"너무 낮음"의 기준, e<sub>stand</sub> 정의는 논문에 없음. 종료 조건도 논문에 없음(PhysHSI 를 따른다고만 함).</li>
+  <li>hand_contact 는 PhysHSI 대비 ∗ 표시가 없다. 논문 문구상 기본 정책과 어댑터가 같은 보상으로 학습되므로(p.5) 이 항은 표의 Base 와 SplitAdapter 양쪽에 다 들어 있다. 이 항 자체의 절제 실험은 없다.</li>
+  <li>커리큘럼: GRL 적대 손실은 10,000 스텝 뒤에 켬(warmup) (p.13 표 4·6). 질량 커리큘럼은 없음.</li>
+</ul>
+
+<h2 class="ps">5. 학습 설정 (알고리즘 · 망 · 무작위화)</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>값</th></tr></thead>
+  <tbody>
+    <tr><td>시뮬레이터</td><td>Isaac Gym 학습, 모든 결과는 MuJoCo sim2sim 으로 확인 (p.6)</td></tr>
+    <tr><td>env 수</td><td>4096</td></tr>
+    <tr><td>반복당 스텝</td><td>100</td></tr>
+    <tr><td>epoch</td><td>5</td></tr>
+    <tr><td>clip · γ · GAE λ</td><td>0.2 · 0.99 · 0.95</td></tr>
+    <tr><td>목표 KL</td><td>0.003</td></tr>
+    <tr><td>actor · critic</td><td>MLP [512, 256, 256]</td></tr>
+    <tr><td>어댑터 이력 · 보조 학습률</td><td>50 스텝 · 1 × 10<sup>−3</sup></td></tr>
+    <tr><td>FiLM 은닉 · 잠재 크기</td><td>128 · z<sub>obj</sub> 16 / z<sub>dyn</sub> 16</td></tr>
+    <tr><td>GRL 계수 / 가중 · warmup</td><td>0.1 / 1 × 10<sup>−3</sup> · 10,000 스텝</td></tr>
+    <tr><td>반복 수 · 학습 시간 · GPU</td><td>논문에 없음</td></tr>
+  </tbody>
+</table></div>
+<p style="font-size:13px">출처: p.13 표 4·5.</p>
+
+<h3 class="ps">보조 손실 가중 (p.13 표 6)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>손실</th><th>가중</th><th>내용</th></tr></thead>
+  <tbody>
+    <tr><td>질량 회귀 L<sub>mass</sub></td><td>2.0</td><td>상자 질량 추정</td></tr>
+    <tr><td>적재 BCE L<sub>loaded</sub></td><td>1.0</td><td>들고 있는지 (소프트·하드 정답 둘 다 그림에 나옴)</td></tr>
+    <tr><td>물체 세계 모델</td><td>1.0</td><td>물체 변화 예측</td></tr>
+    <tr><td>로봇 세계 모델</td><td>1.0</td><td>로봇 전이 예측</td></tr>
+    <tr><td>GRL 적대</td><td>1 × 10<sup>−3</sup></td><td>갈래 분리</td></tr>
+    <tr><td>KL 정규화</td><td>1 × 10<sup>−3</sup></td><td>잠재 정규화</td></tr>
+    <tr><td>‖z<sub>obj</sub>‖₁ · ‖z<sub>dyn</sub>‖₁</td><td>1 × 10<sup>−3</sup> · 5 × 10<sup>−3</sup></td><td>희소성</td></tr>
+  </tbody>
+</table></div>
+
+<h3 class="ps">도메인 무작위화 (p.12 표 3, A.2)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>분류</th><th>항목</th><th>값</th></tr></thead>
+  <tbody>
+    <tr><td rowspan="6">물리</td><td>구동기 오프셋</td><td>U(−0.05, 0.05) rad</td></tr>
+    <tr><td>모터 세기</td><td>U(0.9, 1.1)</td></tr>
+    <tr><td>질량 중심</td><td>U(−0.1, 0.1) m</td></tr>
+    <tr><td>링크 질량</td><td>U(0.8, 1.2)</td></tr>
+    <tr><td>K<sub>p</sub>, K<sub>d</sub></td><td>U(0.9, 1.1)</td></tr>
+    <tr><td>외란</td><td>8 스텝마다, 크기 −50–50 (단위 미표기)</td></tr>
+    <tr><td rowspan="3">물체</td><td>상자 마찰</td><td>U(0.5, 1.0)</td></tr>
+    <tr><td>상자 반발</td><td>U(0.05, 0.2)</td></tr>
+    <tr><td>받침 마찰</td><td>U(0.5, 2.0)</td></tr>
+    <tr><td rowspan="4">과제 배치</td><td>상자·목표 2D 위치</td><td>초기 몸통 기준 무작위 (범위 논문에 없음)</td></tr>
+    <tr><td>집기·놓기 높이</td><td>0.0–0.6 m</td></tr>
+    <tr><td>상자 크기</td><td>x 0.25–0.45, y 0.25–0.45, z 0.25–0.35 m</td></tr>
+    <tr><td>상자 질량</td><td>0.5–5.0 kg</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">6. teacher → student / 증류</h2>
+<p>해당 없음 — 증류가 없다. 어댑터는 고정 정책 위에서 같은 RL 보상 + 보조 지도·세계 모델 손실로 학습된다(5 절).</p>
+
+<h2 class="ps">7. 결과</h2>
+<h3 class="ps">MuJoCo sim2sim, 조건마다 10 회 (p.6 표 1)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>방식</th><th>2 kg 0 / 30 / 60 cm</th><th>4 kg 0 / 30 / 60 cm</th><th>6 kg 0 / 30 / 60 cm</th><th>전 과정</th><th>들기</th></tr></thead>
+  <tbody>
+    <tr><td>Base (PhysHSI 식 고정 정책)</td><td>10 / 8 / 9</td><td>9 / 10 / 10</td><td>5 / 5 / 5</td><td>71/90</td><td>86/90</td></tr>
+    <tr><td>AnyAdapter 식 WM-FiLM (단일 잠재)</td><td>10 / 10 / 9</td><td>9 / 9 / 10</td><td>4 / 6 / 8</td><td>75/90</td><td>86/90</td></tr>
+    <tr><td>w/o split latent</td><td>10 / 9 / 10</td><td>9 / 10 / 9</td><td>6 / 9 / 9</td><td>81/90</td><td>88/90</td></tr>
+    <tr><td>w/o hierarchical FiLM</td><td>10 / 10 / 10</td><td>9 / 10 / 9</td><td>7 / 8 / 8</td><td>81/90</td><td>90/90</td></tr>
+    <tr><td>w/o GRL</td><td>10 / 8 / 10</td><td>10 / 10 / 10</td><td>8 / 9 / 9</td><td>84/90</td><td>90/90</td></tr>
+    <tr><td><strong>SplitAdapter</strong></td><td>10 / 10 / 10</td><td>9 / 10 / 10</td><td><strong>10</strong> / 9 / 9</td><td><strong>86/90</strong></td><td><strong>90/90</strong></td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>6 kg 는 학습 범위(0.5–5 kg) 밖. <strong>6 kg·0 cm(바닥)가 가장 어려운 조건</strong>이라고 논문이 명시 (p.6, p.14).</li>
+  <li>들기 성공은 대부분 높고, 실패는 들고 난 뒤 운반·놓기에서 자세 안정을 잃는 쪽 (p.6).</li>
+  <li>잠재 분리를 빼면 6 kg 에서 가장 많이 떨어짐 → 한 잠재에 하중과 동역학이 섞인다는 해석, 세계 모델 전이 손실도 분리판이 낮음 (p.7, 그림 5a). GRL 을 빼면 작지만 일관된 하락, 계층 FiLM 을 빼면 들기는 유지되고 운반·놓기가 떨어짐 (p.7–8).</li>
+  <li>질량·적재 추정(그림 4, 8): 0.5–5 kg 모두 들어 올린 직후 정답 쪽으로 수렴하고 운반 중 유지 (p.7, p.15).</li>
+</ul>
+
+<h3 class="ps">실기 G1, 조건마다 3 회 (p.8 표 2) — 전 과정 성공 (괄호 = 들기 성공)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>방식</th><th>2 kg 0 / 30 / 60 cm</th><th>4 kg 0 / 30 / 60 cm</th><th>6 kg 0 / 30 / 60 cm</th><th>전 과정</th><th>들기</th></tr></thead>
+  <tbody>
+    <tr><td>Base</td><td>3(3) / 3(3) / 3(3)</td><td>1(2) / 2(3) / 2(2)</td><td>1(2) / 1(3) / 0(1)</td><td>16/27 (59.3 %)</td><td>22/27 (81.5 %)</td></tr>
+    <tr><td><strong>SplitAdapter</strong></td><td>3(3) / 3(3) / 3(3)</td><td>3(3) / 3(3) / 3(3)</td><td>2(3) / 3(3) / 3(3)</td><td><strong>26/27 (96.3 %)</strong></td><td><strong>27/27 (100 %)</strong></td></tr>
+  </tbody>
+</table></div>
+<p>Base 의 6 kg 실패 모습: 들기는 시작하지만 운반·놓기 전에 파지 안정, 몸통 정렬, 전신 균형을 잃는다 (p.8).</p>
+
+<h2 class="ps">8. 실기 · sim2real</h2>
+<ul>
+  <li>Unitree G1, 0 샷 배치, 9 조건 × 3 회, 추가 미세조정 없음 (p.8).</li>
+  <li>검증 상자 <strong>0.30 × 0.43 × 0.30 m</strong> 고정, 질량과 집기·놓기 높이만 바꿈 (p.14).</li>
+  <li>접촉 신뢰도를 위해 <strong>고마찰 장갑</strong>을 G1 손에 씌움 (p.14 그림 6a).</li>
+  <li>관측용 상자·로봇 자세는 <strong>외부 모캡</strong>(골반·상자 윗면 마커) (p.14).</li>
+  <li>큰 상자·아크릴 상자 등 정성 시연, 사람과의 주고받기 시연 (p.1 그림 1, p.14).</li>
+  <li>G1 팔 하중 사양은 팔당 약 3 kg 이라 반복 고하중 시험 규모를 늘리기 어렵다고 밝힘 (p.8 한계).</li>
+</ul>
+
+<h2 class="ps">9. 코드에서 확인한 것</h2>
+<p>해당 없음 — 공개 코드 없음(프로젝트 페이지만, 조사 노트 확인). 받은 것은 논문 PDF 뿐.</p>
+
+<h2 class="ps">10. 한계</h2>
+<ul>
+  <li>단단한 상자만, 변형 물체·더 풍부한 접촉 과제 없음 (p.8).</li>
+  <li>실기 방법당 27 회, 모캡 관측, 장갑 사용 — 온보드 지각 조건은 아님.</li>
+  <li>계층 구조가 아니라 우리 인터페이스(하위 고정 + 상위 명령)와 직접 대응하지 않는다.</li>
+  <li>보상 일부(정규화 가중, ankle 문턱, low_box 의 "근처·너무 낮음" 정의, h<sup>⋆</sup>), 종료 조건, 반복 수가 논문에 없다.</li>
+  <li>새 보상 항(hand_contact min, hold, standup, low_box)의 효과는 따로 시험되지 않았다. Base 와 SplitAdapter 의 차이는 어댑터다.</li>
+</ul>
+
+<h2 class="ps">11. 우리에게 가져올 것</h2>
+<div class="take"><ol>
+  <li><strong>가져올 것 — 두 손 중 약한 쪽 힘 보상</strong>: r = min(min(f<sub>L</sub>, f<sub>R</sub>) / 20 N, 1) · 𝟙[어느 손이든 힘 &gt; 1 N]. 한 손만 닿으면 0 이라 dev10 v2 의 한 손 밀기 국소해를 직접 막는다. f 는 손바닥(공) 접촉체의 법선력으로 잰다. 20 N 포화는 우리 질량에 맞다(2 kg, μ 0.6 이면 손당 약 16 N 필요 — 계산). 비율은 carryup 안 손 위치 0.7 : 접촉 0.7 : 상자 높이 2.0 을 출발점으로. 단, 이 항의 효과는 논문에서 절제되지 않았다.</li>
+  <li><strong>가져올 것 — 조임을 명시적으로 만들 준비</strong>: K1 팔 kp 22.3 은 손바닥에서 80–200 N/m 라 닿기만 해서는 수 N 이다. 20 N 을 내려면 팔 목표가 상자 안쪽으로 0.3–1.4 rad 들어가야 했다(dev5 측정). 상위 출력 범위·델타 한계가 이 깊이를 허용하는지 먼저 확인한다.</li>
+  <li><strong>가져올 것 — 한쪽 높이 보상</strong>: exp(−3·max(h<sup>⋆</sup> − h<sub>box</sub>, 0)) 로 모자랄 때만 깎는다. h<sup>⋆</sup> 는 절대 높이 대신 "시작 높이(0/0.1/0.2/0.3 m 받침) + Δh"로 정한다.</li>
+  <li><strong>가져올 것 — 바닥에서 머뭇거림 벌점</strong>: 상자 근처에서 상자가 낮은 상태가 2.0 s 를 넘으면 초과 시간만큼 벌한다. 우리 실기에서 잡는 데 평균 7.3 s 걸린 문제(dev10 v2)에 맞는 장치다. "근처"는 손–상자 거리, "낮음"은 시작 높이 + 2 cm 미만처럼 우리가 정한다.</li>
+  <li><strong>가져올 것 — 유지 보상</strong>: hold = exp(−0.3 e<sub>stand</sub>) − 0.05‖ω<sub>pelvis,xy</sub>‖² − 0.02‖ω<sub>torso,xy</sub>‖² 를 들고 선 뒤 구간에. 우리는 골반 각속도에 더해 상자–몸통 상대 속도 항을 같이 둔다(팔 흔들림 대책).</li>
+  <li><strong>가져올 것 — 성공 판정 일부</strong>: 상자 기울기 ‖g<sub>box</sub><sup>xy</sup>‖ &lt; 0.1(약 5.7°)을 우리 "서서 유지" 성공 조건에 넣는다. Lift-up 과 Full-task 처럼 들기 성공과 유지 성공을 따로 센다.</li>
+  <li><strong>가져올 것(선택) — 하중 추정 보조 머리</strong>: 질량 회귀(가중 2.0)·적재 여부 BCE(1.0)를 student 보조 손실로. 들어 올린 직후 수렴하는 신호라 유지 단계에서 상위가 자세를 하중에 맞추는 데 쓸 수 있다. 우리 질량 범위(0.5–2 kg)가 좁아 이득은 작을 수 있다.</li>
+  <li><strong>보류 — 동결 하위에 FiLM 어댑터</strong>: dev12 가 무거운 상자(2 kg)에서 버티지 못할 때 dev12 를 다시 학습하는 대신 어댑터를 붙이는 선택지. 다만 dev12 는 이미 손 하중 0–5 kg 으로 학습되어 있고, 하위를 상자 과제 보상으로 고치면 Hanoi 에서 본 것처럼 원래 추종 능력을 해칠 수 있으니, 먼저 dev12 원래 목적의 데이터 집계를 시도한다.</li>
+  <li><strong>가져오지 말 것 — "16/27 → 26/27" 을 보상의 근거로 쓰기</strong>: 그 개선은 어댑터의 효과다(같은 보상). min-힘 보상 채택 근거는 "한 손이면 0" 이라는 식의 성질이지 이 수치가 아니다.</li>
+  <li><strong>가져오지 말 것 — 단일 AMP 정책·모캡 관측·6 kg 범위</strong>: 우리 구조(하위 고정 + 상위 명령, 깊이 student)와 다르다. 목표 KL 0.003 은 고정 정책 위 어댑터 미세조정 값이라 처음부터 학습하는 우리 teacher 에는 0.01 근처를 유지한다.</li>
+</ol></div>
+
+<p class="src">출처 표기: (p.N), (표 N), (그림 N), (식 N), 코드는 파일 경로. 논문에 없는 값은 "논문에 없음".</p>
+</main>
+</body>
+</html>

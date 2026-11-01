@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ASE — 논문 상세</title>
+<link rel="stylesheet" href="paper.css">
+</head>
+<body>
+<main class="wrap">
+<a class="back" href="../index.html#catalog">← 자료 목록으로</a>
+
+<header class="ph">
+  <h1>ASE: 대규모로 재사용하는 적대적 기술 임베딩</h1>
+  <p class="orig">ASE: Large-Scale Reusable Adversarial Skill Embeddings for Physically Simulated Characters</p>
+  <p class="meta">Xue Bin Peng, Yunrong Guo, Lina Halper, Sergey Levine, Sanja Fidler · UC Berkeley · NVIDIA · University of Toronto · SIGGRAPH 2022 (ACM TOG 41(4), Article 94) · 칼·방패를 든 37 자유도 휴머노이드 캐릭터(실기 없음) · Isaac Gym</p>
+  <div class="chips">
+    <a class="chip loc" href="../reference/ase/paper.pdf">로컬 PDF</a>
+    <a class="chip loc" href="../reference/ase/code/">로컬 코드</a>
+    <a class="chip" href="https://arxiv.org/abs/2205.01906" target="_blank" rel="noopener">arXiv 2205.01906</a>
+    <a class="chip gh" href="https://github.com/nv-tlabs/ASE" target="_blank" rel="noopener">nv-tlabs/ASE</a>
+    <a class="chip" href="https://xbpeng.github.io/projects/ASE/" target="_blank" rel="noopener">프로젝트 페이지</a>
+    <span class="simv s4">유사도 4</span>
+    <span class="badge">NVIDIA License(비상업)</span>
+    <span class="badge wt" title="받은 사본에 가중치 파일이 실제로 있음">가중치</span>
+  </div>
+</header>
+
+<div class="callout blue tldr">동작 클립 187 개(약 30 분)로 "64 차원 초구면 잠재 z → 전신 PD 목표" 저수준 정책을 적대적 모방 + 기술 발견 보상으로 100 억 샘플(V100 1 대 약 10 일) 사전학습해 고정하고, 과제마다 상위 정책이 6 Hz 로 정규화 전 잠재 z̄ 만 내게 해 단순 보상으로 5 과제를 푼다. 정규화 return Reach 0.75 · Strike 0.82(처음부터 학습 0.56 · 0.87, 대신 비자연스러운 동작).</div>
+
+<h2 class="ps">우리와 무엇이 같고 다른가</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>이 논문</th><th>우리 (dev10 pelvis_pick)</th></tr></thead>
+  <tbody>
+    <tr><td>하위 제어기</td><td>사전학습한 잠재 조건 전신 정책 π(a|s, z), 30 Hz, 상위 학습 중 고정. 명시 명령(속도·높이) 없음 — 잠재 64 차원이 유일한 입력</td><td>dev12 하체 RL, 골반 vx·vy·ωz·높이·pitch·roll 추종, 상체 11 외부 PD</td></tr>
+    <tr><td>상위 출력</td><td>정규화 전 잠재 z̄ ∈ ℝ<sup>64</sup> → z = z̄/‖z̄‖, 6 Hz(하위 5 스텝 유지)</td><td>상체 11 + 골반 명령</td></tr>
+    <tr><td>과제·물체</td><td>Reach(칼끝), Speed, Steering, Location, Strike(표적 넘어뜨리기). 잡기·들기 없음</td><td>바닥·받침대 0–0.3 m 박스 37×40×29 cm, 0.5–2 kg, 두 손 옆면 조이기</td></tr>
+    <tr><td>지각·증류</td><td>특권 상태(목표 위치·표적 상태)만, 증류 없음</td><td>특권 teacher → D436 깊이 student (DAgger)</td></tr>
+    <tr><td>로봇·손</td><td>시뮬 캐릭터, 칼은 오른손에 구 관절, 방패는 왼팔에 고정 관절(p.8). 관절 PD 강성 100–1000(코드 MJCF)</td><td>K1 35.7 kg, 23 자유도, 손가락 없는 공 손, 팔 kp 22.3 / kd 1.42, 허리 76.45 / 4.87</td></tr>
+    <tr><td>제어 주기</td><td>시뮬 120 Hz, 하위 30 Hz, 상위 6 Hz(p.10, p.18)</td><td>dev12 하체 50 Hz, 상위 주기 미정</td></tr>
+    <tr><td>행동 경계·탐색</td><td>초구면 정규화로 잠재가 항상 분포 안. 코드: 상위 평균 tanh, 행동 ±1 자르기, σ 고정 0.10</td><td>v2 는 환경 안 자르기 + 학습 σ → σ 폭주, 켜짐/꺼짐 포화</td></tr>
+    <tr><td>보상</td><td>과제 0.9 + 고정 판별기 스타일 0.1(p.13)</td><td>과제 보상 설계 중. dev12 는 다리 전용 AMP 판별기를 가짐</td></tr>
+    <tr><td>실기</td><td>없음(애니메이션 연구)</td><td>K1 실기 목표</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">1. 문제와 과제</h2>
+<ul>
+  <li><strong>문제</strong>: 물리 캐릭터 제어는 과제마다 처음부터 학습한다. 걷기·균형 같은 공통 기술을 매번 다시 배우고, 보상만으로는 자연스러운 동작이 안 나온다(p.1–2).</li>
+  <li><strong>아이디어</strong>: 분할·주석 없는 대규모 동작 데이터로 "잠재 z → 기술" 저수준 정책을 한 번 사전학습하고, 새 과제는 z 를 고르는 상위 정책만 학습한다(p.3–4, 그림 2).</li>
+  <li><strong>사전학습 목표</strong>(식 2): 정책의 상태 전이 분포와 데이터 분포의 Jensen–Shannon 발산을 줄이고(모방), 기술 z 와 전이 (s, s′) 의 상호정보 I(s, s′; z) 를 키운다(기술 발견, 계수 β).</li>
+</ul>
+<h3 class="ps">하위 과제 5 개 (p.9, 식 17–21)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>과제</th><th>목표 g</th><th>과제 보상 r<sup>G</sup> (논문)</th><th>설정 (논문)</th><th>코드에서 다른 점</th></tr></thead>
+  <tbody>
+    <tr><td>Reach</td><td>캐릭터 좌표계 목표점 x̃* (3)</td><td>exp(−5‖x* − x<sup>sword</sup>‖²)</td><td>목표는 뿌리 1 m 안</td><td>계수 4.0, 칼 몸체 위치 사용, 목표 50–100 스텝마다 바뀜, 높이 0.2–2.0 m (<a href="../reference/ase/code/ase/env/tasks/humanoid_reach.py"><code>humanoid_reach.py</code></a>)</td></tr>
+    <tr><td>Speed</td><td>방향 d̃*, 속도 v*</td><td>exp(−0.25 (v* − d*·ẋ<sup>root</sup>)²)</td><td>v* ∈ [0, 7] m/s</td><td>공개 코드에 Speed 설정 없음</td></tr>
+    <tr><td>Steering</td><td>이동 방향 d̃*, 얼굴 방향 h̃*</td><td>0.7 exp(−0.25 (v* − d*·ẋ<sup>root</sup>)²) + 0.3 h*·h<sup>root</sup></td><td>v* = 1.5 m/s</td><td>코드 이름 Heading, 속도 1.5–1.6, 방향 100–200 스텝마다 변경, 옆 속도 오차 0.1 가중 추가 (<a href="../reference/ase/code/ase/env/tasks/humanoid_heading.py"><code>humanoid_heading.py</code></a>)</td></tr>
+    <tr><td>Location</td><td>목표 위치 x̃ (2)</td><td>exp(−0.5‖x* − x<sup>root</sup>‖²)</td><td>논문에 거리 없음</td><td>0.5 위치 + 0.4 접근 속도(1 m/s) + 0.1 얼굴 방향, 거리 최대 10 m (<a href="../reference/ase/code/ase/env/tasks/humanoid_location.py"><code>humanoid_location.py</code></a>)</td></tr>
+    <tr><td>Strike</td><td>표적 위치·회전·선속도·각속도 (코드 15)</td><td>1 − u<sup>up</sup>·u*</td><td>칼 외 신체가 표적에 닿으면 종료</td><td>0.6 넘어뜨림 + 0.4 접근 속도, 넘어지면 1, 거리 0.5–10 m (<a href="../reference/ase/code/ase/env/tasks/humanoid_strike.py"><code>humanoid_strike.py</code></a>)</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">2. 시스템 구조</h2>
+<p>두 단계다. 1 단계에서 저수준 정책·판별기·인코더를 함께 학습하고, 2 단계에서는 저수준 정책과 판별기를 고정한 채 과제마다 상위 정책만 학습한다(p.4 그림 2, p.7 알고리즘 1).</p>
+<div class="fig">
+  <p><strong>1 단계: 사전학습 (과제 보상 없음)</strong></p>
+  <div class="flow">
+    <span class="node">p(z): 64 차원 구면 균등<br>1–150 스텝마다 새로 뽑음</span><span class="arr">→</span>
+    <span class="node">저수준 π(a|s, z)<br>PPO 학습, 30 Hz</span><span class="arr">→</span>
+    <span class="node">PD 목표 31 차원<br>Isaac Gym 120 Hz</span><span class="arr">→</span>
+    <span class="node">전이 (s, s′)</span><span class="arr">→</span>
+    <span class="node">판별기 D + 인코더 q<br>(같은 몸통, 출력만 분리)</span><span class="arr">→</span>
+    <span class="node">보상 −log(1 − D) + β log q(z|s, s′)</span>
+  </div>
+  <p style="margin-top:12px"><strong>2 단계: 과제 학습</strong></p>
+  <div class="flow">
+    <span class="node">상태 s + 목표 g</span><span class="arr">→</span>
+    <span class="node">상위 ω(z̄|s, g)<br>PPO 학습, 6 Hz</span><span class="arr">→</span>
+    <span class="node">z = z̄/‖z̄‖<br>5 스텝 유지</span><span class="arr">→</span>
+    <span class="node frozen">저수준 π (고정)<br>평균 행동, 30 Hz</span><span class="arr">→</span>
+    <span class="node">PD 목표 → 시뮬</span><span class="arr">→</span>
+    <span class="node">0.9 r<sup>G</sup> + 0.1 × 판별기 (고정)</span>
+  </div>
+</div>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>구성 요소</th><th>1 단계</th><th>2 단계</th><th>근거</th></tr></thead>
+  <tbody>
+    <tr><td>저수준 정책 π</td><td>학습</td><td>고정, 확률 대신 평균 μ 사용(코드)</td><td>p.4; <a href="../reference/ase/code/ase/learning/hrl_agent.py"><code>hrl_agent.py</code></a> <code>_compute_llc_action</code></td></tr>
+    <tr><td>판별기 D</td><td>학습</td><td>고정, 스타일 보상으로 재사용(동작 데이터 불필요)</td><td>p.8 식 16</td></tr>
+    <tr><td>인코더 q</td><td>학습(판별기와 몸통 공유)</td><td>사용 안 함</td><td>p.8</td></tr>
+    <tr><td>상위 정책 ω</td><td>없음</td><td>과제마다 따로 학습</td><td>p.11</td></tr>
+    <tr><td>가치 함수</td><td>V(s, z)</td><td>상위 전용 V</td><td>p.8 그림 5</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">3. 관측과 행동</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>신호</th><th>논문</th><th>공개 코드</th></tr></thead>
+  <tbody>
+    <tr><td>저수준 상태 s</td><td>뿌리 높이, 뿌리 회전(접선·법선 6D), 뿌리 선·각속도(국소), 관절 회전·속도, 손·발·방패·칼끝 위치(국소) → <strong>120 차원</strong>(p.8 §8.1)</td><td>몸체 단위 "max" 관측: 뿌리 높이 1 + 몸체 16 위치 + 17 회전(6D) + 17 선속도 + 17 각속도 = <strong>253 차원</strong> (<a href="../reference/ase/code/ase/env/tasks/humanoid.py"><code>humanoid.py</code></a> <code>compute_humanoid_observations_max</code>)</td></tr>
+    <tr><td>잠재 z</td><td>64 차원 단위 벡터(표 2)</td><td>같음. 행위자에서는 z → MLP [512, 256] → 64 tanh "style" 을 거쳐 상태와 이어 붙임 (<a href="../reference/ase/code/ase/learning/ase_network_builder.py"><code>ase_network_builder.py</code></a>)</td></tr>
+    <tr><td>저수준 행동 a</td><td>관절 PD 목표 31 차원, 구 관절은 3D 지수 사상(p.8)</td><td>a ∈ [−1, 1] 를 관절 한계 기반 offset + scale 로 사상. 1 자유도 관절은 범위의 140 %, 구 관절은 최대 한계 × 1.2(π 이하) (<code>_build_pd_action_offset_scale</code>)</td></tr>
+    <tr><td>판별기·인코더 입력</td><td>전이 쌍 (s, s′)</td><td>10 프레임 AMP 관측 = 10 × 140 = 1,400 차원 (<code>numAMPObsSteps: 10</code>, <a href="../reference/ase/code/ase/env/tasks/humanoid_amp.py"><code>humanoid_amp.py</code></a>)</td></tr>
+    <tr><td>상위 입력</td><td>s + 과제 목표 g</td><td>저수준 관측 + 과제 관측(Reach 3, Location 2, Heading 5, Strike 15)</td></tr>
+    <tr><td>상위 행동</td><td>z̄ ∈ ℝ<sup>64</sup>, 가우시안 N(μ<sub>ω</sub>, Σ<sub>ω</sub>), 정규화 후 전달(p.7 §7.1)</td><td>μ = tanh(MLP), 표본을 [−1, 1] 로 자른 뒤 정규화 (<a href="../reference/ase/code/ase/learning/hrl_network_builder.py"><code>hrl_network_builder.py</code></a>, <code>preprocess_actions</code>)</td></tr>
+  </tbody>
+</table></div>
+<div class="callout">초구면 행동 공간의 핵심: 상위 분포를 z̄ 원점 근처에서 시작하면 정규화 후 구면 전체를 고르게 탐색하고, 평균이 원점에서 멀어질수록 특정 기술에 집중한다. 즉 ‖μ<sub>ω</sub>‖ 가 "탐색량 조절기" 역할을 한다(p.7 그림 3). 무한한 가우시안 잠재는 원점에서 먼 값이 비자연스러운 동작을 내므로 쓰지 않았다(p.5–6 §6.1).</div>
+
+<h2 class="ps">4. 보상 · 종료 · 커리큘럼</h2>
+<h3 class="ps">사전학습 보상 (저수준)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항</th><th>식</th><th>가중·값</th><th>코드 구현</th></tr></thead>
+  <tbody>
+    <tr><td>모방(판별기)</td><td>−log(1 − D(s<sub>t</sub>, s<sub>t+1</sub>)) (식 10)</td><td>1</td><td>D 확률 sigmoid, 1 − D 를 1e−4 로 하한, ×2 (<code>disc_reward_scale</code>) 후 가중 0.5 → 실효 1.0</td></tr>
+    <tr><td>기술 발견(인코더)</td><td>β log q(z<sub>t</sub>|s<sub>t</sub>, s<sub>t+1</sub>), q 는 von Mises–Fisher, log q = κ μ<sub>q</sub><sup>T</sup>z + 상수 (식 12)</td><td>β = 0.5, κ = 1 (표 2)</td><td>max(μ<sub>q</sub>·z, 0) × 가중 0.5 (<a href="../reference/ase/code/ase/learning/ase_agent.py"><code>ase_agent.py</code></a> <code>_calc_enc_rewards</code>)</td></tr>
+    <tr><td>다양성(손실 전용, 보상 아님)</td><td>w<sub>div</sub> E[(D<sub>KL</sub>(π(·|s, z<sub>1</sub>), π(·|s, z<sub>2</sub>)) / D<sub>z</sub>(z<sub>1</sub>, z<sub>2</sub>) − 1)²], D<sub>z</sub> = 0.5(1 − z<sub>1</sub><sup>T</sup>z<sub>2</sub>) (식 15)</td><td>w<sub>div</sub> = 0.01</td><td>KL 대신 ±1 로 자른 평균 행동의 평균 제곱 차, 목표 1.0 (<code>_diversity_loss</code>)</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li><strong>판별기 손실</strong>(식 14): 이진 교차 엔트로피 + 데이터 쪽 기울기 벌점 w<sub>gp</sub> = 5. 코드는 출력층 가중치 제곱 0.01, 가중치 감쇠 1e−4 를 더한다(<a href="../reference/ase/code/ase/learning/amp_agent.py"><code>amp_agent.py</code></a> <code>_disc_loss</code>).</li>
+  <li><strong>인코더 손실</strong>(식 13): E[κ μ<sub>q</sub><sup>T</sup>z] 최대화. 코드 계수 <code>enc_coef</code> 5.</li>
+  <li><strong>응답성</strong>(§6.4): 에피소드 내내 z 하나가 아니라, z 를 1–150 스텝 유지한 뒤 새로 뽑는다(p.18). 중간에 z 가 바뀌면 다른 기술로 넘어가도록 강제한다.</li>
+</ul>
+<h3 class="ps">과제 학습 보상 (상위, 식 16)</h3>
+<p>r<sub>t</sub> = w<sub>G</sub> r<sup>G</sup> − w<sub>S</sub> log(1 − D(s<sub>t</sub>, s<sub>t+1</sub>)), w<sub>G</sub> = 0.9, w<sub>S</sub> = 0.1(p.13, 표 3). 판별기는 고정이다. 코드는 판별기 보상에도 ×2 를 곱하고, 과제·판별기 보상을 하위 5 스텝 평균으로 쓰며, 그 5 스텝 중 한 번이라도 끝나면 종료로 친다(<code>hrl_agent.py</code> <code>env_step</code>).</p>
+<ul>
+  <li>논문은 "고정 판별기에 대고 학습하면 판별기의 허점을 노린다"는 선행 지적을 소개하지만, ASE 에서는 저수준 정책이 동작을 충분히 묶어 그런 악용이 "대부분 사라졌다"고 쓴다(p.8).</li>
+</ul>
+<h3 class="ps">종료 · 초기 상태 · 커리큘럼</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>논문</th><th>코드</th></tr></thead>
+  <tbody>
+    <tr><td>에피소드 길이</td><td>T = 300(표 2, 표 3) = 30 Hz 로 10 s</td><td><code>episodeLength: 300</code></td></tr>
+    <tr><td>조기 종료</td><td>Strike 만 언급(칼 외 접촉)</td><td>발 외 몸체 접촉력 &gt; 0.1 이면서 높이 &lt; 0.15 m(머리 0.3, 왼 아래팔 0.32) → 넘어짐 종료 (<code>compute_humanoid_reset</code>)</td></tr>
+    <tr><td>넘어진 자세 시작</td><td>10 % 확률, 공중에서 임의 높이·방향으로 떨어뜨린 상태(p.6 §6.5)</td><td><code>fallInitProb: 0.1</code>. 시작 시 한 번, 임의 방향 + 임의 행동 ±0.5 로 150 물리 스텝 떨어뜨려 표본 생성 (<a href="../reference/ase/code/ase/env/tasks/humanoid_amp_getup.py"><code>humanoid_amp_getup.py</code></a>)</td></tr>
+    <tr><td>회복 에피소드</td><td>논문에 없음</td><td>넘어져 끝난 env 의 20 % 는 60 스텝(2 s) 동안 종료를 끄고 계속 (<code>recoveryEpisodeProb 0.2</code>, <code>recoverySteps 60</code>)</td></tr>
+    <tr><td>참조 상태 시작</td><td>논문에 없음</td><td><code>stateInit: Hybrid</code>, 50 % 는 클립 임의 프레임, 나머지 기본 자세. 과제 학습은 기본 자세</td></tr>
+    <tr><td>커리큘럼</td><td>없음</td><td>없음</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">5. 학습 설정 (알고리즘 · 망 · 무작위화)</h2>
+<h3 class="ps">초매개변수 (부록 표 2·표 3, p.18)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>저수준 사전학습</th><th>상위 과제 학습</th><th>코드에만 있는 값</th></tr></thead>
+  <tbody>
+    <tr><td>알고리즘</td><td>PPO, GAE(λ 0.95), 가치 TD(λ 0.95)</td><td>같음</td><td>rl_games, mini_epochs 6, critic_coef 5, 엔트로피 0</td></tr>
+    <tr><td>γ / 클립</td><td>0.99 / 0.2</td><td>0.99 / 0.2</td><td>가치 정규화·입력 정규화·이점 정규화 켬</td></tr>
+    <tr><td>Adam 학습률</td><td>2 × 10<sup>−5</sup></td><td>2 × 10<sup>−5</sup></td><td>일정(스케줄 없음)</td></tr>
+    <tr><td>반복당 샘플 / 미니배치</td><td>131,072 / 16,384</td><td>131,072 / 16,384</td><td>4,096 env × 32 스텝</td></tr>
+    <tr><td>판별기·인코더 미니배치</td><td>4,096</td><td>—</td><td>데모 버퍼·리플레이 버퍼 각 200,000, 리플레이 유지 확률 0.01</td></tr>
+    <tr><td>행동 분산 Σ</td><td>0.0025 고정(σ 0.05)</td><td>0.01 고정(σ 0.1)</td><td>log σ 초기 −2.9 / −2.3, <code>learn_sigma: False</code></td></tr>
+    <tr><td>평균 경계 벌점</td><td>논문에 없음</td><td>논문에 없음</td><td><code>bounds_loss_coef 10</code>: |μ| &gt; 1 초과분 제곱 (<a href="../reference/ase/code/ase/learning/common_agent.py"><code>common_agent.py</code></a>)</td></tr>
+    <tr><td>행동·관측 자르기</td><td>논문에 없음</td><td>논문에 없음</td><td>환경 래퍼에서 행동 ±1, 관측 ±5 (<code>vec_task.py</code>)</td></tr>
+    <tr><td>잠재 차원 / 유지</td><td>64 / 1–150 스텝</td><td>64 / 5 스텝(6 Hz)</td><td><code>latent_steps_min 1</code>, <code>max 150</code>, <code>llc_steps 5</code></td></tr>
+    <tr><td>보상 가중</td><td>β 0.5, w<sub>gp</sub> 5, w<sub>div</sub> 0.01</td><td>w<sub>G</sub> 0.9, w<sub>S</sub> 0.1</td><td>disc 0.5 × 척도 2, enc 0.5</td></tr>
+    <tr><td>최대 반복</td><td>논문에 없음</td><td>논문에 없음</td><td>100,000 / 10,000 (<code>max_epochs</code>)</td></tr>
+  </tbody>
+</table></div>
+<h3 class="ps">망 (p.8–9 그림 5)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>망</th><th>논문</th><th>코드</th></tr></thead>
+  <tbody>
+    <tr><td>저수준 행위자 μ<sub>π</sub>(s, z)</td><td>[1024, 1024, 512] ReLU, 선형 출력</td><td>z 를 먼저 [512, 256] + 64 tanh 로 변환 후 이어 붙임</td></tr>
+    <tr><td>저수준 가치 V(s, z)</td><td>[1024, 1024, 512]</td><td>같음(z 직접 이어 붙임)</td></tr>
+    <tr><td>판별기 D + 인코더 q</td><td>한 망 [1024, 1024, 512], 출력: q 평균(단위 정규화) + D sigmoid 1 개</td><td><code>enc.separate: False</code> → 판별기 몸통 공유</td></tr>
+    <tr><td>상위 ω(z̄|s, g)</td><td>[1024, 512] ReLU, 선형 평균</td><td>평균에 tanh</td></tr>
+  </tbody>
+</table></div>
+<h3 class="ps">규모 · 무작위화</h3>
+<ul>
+  <li>4,096 env, V100 1 대, 시뮬 120 Hz(p.10 §10.1). 코드: 물리 하위 스텝 2, <code>controlFrequencyInv 2</code>.</li>
+  <li>저수준: 100 억 샘플 이상 ≈ 시뮬 시간 10 년, 약 10 일(p.10). 상위 학습 시간은 논문에 없음.</li>
+  <li>데이터: Reallusion 클립 187 개, 약 30 분(걷기·달리기 + 칼·방패 검투)(p.10).</li>
+  <li>도메인 무작위화·관측 잡음·지연: 논문에 없음. 코드도 바닥 마찰 1.0 고정, 무작위화 없음.</li>
+  <li>탐색 보조(코드만): <code>enable_eps_greedy</code> — env 별로 확률 1 − exp(10(i/(N−1) − 1)) 만큼만 확률 행동을 쓰고 나머지는 평균 행동. 판별기가 "잡음 떨림"만 보고 가짜를 가려내지 않게 하려는 것(<code>amp_agent.py</code> 주석). 행위자 손실은 확률 행동 표본에만 건다.</li>
+</ul>
+
+<h2 class="ps">6. teacher → student / 증류</h2>
+<p>해당 없음 — ASE 는 특권 상태만 쓰는 RL 이며 teacher·student 나 지각 증류 단계가 없다.</p>
+
+<h2 class="ps">7. 결과</h2>
+<h3 class="ps">과제별 정규화 return (표 1, p.12)</h3>
+<p>0 = 에피소드 최저, 1 = 최고 return. 서로 다른 저수준 정책 3 개 × 모델당 4,096 에피소드 평균.</p>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>과제</th><th>Scratch(처음부터)</th><th>No SD + No Div.</th><th>No SD</th><th>No Div.</th><th>ASE</th></tr></thead>
+  <tbody>
+    <tr><td>Reach</td><td>0.56 ± 0.11</td><td>0.18 ± 0.05</td><td>0.33 ± 0.05</td><td>0.72 ± 0.02</td><td><strong>0.75 ± 0.01</strong></td></tr>
+    <tr><td>Speed</td><td><strong>0.95 ± 0.01</strong></td><td>0.87 ± 0.01</td><td>0.87 ± 0.01</td><td>0.93 ± 0.01</td><td>0.93 ± 0.01</td></tr>
+    <tr><td>Steering</td><td><strong>0.94 ± 0.01</strong></td><td>0.72 ± 0.01</td><td>0.74 ± 0.02</td><td>0.90 ± 0.01</td><td>0.90 ± 0.01</td></tr>
+    <tr><td>Location</td><td><strong>0.67 ± 0.01</strong></td><td>0.22 ± 0.04</td><td>0.25 ± 0.06</td><td>0.47 ± 0.01</td><td>0.45 ± 0.01</td></tr>
+    <tr><td>Strike</td><td><strong>0.87 ± 0.01</strong></td><td>0.21 ± 0.13</td><td>0.50 ± 0.07</td><td>0.80 ± 0.02</td><td>0.82 ± 0.01</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li><strong>처음부터 학습</strong>은 Reach 를 뺀 4 과제에서 return 이 더 높지만, Location·Strike 에서 "에너지 넘치는 산발적 움직임" 같은 비자연스러운 동작으로 얻었다(p.12–13, 그림 8). 표본도 더 든다.</li>
+  <li><strong>기술 발견(SD) 목표가 핵심</strong>: 빼면 Reach 0.75 → 0.33, Strike 0.82 → 0.50. 다양성 목표(Div.)는 성능 영향이 작다(p.12).</li>
+  <li><strong>정밀도</strong>: Reach 칼끝 평균 오차 0.088 ± 0.046 m(p.11).</li>
+  <li><strong>Speed</strong>: 0 m/s 에서 서 있기, 약 2 m/s 에서 웅크린 걸음, 약 7 m/s 에서 직립 달리기로 자동 전환(p.11).</li>
+  <li><strong>데이터 덮기·전이</strong>: ASE 는 가능한 클립 쌍 전이의 약 10 % 를 보인다. SD·Div 를 빼면 전이가 크게 줄고, 둘 다 빼면 궤적 다수가 "가만히 서기" 클립 하나로 몰린다(p.11–12, 그림 9–10).</li>
+</ul>
+<h3 class="ps">상위 행동 공간 비교 (p.13 그림 12)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>탐색 공간</th><th>무작위 탐색 결과</th></tr></thead>
+  <tbody>
+    <tr><td>원래 행동 공간 A(관절 목표)</td><td>의미 없는 동작, 몇 스텝 만에 넘어짐</td></tr>
+    <tr><td>정규화 전 Z̄, 원점 가우시안 σ 0.1</td><td>여러 방향으로 걷는 다양한 동작(채택)</td></tr>
+    <tr><td>정규화된 Z, σ 0.1·0.2·0.5</td><td>구면 한 지역만 골라 다양성 부족. σ 를 크게 키우면 학습이 방해되고 σ 를 줄이는 장치가 따로 필요</td></tr>
+  </tbody>
+</table></div>
+<h3 class="ps">스타일 보상 · 넘어짐 회복</h3>
+<ul>
+  <li>고정 판별기 스타일 보상(0.1)이 없으면 매 스텝 기술을 바꾸며 떨리는 동작과 군더더기 움직임이 생긴다(p.13 §10.6, 영상으로만 비교, 수치 없음).</li>
+  <li>회복: 뿌리에 500–1000 N 을 0.5 s 가해 500 회 시험, 모두 회복, 평균 0.31 s, 최대 4.1 s. 넘어짐 = 발 외 신체가 지면 접촉, 회복 = 뿌리 0.5 m 이상·머리 1 m 이상(p.13–14, 그림 14). 데이터에 일어서기 클립이 없는데도 손으로 짚는 전략이 나왔으나 과한 회전·공중제비도 있다.</li>
+</ul>
+
+<h2 class="ps">8. 실기 · sim2real</h2>
+<ul>
+  <li>실기 시험 없음. 애니메이션 캐릭터 연구다.</li>
+  <li>sim2real 관련 장치(도메인 무작위화, 관측 잡음, 작동기 지연, 모터 토크 곡선)도 논문·코드 모두 없다. 관절 PD 강성은 100–1000(허리 1000/100, 어깨 400/40, 팔꿈치 300/30, 고관절 500/50)으로 K1 팔(22.3/1.42)보다 한 자릿수 이상 세다(<a href="../reference/ase/code/ase/data/assets/mjcf/amp_humanoid_sword_shield.xml"><code>amp_humanoid_sword_shield.xml</code></a>).</li>
+  <li>따라서 이 논문에서 가져올 것은 "구조·행동 매개화·보상 구성"이지 실기 설정값이 아니다.</li>
+</ul>
+
+<h2 class="ps">9. 코드에서 확인한 것</h2>
+<p>저장소는 Isaac Gym + rl_games 기반이며 README 에 "더 이상 관리 안 함, MimicKit 사용"이라고 적혀 있다(<a href="../reference/ase/code/README.md"><code>README.md</code></a>). 실행·설치하지 않고 읽기만 했다.</p>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>논문</th><th>코드</th><th>파일</th></tr></thead>
+  <tbody>
+    <tr><td>가중치</td><td>—</td><td>실제 파일(LFS 포인터 아님): 저수준 84.5 MB, 상위 Heading·Location·Reach·Strike 각 약 19 MB</td><td><a href="../reference/ase/code/ase/data/models/"><code>ase/data/models/</code></a></td></tr>
+    <tr><td>동작 데이터</td><td>187 클립</td><td>데이터셋 목록 87 클립(비상업 전용 Reallusion)</td><td><a href="../reference/ase/code/ase/data/motions/reallusion_sword_shield/dataset_reallusion_sword_shield.yaml"><code>dataset_reallusion_sword_shield.yaml</code></a></td></tr>
+    <tr><td>정책 관측</td><td>120 차원</td><td>253 차원 몸체 단위 관측</td><td><code>humanoid.py</code></td></tr>
+    <tr><td>판별기 입력</td><td>(s, s′) 한 쌍</td><td>10 프레임 이력 1,400 차원</td><td><a href="../reference/ase/code/ase/data/cfg/humanoid_ase_sword_shield_getup.yaml"><code>humanoid_ase_sword_shield_getup.yaml</code></a></td></tr>
+    <tr><td>보상 척도</td><td>1 · β 0.5</td><td>disc 0.5 × 2 · enc 0.5, enc 보상 0 이상으로 자름 → 비율은 논문과 같음</td><td><a href="../reference/ase/code/ase/data/cfg/train/rlg/ase_humanoid.yaml"><code>ase_humanoid.yaml</code></a></td></tr>
+    <tr><td>상위 행동 처리</td><td>가우시안 → 정규화</td><td>tanh 평균 + σ 0.10 고정 → [−1, 1] 자르기 → 정규화 → 저수준 평균 행동 → 환경 래퍼가 행동 ±1, 관측 ±5 로 자름</td><td><a href="../reference/ase/code/ase/learning/hrl_agent.py"><code>hrl_agent.py</code></a>, <a href="../reference/ase/code/ase/env/tasks/vec_task.py"><code>vec_task.py</code></a></td></tr>
+    <tr><td>상위 보상 집계</td><td>스텝당</td><td>하위 5 스텝 평균, 종료는 OR</td><td><code>hrl_agent.py</code> <code>env_step</code></td></tr>
+    <tr><td>회복 학습</td><td>넘어진 자세 10 %</td><td>+ 넘어져 끝난 env 20 % 를 60 스텝 종료 없이 계속</td><td><code>humanoid_amp_getup.py</code></td></tr>
+    <tr><td>과제 보상</td><td>식 17–21</td><td>Reach 계수 4.0, Location·Strike 에 접근 속도·방향 항 추가(1 절 표)</td><td><code>env/tasks/humanoid_*.py</code></td></tr>
+    <tr><td>Speed 과제</td><td>있음</td><td>설정 파일 없음</td><td><a href="../reference/ase/code/ase/data/cfg/"><code>ase/data/cfg/</code></a></td></tr>
+    <tr><td>탐색 보조</td><td>없음</td><td>env 별 확률/결정 행동 혼합(eps-greedy), 경계 벌점 10</td><td><code>amp_agent.py</code>, <code>common_agent.py</code></td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">10. 한계</h2>
+<ul>
+  <li>GAN 계열이라 모드 붕괴가 남는다. 기술 발견 목표로 줄였어도 데이터의 다양성을 다 담지 못한다(p.14 §11).</li>
+  <li>표본이 매우 많이 든다(100 억, 10 일).</li>
+  <li>저수준이 가끔 떨림·급격한 움찔·과한 회복 동작을 낸다(p.14).</li>
+  <li>하위 과제가 단순하다(도달·이동·타격). 손 접촉·물체 잡기·하중 운반은 없다.</li>
+  <li>정밀도 한계: Reach 평균 오차 8.8 cm. 잠재만으로는 손끝을 cm 단위로 맞추기 어렵다.</li>
+  <li>처음부터 학습한 정책보다 return 이 낮은 과제가 많다(자연스러움과 맞바꿈).</li>
+  <li>실기·무작위화·지연이 전혀 없다.</li>
+</ul>
+
+<h2 class="ps">11. 우리에게 가져올 것</h2>
+<div class="take"><ol>
+  <li><strong>환경 안 자르기 대신 "평균 경계 + 고정(또는 상한) σ"</strong> — v2 의 σ 폭주(잘린 행동에 벌점 없음)와 직접 맞닿는다. ASE 코드는 상위 평균에 tanh, σ = e<sup>−2.3</sup> ≈ 0.10 고정(<code>learn_sigma: False</code>), 저수준에는 |μ| &gt; 1 초과분 제곱 벌점 계수 10 을 둔다. 우리 상위 출력(골반 명령 + 상체 11)을 [−1, 1] 정규화 단위로 정의하고, μ 에 tanh 또는 경계 벌점, σ 는 0.1 근처 고정이나 log σ 상한으로 시작한다. ASE 저수준도 환경 래퍼에서 행동을 ±1 로 자르지만, σ 가 고정이고 평균이 경계 벌점에 묶여 있어 σ 가 커질 길이 없다. 환경에서 자르더라도 잘린 양 벌점을 함께 둔다.</li>
+  <li><strong>상위 행동 공간을 "하위가 실제로 따라가는 범위"로 만든다</strong> — ASE 는 잠재를 구면으로 묶어 상위가 분포 밖 명령을 못 내게 했다(p.5–6). 우리 대응: 상위 출력을 dev12 학습 범위(높이 서기 0.335–0.77 m · 걷기 0.42–0.77 m, pitch ±45°·roll ±10° 는 서 있을 때만, vx ±0.8 · vy ±0.4 · ωz ±1.0)로 사상하고, 상태에 따라(걷는 중이면 높이 하한 0.42 m, roll 0) 범위를 바꾼다. v2 의 "추종기가 못 따라가는 허리 출력" 재발 방지.</li>
+  <li><strong>상위 주기를 낮추고 보상을 하위 스텝 평균으로</strong> — ASE: 하위 30 Hz 위 상위 6 Hz(5 스텝 유지), 보상은 5 스텝 평균, 종료는 OR. 우리: dev12 50 Hz 위에 골반 명령 10 Hz(5 스텝 유지)부터 시험. 명령 전환이 줄어 v2 의 켜짐/꺼짐 포화·떨림이 줄 것으로 본다(추론). 단, dev12 가 관측하는 상체 목표 변화율이 학습 분포 밖으로 튀지 않는지 계단 입력에서 확인.</li>
+  <li><strong>"분포 안" 스타일 보상 0.1</strong> — ASE 는 고정 판별기 −log(1 − D) 를 0.1(코드상 ×2) 가중으로 더해 떨림을 줄였다. dev12 는 다리 전용 AMP 판별기를 이미 가지므로, 이를 고정해 상위 보상에 0.1 로 넣는 변형이 가능하다. 단, dev12 AMP 데이터에 깊은 쪼그림·숙임이 없으면 박스 집기 자세 자체를 벌주므로, 쪼그림 0.335 m·pitch 45° 상태에서 판별기 점수를 먼저 보고 넣을지 정한다.</li>
+  <li><strong>하위의 "응답성" 조건 확인</strong> — ASE 는 잠재를 1–150 스텝마다 바꿔 학습해 중간 전환에 반응하게 했다(§6.4). dev12 의 명령 재표본 간격이 상위가 바꿀 속도보다 훨씬 길면 상위의 빠른 명령 변화가 하위 학습 밖이다. dev12 명령 재표본 간격을 상위 주기와 맞춰 본다.</li>
+  <li><strong>평가는 여러 시드 × 많은 에피소드 평균 ± 표준편차</strong> — ASE 표 1 은 저수준 3 개 × 4,096 에피소드다. v2 의 "체크포인트마다 성공률이 오르내림"은 고정 시드 평가 세트(예: 4,096 에피소드)로 체크포인트를 고르고 표준편차와 함께 기록해 우연과 구분한다.</li>
+  <li><strong>가져오지 말 것 ①: 잠재 기술 저수준 자체</strong> — 100 억 샘플·10 일·동작 데이터가 들고, 출력이 해석 불가한 64 차원이라 dev12 의 명시 골반 명령 인터페이스를 버려야 한다. 팔은 우리 쪽에서 외부 PD 로 직접 주므로 잠재로 감쌀 이유도 없다.</li>
+  <li><strong>가져오지 말 것 ②: 잠재만으로 정밀 접촉</strong> — Reach 평균 오차 8.8 cm 는 37 cm 상자를 두 손바닥으로 옆면에서 조이기에 너무 크다. 팔 관절 채널(명목 자세 + 잔차)은 남겨야 한다.</li>
+  <li><strong>가져오지 말 것 ③: 캐릭터 설정값</strong> — PD 강성 100–1000, 무작위화 0, 지연 0, 넘어짐 회복 사전학습(10 % 넘어진 자세 시작)은 K1 실기·고정 dev12 하체와 맞지 않는다. eps-greedy 결정 행동 혼합도 판별기를 학습할 때만 의미가 있다.</li>
+</ol></div>
+
+<p class="src">출처 표기: (p.N), (표 N), (그림 N), (식 N), 코드는 파일 경로. 논문에 없는 값은 "논문에 없음".</p>
+</main>
+</body>
+</html>

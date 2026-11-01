@@ -1,0 +1,411 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ViLoMan — 논문 상세</title>
+<link rel="stylesheet" href="paper.css">
+</head>
+<body>
+<main class="wrap">
+<a class="back" href="../index.html#catalog">← 자료 목록으로</a>
+
+<header class="ph">
+  <h1>ViLoMan: 깊이·고유감각만으로 다가가 문을 닫는 휴머노이드 전신 정책</h1>
+  <p class="orig">ViLoMan: Learning Visual–Proprioceptive Whole-Body Loco-Manipulation Skills for Humanoid Robots</p>
+  <p class="meta">Zejie Tian, Ruibing Hou (교신), Bingpeng Ma, Börje F. Karlsson, Shiguang Shan · 중국과학원 계산기술연구소(ICT CAS)·중국과학원대학(UCAS)·BAAI · 사전 공개 (arXiv v1 2026-09-16) · Unitree G1 29 DoF · mjlab (GPU MuJoCo), MuJoCo sim2sim</p>
+  <div class="chips">
+    <a class="chip loc" href="../reference/viloman/paper.pdf">로컬 PDF</a>
+    <a class="chip" href="https://arxiv.org/abs/2609.19340" target="_blank" rel="noopener">arXiv 2609.19340</a>
+    <a class="chip" href="https://viloman-anonymous.pages.dev" target="_blank" rel="noopener">프로젝트 페이지</a>
+    <span class="simv s4">유사도 4</span>
+    <span class="badge">라이선스 미표기 (코드 없음)</span>
+  </div>
+</header>
+
+<div class="callout blue tldr">사람–문 모캡을 G1 궤적 409 개로 바꾸고, 동결 GMT 추종기 + 잔차 PPO teacher(테스트 84.91 %)를 깊이 4×36×64 + 고유감각 808 student 로 온라인 DAgger 증류(77.55 %), 실기 문 닫기 32/40.</div>
+
+<h2 class="ps">우리와 무엇이 같고 다른가</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>이 논문</th><th>우리 (dev10 pelvis_pick)</th></tr></thead>
+  <tbody>
+    <tr><td>하위 제어기</td><td>배포 시 <b>없음</b>. student 가 29 관절 목표를 직접 낸다. teacher 안에서만 GentleHumanoid GMT 추종기를 동결해 쓰고 그 위에 잔차를 더함 <span class="src">(p.3–4, 식 1–2)</span></td><td class="ours">dev12 하체 RL 동결, 골반 vx·vy·ωz·높이·pitch·roll 추종, 상체 11 외부 PD</td></tr>
+    <tr><td>상위 출력</td><td>teacher: a<sub>gmt</sub> (29) + 잔차 π<sub>Res</sub> (29), 관절 위치 공간. student: 29 관절 위치 (척도 후 명목 자세에 더함) <span class="src">(p.9 B)</span></td><td class="ours">상체 11 + 골반 명령 (vx ±0.8 m/s, vy ±0.4 m/s, ωz ±1.0 rad/s, 높이 0.335–0.77 m, pitch ±45°, roll ±10°)</td></tr>
+    <tr><td>과제·물체</td><td>문 닫기: 손잡이 3종 (레버·당김·원형), 좌·우 경첩, 처음 열림 10–83°, 문 앞 1.2–1.8 m 에서 출발. 손이 문판에 닿아 미는 과제, 하중 없음 <span class="src">(표 IV)</span></td><td class="ours">바닥·받침대 0–0.3 m 박스 37×40.5×29 cm, 0.5–2 kg, 두 손 옆면 조이기 → 일어서서 유지</td></tr>
+    <tr><td>지각·증류</td><td>특권 teacher (참조 인간·문 궤적 + 상호작용 맥락) → 깊이 4×36×64 + 고유감각 808 student, 온라인 DAgger + 리플레이 1/3 <span class="src">(p.4, 표 VII)</span></td><td class="ours">특권 teacher → D436 깊이 26×64 × 6 프레임 + 고유감각 student (DAgger)</td></tr>
+    <tr><td>로봇·손</td><td>G1 29 DoF, 머리 D435i. 손 형태는 논문에 없음</td><td class="ours">K1 35.7 kg, 23 DoF, 손가락 없는 고무 공 손, 팔 kp 22.3 / kd 1.42</td></tr>
+    <tr><td>시뮬레이터</td><td>mjlab, 제어 50 Hz / 물리 0.005 s, 검증은 ONNX → MuJoCo sim2sim <span class="src">(p.5–6, 표 VII)</span></td><td class="ours">Isaac Lab + Newton, MuJoCo sim2sim</td></tr>
+    <tr><td>접촉 정보</td><td>보상의 접촉 항은 손–문판 거리·문 평면 부호 거리뿐, <b>힘은 안 잰다</b> <span class="src">(p.9 E)</span></td><td class="ours">조이기는 힘이 핵심. v2 student 격차를 접촉 정보 탓으로 봄</td></tr>
+    <tr><td>teacher → student 격차</td><td>테스트 84.91 → 77.55 % (−7.36 pp), 학습 88.12 → 77.16 % <span class="src">(표 II)</span></td><td class="ours">v2: teacher 90 % → student 69 % (Isaac), 50 % (MuJoCo)</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li><b>유사도 4 인 이유</b>: student 쪽 (저해상도 다중 프레임 깊이 + 성긴 고유감각 이력, 온라인 DAgger, mjlab → MuJoCo sim2sim)과 "동결 추종기 위에 학습하는 teacher" 구조가 우리와 같다.</li>
+  <li><b>5 가 아닌 이유</b>: 배포 정책은 하위 제어기 없는 단일 관절 정책이고, teacher 가 참조 모션을 따라가는 방식이며, 과제가 하중 없는 문 닫기다.</li>
+</ul>
+
+<h2 class="ps">1. 문제와 과제</h2>
+<ul>
+  <li><b>목표</b>: 다가가기 → 자세 잡기 → 문 닫기까지 긴 과제를 <b>정책 하나</b>가 닫힌 루프로 수행. 배포 시 입력은 머리 깊이 + 고유감각뿐, 참조 모션·중간 명령 없음 <span class="src">(p.1–3)</span></li>
+  <li><b>두 난점</b>: ① 물리적으로 실행 가능한 로봇–물체 데이터 부족 (사람 모캡은 상호작용 구간만 있고 다가가기가 없음) ② 시각에서 전신 관절로 바로 배우기 어려움 <span class="src">(p.1)</span></li>
+  <li><b>성공 정의</b>: 생존 (조기 종료 없이 평가 구간 끝까지) <b>그리고</b> 끝에서 문 열림 각 &lt; 10°. 생존과 성공을 따로 보고해 넘어짐과 과제 실패를 구분 <span class="src">(p.5 IV-A)</span></li>
+  <li><b>평가</b>: 학습 409 / 테스트 106 궤적 (TRUMANS 원본 클립 단위로 분리), 궤적마다 DR 을 독립 표본한 5 회 시행 <span class="src">(p.5)</span></li>
+  <li><b>조기 종료 조건</b>·에피소드 길이: 논문에 없음</li>
+</ul>
+
+<h3 class="ps">데이터셋 다양성 (표 IV)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>속성</th><th>학습</th><th>테스트</th></tr></thead>
+  <tbody>
+    <tr><td>궤적 수</td><td>409</td><td>106</td></tr>
+    <tr><td>레버 / 당김 / 원형 손잡이</td><td>134 (32.8 %) / 139 (34.0 %) / 136 (33.3 %)</td><td>35 (33.0 %) / 36 (34.0 %) / 35 (33.0 %)</td></tr>
+    <tr><td>왼쪽 / 오른쪽 경첩</td><td>273 (66.7 %) / 136 (33.3 %)</td><td>42 (39.6 %) / 64 (60.4 %)</td></tr>
+    <tr><td>처음 열림 각</td><td>10.05–80.31°</td><td>22.82–83.28°</td></tr>
+    <tr><td>문 높이</td><td>1.981–2.473 m</td><td>1.986–2.473 m</td></tr>
+    <tr><td>문 폭</td><td>1.000 m (고정)</td><td>1.000 m (고정)</td></tr>
+    <tr><td>문 두께</td><td>0.020–0.029 m</td><td>0.020–0.029 m</td></tr>
+    <tr><td>앞뒤 거리 d<sub>x</sub></td><td>1.201–1.799 m</td><td>1.202–1.799 m</td></tr>
+    <tr><td>옆 오프셋 d<sub>y</sub></td><td>−0.247–0.250 m</td><td>−0.248–0.245 m</td></tr>
+  </tbody>
+</table></div>
+<p>테스트는 오른쪽 경첩 비중이 학습보다 훨씬 높다 (33.3 → 60.4 %) <span class="src">(표 IV)</span>.</p>
+
+<h3 class="ps">기존 연구와의 차이 (표 I 요약)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>방법</th><th>탑재 시각</th><th>여러 모션 한 정책</th><th>통합 WBC</th><th>참조 모션 불필요</th><th>중간 명령 불필요</th></tr></thead>
+  <tbody>
+    <tr><td>HDMI, ResMimic</td><td>×</td><td>×</td><td>✓</td><td>×</td><td>✓</td></tr>
+    <tr><td>VisualMimic, ULTRA</td><td>✓</td><td>✓</td><td>✓</td><td>✓</td><td>×</td></tr>
+    <tr><td>VIRAL, DoorMan</td><td>✓</td><td>✓</td><td>× (하체·상체 분리)</td><td>✓</td><td>×</td></tr>
+    <tr><td>ViLoMan</td><td>✓</td><td>✓</td><td>✓</td><td>✓</td><td>✓</td></tr>
+  </tbody>
+</table></div>
+<p>저자 분류로는 우리 설계 (동결 하체 + 골반 명령)는 VIRAL·DoorMan 쪽, 즉 "통합 WBC ×, 중간 명령 ×" 칸에 들어간다 <span class="src">(p.2, 표 I)</span>.</p>
+
+<h2 class="ps">2. 시스템 구조</h2>
+<p>세 단계: 데이터 만들기 → 참조 조건 teacher → 참조 없는 시각 student. 제어는 모두 50 Hz, 물리 0.005 s (제어 1 스텝 = 물리 4 스텝) <span class="src">(p.3, 표 VII)</span>.</p>
+
+<div class="fig">
+  <p><b>① 데이터</b> <span class="src">(p.3 III-B)</span></p>
+  <div class="flow">
+    <span class="node">TRUMANS 사람–문 모캡 (SMPL-X)</span><span class="arr">→</span>
+    <span class="node">OmniRetarget (상호작용 보존 리타겟) → 상호작용 구간 71 개</span><span class="arr">→</span>
+    <span class="node">Kimodo 다가가기 생성 × 10 → 710 궤적</span><span class="arr">→</span>
+    <span class="node">DoorGym 문 무작위 (손잡이·경첩·각·크기)</span><span class="arr">→</span>
+    <span class="node">궤적마다 추종 정책 학습해 물리 정제</span><span class="arr">→</span>
+    <span class="node">거르기 → 학습 409 / 테스트 106</span>
+  </div>
+  <p><b>② teacher (PPO, 모션 군집마다 specialist 하나)</b> <span class="src">(p.4 III-C, 식 1–2)</span></p>
+  <div class="flow">
+    <span class="node">고유감각 이력 + 다단계 참조 (루트·관절) + boot/compliance 표시</span><span class="arr">→</span>
+    <span class="node frozen">GMT (GentleHumanoid, 동결) → a<sub>gmt</sub> 29</span><span class="arr">⊕</span>
+    <span class="node">잔차 π<sub>Res</sub> (학습) ← o<sub>GMT</sub> + 맥락 c<sub>int</sub> (단계·문 상태·접촉 목표·참조 경첩 운동)</span><span class="arr">→</span>
+    <span class="node">a<sub>teacher</sub> = a<sub>gmt</sub> + π<sub>Res</sub> (29 관절 위치)</span>
+  </div>
+  <p><b>③ student (온라인 DAgger, 배포)</b> <span class="src">(p.4 III-D, p.9 B)</span></p>
+  <div class="flow">
+    <span class="node">깊이 4×36×64 (2.5 m 정규화)</span><span class="arr">→</span>
+    <span class="node">잔차 CNN → 32</span><span class="arr">+</span>
+    <span class="node">고유감각 808 (9 시점 이력 + 이전 행동 8)</span><span class="arr">→</span>
+    <span class="node">MLP 512→256→128 ELU</span><span class="arr">→</span>
+    <span class="node">29 관절 위치 목표 → PD → G1</span>
+  </div>
+  <p>student 롤아웃이 방문한 상태에서 teacher 가 행동 라벨을 단다 (점선 = 동결).</p>
+</div>
+
+<div class="tbl-wrap"><table>
+  <thead><tr><th>구성 요소</th><th>상태</th><th>역할</th></tr></thead>
+  <tbody>
+    <tr><td>GMT 추종기 (GentleHumanoid)</td><td>사전 학습, <b>동결</b> <span class="src">(p.4, 표 VII)</span></td><td>과제 무관 보행·전신 추종 prior</td></tr>
+    <tr><td>궤적별 정제 정책</td><td>궤적마다 하나 학습 (데이터용)</td><td>사람·문 동시 추종으로 운동학 참조를 물리적으로 맞춤, 가장 실행 가능한 롤아웃만 남김 <span class="src">(p.3 B-4)</span></td></tr>
+    <tr><td>잔차 specialist</td><td>PPO 학습</td><td>모션 특성으로 시연을 군집화, 군집마다 하나 → 모두 합쳐 teacher <span class="src">(p.4)</span>. 군집 수는 논문에 없음</td></tr>
+    <tr><td>student</td><td>DAgger 학습, 배포</td><td>참조·특권 없이 깊이 + 고유감각 → 29 관절</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">3. 관측과 행동</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>정책</th><th>관측</th><th>차원·범위</th></tr></thead>
+  <tbody>
+    <tr><td>GMT (동결)</td><td>고유감각 이력, 루트·관절의 다단계 참조 특징, boot/compliance 표시 <span class="src">(p.4 C-1)</span></td><td>차원 논문에 없음</td></tr>
+    <tr><td>teacher 잔차</td><td>o<sub>teacher</sub> = [o<sub>GMT</sub>, c<sub>int</sub>], c<sub>int</sub> = 과제 단계·문 상태·접촉 목표·참조 경첩 운동 <span class="src">(p.4 C-2)</span></td><td>c<sub>int</sub> 차원 논문에 없음</td></tr>
+    <tr><td>student 고유감각</td><td>몸체 기준 각속도 3, 투영 중력 3, 관절 위치 29, 관절 속도 29 를 오프셋 [0, 1, 2, 3, 4, 8, 12, 16, 20] 스텝에서 + 이전 행동 8 개 <span class="src">(p.9 B)</span></td><td>9 × (3 + 3 + 29 + 29) + 8 × 29 = <b>808</b>. 가장 먼 오프셋 20 스텝 = 0.4 s (50 Hz 기준 계산)</td></tr>
+    <tr><td>student 깊이</td><td>연속 4 장, 머리 카메라 시점에 맞춘 시뮬 카메라, 최대 2.5 m 로 정규화, 가우시안 블러 무작위 <span class="src">(p.3, p.4, p.9)</span></td><td>4 × 36 × 64 → 잔차 CNN → 32 차원. 블러 세기·프레임 간격·지연은 논문에 없음</td></tr>
+    <tr><td>행동 (teacher·student)</td><td>관절 위치 목표 29. student 출력은 척도 후 명목 관절 자세에 더함 <span class="src">(p.9 B)</span></td><td>척도·PD 게인 논문에 없음</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>student 는 참조 모션·특권 물체 상태를 전혀 안 본다 <span class="src">(p.9 B)</span>. 어떤 손잡이·경첩인지는 깊이에서 알아내야 한다.</li>
+  <li>teacher 의 특권 정보 대부분 (문 상태, 손–문 기하)은 깊이에 보이는 정보다. 힘·질량 같은 "안 보이는" 값은 teacher 관측에 없다 <span class="src">(p.4, p.9 E)</span>.</li>
+</ul>
+
+<h2 class="ps">4. 보상 · 종료 · 커리큘럼</h2>
+<h3 class="ps">단계 게이트</h3>
+<ul>
+  <li>단계 0 = 참조의 걷기 끝 프레임 전, 단계 1 = 닫기 시작까지, 단계 2 = 그 뒤. 단계는 <b>참조 시간</b>으로 정해진다 <span class="src">(p.9 C)</span></li>
+  <li>g<sub>k</sub> = 1[s<sub>t</sub> = k], 진행도 p<sub>t</sub> = t / max(T − 1, 1), r<sub>t</sub> = Σ<sub>i</sub> w<sub>i</sub> r<sub>i,t</sub> <span class="src">(p.9 C)</span></li>
+  <li>ρ<sub>Σ</sub>(e) = (1/|Σ|) Σ<sub>σ∈Σ</sub> exp(−e/σ): 여러 척도 지수의 평균, Δt = 0.02 s <span class="src">(표 V)</span></li>
+  <li>표 V 는 대표 설정의 활성 항 34 개. specialist 마다 계수가 다를 수 있음. 일반 생존 항·발 접촉 개수 항은 꺼짐 <span class="src">(p.9 C)</span></li>
+  <li>실제 접촉 = 물리 하위 스텝 투표의 절반 이상. 접촉 항은 기하 거리만 쓰고 접촉력은 안 잰다 <span class="src">(p.9 C, E)</span></li>
+</ul>
+
+<h3 class="ps">보상 항 전체 (표 V, 식은 가중치 곱하기 전)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항</th><th>식</th><th>가중치</th><th>단계</th></tr></thead>
+  <tbody>
+    <tr><td colspan="4"><b>단계 0: 걷기·다가가기</b></td></tr>
+    <tr><td>루트 XY 추적</td><td>g<sub>0</sub>·ρ<sub>{0.30, 1.00}</sub>(e<sup>xy</sup>), e<sup>xy</sup> = ‖p<sub>r</sub><sup>xy</sup> − p<sub>r</sub><sup>xy,*</sup>‖</td><td>2.00</td><td>0</td></tr>
+    <tr><td>루트 XY 진행</td><td>g<sub>0</sub>·v<sub>t</sub>·clip((e<sup>xy</sup><sub>t−1</sub> − e<sup>xy</sup><sub>t</sub>)/Δt, −1, 1), v<sub>t</sub> = 직전 오차 유효 표시 (리셋·단계 진입 첫 갱신은 0)</td><td>1.00</td><td>0</td></tr>
+    <tr><td>하체 키포인트 세계 위치</td><td>g<sub>0</sub>·ρ<sub>{0.30, 1.00}</sub>((1/|K<sub>l</sub>|) Σ<sub>i∈K<sub>l</sub></sub> ‖p<sub>i</sub><sup>w</sup> − p<sub>i</sub><sup>w,*</sup>‖), 정렬 안 한 세계 목표</td><td>1.00</td><td>0</td></tr>
+    <tr><td colspan="4"><b>단계 1: 접촉 전 안정화</b></td></tr>
+    <tr><td>손 접촉 전 추적</td><td>g<sub>1</sub>·mean<sub>h</sub>[(1 − c<sub>h</sub><sup>*</sup>) + 2c<sub>h</sub><sup>*</sup>·exp(−max(d<sub>h</sub> − 0.06, 0)/0.18)]</td><td>1.00</td><td>1</td></tr>
+    <tr><td colspan="4"><b>단계 2: 문 닫기·접촉</b></td></tr>
+    <tr><td>경첩 각 추적</td><td>g<sub>2</sub>·ρ<sub>{0.80, 0.30, 0.10}</sub>(|θ − θ<sup>*</sup>|)</td><td>18.0</td><td>2</td></tr>
+    <tr><td>경첩 각 L1 벌점</td><td>−g<sub>2</sub>·|θ − θ<sup>*</sup>|</td><td>4.00</td><td>2</td></tr>
+    <tr><td>최종 경첩 각 추적</td><td>g<sub>2</sub>·1[p<sub>t</sub> ≥ 0.35]·ρ<sub>{0.35, 0.12}</sub>(|θ − θ<sub>f</sub><sup>*</sup>|)</td><td>12.0</td><td>2</td></tr>
+    <tr><td>최종 경첩 각 벌점</td><td>−g<sub>2</sub>·1[p<sub>t</sub> ≥ 0.35]·|θ − θ<sub>f</sub><sup>*</sup>|</td><td>8.00</td><td>2</td></tr>
+    <tr><td>방향 있는 경첩 진행</td><td>g<sub>2</sub>·1[p<sub>t</sub> ≥ 0.25]·1[|Δθ<sup>*</sup>| ≥ 0.05]·clip((θ − θ<sub>0</sub><sup>*</sup>)·sgn(Δθ<sup>*</sup>)/max(|Δθ<sup>*</sup>|, 10<sup>−6</sup>), 0, 1), Δθ<sup>*</sup> = θ<sub>f</sub><sup>*</sup> − θ<sub>0</sub><sup>*</sup></td><td>6.00</td><td>2</td></tr>
+    <tr><td>경첩 속도 추적</td><td>g<sub>2</sub>·ρ<sub>{1.0}</sub>(|θ̇ − θ̇<sup>*</sup>|)</td><td>0.20</td><td>2</td></tr>
+    <tr><td>손 접촉 추적</td><td>g<sub>2</sub>·mean<sub>h</sub>[(1 − c<sub>h</sub><sup>*</sup>) + 4c<sub>h</sub><sup>*</sup>·exp(−max(d<sub>h</sub> − 0.04, 0)/0.12)]</td><td>2.80</td><td>2</td></tr>
+    <tr><td>접촉면 관통</td><td>−g<sub>2</sub>·mean<sub>h</sub>[c<sub>h</sub><sup>*</sup>·max(−0.02 − s<sub>h</sub>, 0)]</td><td>0.45</td><td>2</td></tr>
+    <tr><td colspan="4"><b>단계 공통: 생존</b></td></tr>
+    <tr><td>진행 게이트 생존</td><td>g<sub>0</sub>·exp(−e<sup>xy</sup>/1.0) + g<sub>1</sub> + g<sub>2</sub></td><td>2.00</td><td>0–2</td></tr>
+    <tr><td colspan="4"><b>항상: 모션 추적</b></td></tr>
+    <tr><td>루트 위치</td><td>ρ<sub>{0.30}</sub>(‖p<sub>r</sub><sup>w</sup> − p<sub>r</sub><sup>w,*</sup>‖)</td><td>0.50</td><td>0–2</td></tr>
+    <tr><td>루트 방향</td><td>ρ<sub>{0.40}</sub>(d<sub>R</sub>(R<sub>r</sub><sup>w</sup>, R<sub>r</sub><sup>w,*</sup>)), d<sub>R</sub> = ‖axisangle(R<sub>1</sub>R<sub>2</sub><sup>−1</sup>)‖</td><td>0.50</td><td>0–2</td></tr>
+    <tr><td>루트 선속도</td><td>ρ<sub>{1.00}</sub>(‖v<sub>r</sub><sup>b</sup> − v<sub>r</sub><sup>b,*</sup>‖)</td><td>1.00</td><td>0–2</td></tr>
+    <tr><td>루트 각속도</td><td>ρ<sub>{3.00}</sub>(‖ω<sub>r</sub><sup>b</sup> − ω<sub>r</sub><sup>b,*</sup>‖)</td><td>1.00</td><td>0–2</td></tr>
+    <tr><td>전체 키포인트 위치</td><td>ρ<sub>{0.30}</sub>(mean<sub>i∈K</sub> ‖p<sub>i</sub><sup>w</sup> − p̃<sub>i</sub><sup>w,*</sup>‖), 목표는 참조 루트를 현재 루트에 맞춘 것</td><td>1.00</td><td>0–2</td></tr>
+    <tr><td>키포인트 선속도</td><td>ρ<sub>{1.00}</sub>(mean ‖v<sub>i</sub><sup>b,rel</sup> − v<sub>i</sub><sup>b,rel,*</sup>‖)</td><td>1.00</td><td>0–2</td></tr>
+    <tr><td>키포인트 방향</td><td>ρ<sub>{0.40}</sub>(mean d<sub>R</sub>(R<sub>i</sub><sup>b</sup>, R<sub>i</sub><sup>b,*</sup>))</td><td>1.00</td><td>0–2</td></tr>
+    <tr><td>키포인트 각속도</td><td>ρ<sub>{3.00}</sub>(mean ‖ω<sub>i</sub><sup>b,rel</sup> − ω<sub>i</sub><sup>b,rel,*</sup>‖)</td><td>1.00</td><td>0–2</td></tr>
+    <tr><td>하체 키포인트 위치</td><td>ρ<sub>{0.20}</sub>(mean<sub>i∈K<sub>l</sub></sub> ‖·‖)</td><td>0.50</td><td>0–2</td></tr>
+    <tr><td>상체 키포인트 위치</td><td>ρ<sub>{0.30}</sub>(mean<sub>i∈K<sub>u</sub></sub> ‖·‖)</td><td>0.35</td><td>0–2</td></tr>
+    <tr><td>관절 위치</td><td>ρ<sub>{0.50}</sub>(mean<sub>j∈J</sub> |q<sub>j</sub> − q<sub>j</sub><sup>*</sup>|), J = 발목 뺀 관절</td><td>0.75</td><td>0–2</td></tr>
+    <tr><td>관절 속도</td><td>ρ<sub>{3.00}</sub>(mean<sub>j∈J</sub> |q̇<sub>j</sub> − q̇<sub>j</sub><sup>*</sup>|)</td><td>0.50</td><td>0–2</td></tr>
+    <tr><td colspan="4"><b>항상: 규제</b></td></tr>
+    <tr><td>잔차 행동 크기</td><td>−(1/29) Σ<sub>j</sub> (Δa<sub>j</sub><sup>res</sup>)²</td><td>2×10<sup>−4</sup></td><td>0–2</td></tr>
+    <tr><td>잔차 행동 변화</td><td>−(1/29) Σ<sub>j</sub> (Δa<sub>j,t</sub><sup>res</sup> − Δa<sub>j,t−1</sub><sup>res</sup>)²</td><td>5×10<sup>−4</sup></td><td>0–2</td></tr>
+    <tr><td>관절 속도</td><td>−Σ<sub>j</sub> q̄̇<sub>j</sub>², q̄̇ = 최근 두 물리 하위 스텝 속도 평균</td><td>5×10<sup>−4</sup></td><td>0–2</td></tr>
+    <tr><td>전체 행동 변화</td><td>−Σ<sub>j</sub> (a<sub>j,t</sub> − a<sub>j,t−1</sub>)²</td><td>0.01</td><td>0–2</td></tr>
+    <tr><td>참조 맞춤 발 시점</td><td>u<sup>−</sup> = u<sub>t−1</sub> + Δt(1 − 2·1[C<sub>f</sub> ≠ C<sub>f</sub><sup>*</sup>]); r = Σ<sub>f</sub> min(u<sup>−</sup> − 0.5, 0)·F<sub>f</sub>; u = u<sup>−</sup>(1 − C<sub>f</sub>). F = 첫 접촉</td><td>5.00</td><td>0–2</td></tr>
+    <tr><td>발 접촉·들림 (밀집)</td><td>mean<sub>f</sub>: C ≠ C<sup>*</sup> 이면 −1; C = C<sup>*</sup> = 0 이면 −1 + clip((h<sup>min</sup> − 0.035)/0.120, 0, 1); C = C<sup>*</sup> = 1 이면 −clip((h<sup>max</sup> − 0.035)/0.090, 0, 1). h = 발목 roll·발끝 높이 최소·최대</td><td>1.00</td><td>0–2</td></tr>
+    <tr><td>소프트 관절 위치 한계</td><td>−Σ<sub>j</sub> (max(q<sup>lo,soft</sup> − q, 0) + max(q − q<sup>hi,soft</sup>, 0)) / (1 − 0.9), 소프트 = 범위의 90 %</td><td>1.00</td><td>0–2</td></tr>
+    <tr><td>소프트 토크 한계</td><td>−Σ<sub>j</sub> max(|τ<sub>j</sub>|/(0.75 τ<sub>j</sub><sup>max</sup>) − 1, 0)</td><td>0.01</td><td>0–2</td></tr>
+    <tr><td>관절 가속도</td><td>−Σ<sub>j</sub> min(q̈<sub>j</sub>, 100)² (위쪽만 100 rad/s² 에서 자름)</td><td>5×10<sup>−7</sup></td><td>0–2</td></tr>
+  </tbody>
+</table></div>
+<p class="src">출처: 표 V (p.10), 기호 정의 p.9 C·E</p>
+<ul>
+  <li>c<sub>h</sub><sup>*</sup> = 참조에서 상호작용하는 손 표시, d<sub>h</sub> = 그 손과 현재 문판 사각형 사이 거리, s<sub>h</sub> = 문 평면까지 부호 거리 <span class="src">(p.9 E)</span>. 손 두 개의 <b>평균</b>을 쓴다.</li>
+  <li>발 시점 항 (해석): 발 접촉이 참조와 맞으면 타이머가 Δt 씩 오르고 어긋나면 내려가며, 디딘 동안 0 으로 리셋. 첫 접촉 순간 타이머가 0.5 s 미만이면 그만큼 벌점 → 참조와 맞는 스윙을 0.5 s 이상 유지하게 함.</li>
+  <li>단계 2 의 양의 경첩 항 가중치 합 36.2 (18 + 12 + 6 + 0.2)가 항상 켜진 추적 항 합 9.1 보다 크다 (표 V 에서 계산) → 닫는 단계에선 과제 보상이 지배.</li>
+</ul>
+
+<h3 class="ps">종료 · 리셋 · 커리큘럼</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>값</th></tr></thead>
+  <tbody>
+    <tr><td>단계별 리셋 확률</td><td>단계 0 / 1 / 2 시작에서 0.25 / 0.15 / 0.60, 해당 단계 경계 프레임에서 시작 <span class="src">(p.5 IV-B, 표 VII)</span></td></tr>
+    <tr><td>엔트로피 계수</td><td>0.0025 → 0.0005, 지수 감소 <span class="src">(표 VII)</span></td></tr>
+    <tr><td>조기 종료 조건</td><td>논문에 없음 (생존 판정에 "조기 종료"가 쓰인다는 것만 있음, p.5)</td></tr>
+    <tr><td>난이도 커리큘럼</td><td>논문에 없음 (위 리셋 분포 외 언급 없음)</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">5. 학습 설정 (알고리즘 · 망 · 무작위화)</h2>
+<h3 class="ps">teacher (PPO, 표 VII)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>값</th></tr></thead>
+  <tbody>
+    <tr><td>actor / critic 은닉층</td><td>1024 → 512 → 512</td></tr>
+    <tr><td>옵티마이저 / 초기 LR</td><td>actor·critic 따로 Adam, 10<sup>−4</sup></td></tr>
+    <tr><td>프로세스당 병렬 env</td><td>1,024 (프로세스 수 논문에 없음)</td></tr>
+    <tr><td>수집당 롤아웃 스텝</td><td>32</td></tr>
+    <tr><td>할인 γ / GAE λ</td><td>0.99 / 0.95</td></tr>
+    <tr><td>PPO clip / 목표 KL</td><td>0.2 / 0.01</td></tr>
+    <tr><td>초기 행동 표준편차</td><td>0.25</td></tr>
+    <tr><td>엔트로피 계수</td><td>0.0025 → 0.0005 (지수)</td></tr>
+    <tr><td>최대 기울기 norm</td><td>1.0, actor·critic 각각</td></tr>
+    <tr><td>가치 손실</td><td>MSE, 계수 1.0</td></tr>
+    <tr><td>제어 / 물리 스텝</td><td>0.02 s / 0.005 s</td></tr>
+    <tr><td>GMT prior</td><td>동결</td></tr>
+    <tr><td>반복 수·벽시계 시간·GPU</td><td>논문에 없음</td></tr>
+  </tbody>
+</table></div>
+
+<h3 class="ps">도메인 무작위화 (표 VI, U = 균일, LU = 로그 균일)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>분류</th><th>변수</th><th>분포</th></tr></thead>
+  <tbody>
+    <tr><td rowspan="6">로봇 동역학</td><td>골반·몸통 질량중심 이동</td><td>Δc<sub>x,y,z</sub> ∼ U[−0.03, 0.03] m</td></tr>
+    <tr><td>상체 강성·감쇠 배율</td><td>LU[0.9, 1.1]</td></tr>
+    <tr><td>하체·허리 강성·감쇠 배율</td><td>LU[0.5, 2.0]</td></tr>
+    <tr><td>armature 배율</td><td>LU[0.75, 1.25]</td></tr>
+    <tr><td>관절 위치 오프셋</td><td>Δq ∼ U[−0.01, 0.01] rad</td></tr>
+    <tr><td>하체 목표 관절 위치 편향</td><td>Δq<sub>target</sub> ∼ U[−0.1, 0.1] rad</td></tr>
+    <tr><td rowspan="3">접촉·지면</td><td>발 미끄럼 마찰</td><td>μ<sub>s</sub> ∼ U[0.3, 1.2]</td></tr>
+    <tr><td>접촉 시간 상수</td><td>U[0.015, 0.03] s</td></tr>
+    <tr><td>접촉 감쇠비</td><td>LU[0.5, 2.0]</td></tr>
+    <tr><td rowspan="3">문 동역학</td><td>경첩 감쇠 배율</td><td>U[0.9, 1.1]</td></tr>
+    <tr><td>경첩 마찰 배율</td><td>U[0.9, 1.2]</td></tr>
+    <tr><td>경첩 armature 배율</td><td>U[0.9, 1.1]</td></tr>
+    <tr><td rowspan="7">외란</td><td>참조 루트 선속도 표류 (x, y)</td><td>‖v<sub>xy</sub>‖ ∼ U[0, 0.25] m/s</td></tr>
+    <tr><td>참조 루트 선속도 표류 (z)</td><td>v<sub>z</sub> ∼ U[−0.05, 0.05] m/s</td></tr>
+    <tr><td>루트 높이 오프셋</td><td>U[−0.03, 0.03] m</td></tr>
+    <tr><td>밀기 주기</td><td>U[4, 6] s</td></tr>
+    <tr><td>밀기 선속도</td><td>v<sub>x,y</sub> ∼ U[−0.5, 0.5], v<sub>z</sub> ∼ U[−0.2, 0.2] m/s</td></tr>
+    <tr><td>밀기 각속도</td><td>ω<sub>roll,pitch</sub> ∼ U[−0.52, 0.52], ω<sub>yaw</sub> ∼ U[−0.78, 0.78] rad/s</td></tr>
+    <tr><td>중력 섭동</td><td>ε<sub>g</sub> = r·u, r ∼ U[0, 0.1] m/s², u ∼ 단위구 균일</td></tr>
+    <tr><td>시각</td><td>시뮬 깊이 가우시안 블러</td><td>무작위 (세기 논문에 없음) <span class="src">(p.4 III-D)</span></td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>카메라 외부 파라미터·지연·깊이 잡음·구멍 무작위화는 표 VI 에 없다. 시뮬 카메라는 G1 머리 카메라 시점에 맞춤 <span class="src">(p.3)</span>.</li>
+  <li>"참조 루트 속도 표류"는 teacher 가 보는 참조 자체를 흔들어 참조를 맹목 추종하지 않게 하는 장치로 읽힌다 (해석).</li>
+</ul>
+
+<h2 class="ps">6. teacher → student / 증류</h2>
+<ul>
+  <li><b>왜 온라인 DAgger</b>: 오프라인 BC 는 공변량 이동으로 시연 밖 상태에 빠진다. student 가 방문한 상태 ξ<sub>t</sub> ∼ d<sub>πStudent</sub> 에서 같은 시뮬 상태로 student·teacher 관측을 만들고 teacher 행동을 라벨로 쓴다 <span class="src">(p.4, 식 4)</span>.</li>
+  <li><b>롤아웃은 student 만</b>: teacher 롤아웃을 섞는 비율 (β, α) 언급이 없다 <span class="src">(식 4)</span>.</li>
+  <li><b>손실</b>: 차원별로 정규화한 student·teacher 행동의 제곱 오차 L = E‖ã<sup>student</sup> − ã<sup>teacher</sup>‖² <span class="src">(식 5)</span>.</li>
+  <li><b>리플레이</b>: 미니배치 분포 μ = 현재 배치 2/3 + <b>갱신 전</b> 리플레이 1/3. 현재 배치는 student 갱신 <b>뒤</b>에 유한 리플레이에 들어간다 <span class="src">(p.4)</span>.</li>
+  <li><b>teacher 가 여러 specialist</b>: 어느 상태에 어느 specialist 가 라벨을 다는지 (궤적 군집 기준으로 보임)는 논문에 없음.</li>
+</ul>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목 (표 VII)</th><th>값</th></tr></thead>
+  <tbody>
+    <tr><td>정책 MLP / 활성</td><td>512 → 256 → 128 / ELU</td></tr>
+    <tr><td>깊이 인코더 / 특징</td><td>잔차 CNN / 32 차원 (층 구성 논문에 없음)</td></tr>
+    <tr><td>입력</td><td>고유감각 808 / 깊이 4 × 36 × 64</td></tr>
+    <tr><td>출력</td><td>29 관절 위치</td></tr>
+    <tr><td>옵티마이저 / LR</td><td>AdamW / 10<sup>−4</sup></td></tr>
+    <tr><td>지속 롤아웃 조각</td><td>32 스텝 (0.64 s), 조각 사이 상태 유지</td></tr>
+    <tr><td>미니배치 / epoch</td><td>1,024 / 1</td></tr>
+    <tr><td>워커당 갱신 샘플</td><td>98,304 = 65,536 (현재) + 32,768 (리플레이)</td></tr>
+    <tr><td>현재 / 리플레이 비율</td><td>2/3 / 1/3</td></tr>
+    <tr><td>워커당 리플레이 용량</td><td>300,000 샘플, float16 저장</td></tr>
+    <tr><td>행동 맞춤 손실 / 가중</td><td>정규화 행동 MSE / 1.0</td></tr>
+    <tr><td>제어 주기</td><td>50 Hz</td></tr>
+    <tr><td>최대 정규화 깊이</td><td>2.5 m</td></tr>
+    <tr><td>전체 병렬 env</td><td>16,384 <span class="src">(p.5 IV-A)</span></td></tr>
+    <tr><td>DAgger 반복 수·시간</td><td>논문에 없음</td></tr>
+  </tbody>
+</table></div>
+<p>추론: 65,536 현재 샘플 ÷ 32 스텝 = 워커당 2,048 env → 16,384 env 면 워커 8 개. 논문에 워커 수는 없다.</p>
+
+<h2 class="ps">7. 결과</h2>
+<h3 class="ps">teacher·증류 비교와 ablation (표 II, %)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>방법</th><th>성공 학습</th><th>성공 테스트</th><th>생존 학습</th><th>생존 테스트</th></tr></thead>
+  <tbody>
+    <tr><td colspan="5"><b>특권 정책</b></td></tr>
+    <tr><td>GMT prior (그대로)</td><td>7.87</td><td>4.53</td><td>99.95</td><td>100.00</td></tr>
+    <tr><td>GMT teacher (과제 데이터로 처음부터)</td><td>80.64</td><td>73.96</td><td>89.68</td><td>88.49</td></tr>
+    <tr><td>teacher, 물리 정제 없이</td><td>79.85</td><td>76.98</td><td>98.04</td><td>96.79</td></tr>
+    <tr><td><b>GMT + 잔차 적응 (최종 teacher)</b></td><td><b>88.12</b></td><td><b>84.91</b></td><td>98.53</td><td>98.11</td></tr>
+    <tr><td colspan="5"><b>배포 student</b></td></tr>
+    <tr><td>학습 env 1/4</td><td>66.50</td><td>67.17</td><td>98.39</td><td>99.25</td></tr>
+    <tr><td>학습 env 1/2</td><td>72.81</td><td>69.81</td><td>98.92</td><td>99.43</td></tr>
+    <tr><td>CVAE</td><td>74.91</td><td>76.42</td><td>99.07</td><td>98.68</td></tr>
+    <tr><td>MLP-2</td><td>73.69</td><td>73.58</td><td>98.83</td><td>98.30</td></tr>
+    <tr><td>MLP-4</td><td>76.77</td><td>73.77</td><td>99.22</td><td>99.43</td></tr>
+    <tr><td>시각 없음</td><td>43.72</td><td>33.96</td><td>94.62</td><td>94.72</td></tr>
+    <tr><td>BC 만</td><td>36.82</td><td>31.89</td><td>57.51</td><td>56.98</td></tr>
+    <tr><td><b>ViLoMan (MLP-3)</b></td><td><b>77.16</b></td><td><b>77.55</b></td><td><b>99.22</b></td><td><b>99.81</b></td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>범용 추종기는 과제에 그대로 못 옮겨짐: 4.53 % <span class="src">(p.5)</span>.</li>
+  <li>과제 데이터로 GMT 를 처음부터 학습하면 73.96 % 지만 생존 88.49 % — 불안정. 동결 GMT + 잔차가 성공·생존 모두 높음 (84.91 / 98.11) <span class="src">(p.5)</span>.</li>
+  <li>물리 정제 제거: 테스트 −7.93 pp <span class="src">(p.5)</span>.</li>
+  <li>DAgger 대 BC: 성공 +45.66 pp, 생존 +42.83 pp <span class="src">(p.5)</span>.</li>
+  <li>env 수 1/2, 1/4: 테스트 −7.74, −10.38 pp <span class="src">(p.5)</span>.</li>
+  <li>시각 없음: 33.96 % — 고유감각만으로 문 상태·상대 위치를 못 앎 <span class="src">(p.5)</span>.</li>
+  <li>망 크기 차이는 작다 (MLP-2·4, CVAE 와 2–4 pp) <span class="src">(표 II)</span>.</li>
+  <li>student 생존 (99.81)이 teacher (98.11)보다 높다 <span class="src">(표 II)</span>.</li>
+</ul>
+
+<h3 class="ps">실행 인터페이스 비교 (표 III)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>방법</th><th>인터페이스</th><th>성공 학습 / 테스트 (%)</th><th>생존 학습 / 테스트 (%)</th><th>실행 시간 학습 / 테스트 (s)</th></tr></thead>
+  <tbody>
+    <tr><td>SONIC</td><td>잠재 토큰</td><td>62.10 / 58.30</td><td>98.53 / 98.49</td><td>6.25 / 6.27</td></tr>
+    <tr><td>Handoff + Qwen3-VL-8B</td><td>작업 공간</td><td>23.81 / 20.94</td><td>74.82 / 75.09</td><td>99.98 / 116.89</td></tr>
+    <tr><td>Handoff + Qwen3-VL-4B</td><td>작업 공간</td><td>22.54 / 16.79</td><td>68.07 / 70.38</td><td>65.46 / 68.86</td></tr>
+    <tr><td><b>ViLoMan</b></td><td>관절</td><td><b>77.16 / 77.55</b></td><td><b>99.22 / 99.81</b></td><td><b>5.79 / 6.20</b></td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li><b>SONIC 비교군</b>: 깊이 + 고유감각 → 64 차원 토큰 → 2 × 32 로 바꿔 동결 FSQ 로 양자화 → 동결 SONIC 디코더가 10 프레임 고유감각 이력을 조건으로 29 관절 행동. 학습은 정규화 행동 제곱 DAgger 손실 + 토큰 smooth L1 (가중 0.1) <span class="src">(p.6)</span>. 생존·시간은 비슷, 성공은 19.25 pp 낮음.</li>
+  <li><b>Handoff 비교군</b>: 공식 공개에 VLM 플래너·프롬프트가 없어 저자가 Qwen3-VL 프롬프트를 직접 만듦. RGB-D → 10 차원 명령 (vx, vy, ωz, 루트 높이, 양 손목 3D 목표), <b>1 Hz</b> 갱신 → Handoff 전신 제어기 <span class="src">(p.6)</span>.</li>
+  <li>우리 평가: Handoff 쪽은 학습 안 된 VLM 이 1 Hz 로 명령하는 구성이라 "작업 공간 인터페이스 자체가 나쁘다"는 증거로는 약하다 (추론).</li>
+</ul>
+
+<h2 class="ps">8. 실기 · sim2real</h2>
+<ul>
+  <li><b>sim2sim</b>: student 를 ONNX 로 내보내 MuJoCo 에서 왼쪽·오른쪽 경첩 테스트 문으로 확인 (그림 4) <span class="src">(p.6)</span>. 숫자는 없음.</li>
+  <li><b>실기 구성</b>: G1 탑재 컴퓨터에서 정책 전부 실행, 머리 RealSense D435i 깊이 + 고유감각 <span class="src">(p.6)</span>. 실기 깊이 필터·전처리·지연은 논문에 없음.</li>
+  <li><b>시험</b>: 처음 문 각 × 로봇 자세 8 조합 × 5 회 = 40 회 <span class="src">(p.6)</span>.</li>
+</ul>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>정책</th><th>실기 성공</th></tr></thead>
+  <tbody>
+    <tr><td><b>ViLoMan</b></td><td><b>32/40 (80 %)</b>, 성공 평균 6.6 s</td></tr>
+    <tr><td>학습 env 1/4</td><td>27/40 (67.5 %)</td></tr>
+    <tr><td>BC 만</td><td>15/40 (37.5 %)</td></tr>
+  </tbody>
+</table></div>
+<p class="src">출처: p.6 IV-D, 그림 5</p>
+<ul>
+  <li><b>깊이 영역 차이</b>: 잡음은 있지만 문판·문 모서리·로봇–문 배치 같은 핵심 기하는 시뮬·실기 모두에 보인다 (그림 6) <span class="src">(p.6)</span>.</li>
+  <li><b>실패 사례</b>: 다가가 문을 움직였지만 거의 닫힌 지점에서 10° 를 조금 넘긴 채 멈춤. 다 닫힐수록 깊이 대비가 줄어서로 추정 (그림 7) <span class="src">(p.6)</span>.</li>
+</ul>
+
+<h2 class="ps">9. 코드에서 확인한 것</h2>
+<p>해당 없음 — 로컬 code/ 없음. 논문에는 코드 공개 링크가 없고 익명 프로젝트 페이지 주소만 있다 <span class="src">(p.1)</span>.</p>
+
+<h2 class="ps">10. 한계</h2>
+<ul>
+  <li><b>과제 하나</b>: 문 닫기만, 문 폭 1.000 m 고정. 하중을 드는 과제가 아니라 손 힘·물체 질량 문제를 다루지 않는다 <span class="src">(표 IV)</span>.</li>
+  <li><b>무거운 데이터 파이프라인</b>: 사람 모캡 + 리타겟 + 생성 모델 + 궤적마다 정제 정책 + 군집별 specialist. 정제 정책·specialist 수와 학습 비용은 논문에 없음.</li>
+  <li><b>보고 안 된 값</b>: 반복 수·학습 시간·GPU, 조기 종료 조건, 행동 척도·PD 게인, 깊이 블러 세기, 잔차 CNN 구조, 실기 깊이 처리·지연.</li>
+  <li><b>깊이 DR 이 블러뿐</b>: 카메라 자세·지연·구멍 무작위 없음. 실패 사례도 깊이 대비 부족 쪽 <span class="src">(p.6, 표 VI)</span>.</li>
+  <li><b>인터페이스 비교의 교란</b>: SONIC 은 토큰 DAgger, Handoff 는 1 Hz VLM 플래너라 학습 방식이 다르다. 같은 RL·DAgger 로 학습한 작업 공간 상위 정책과의 비교는 없다 (추론).</li>
+  <li><b>분포</b>: 테스트의 오른쪽 경첩 비율 60.4 % 가 학습 33.3 % 보다 높음 <span class="src">(표 IV)</span>. 실기는 40 회, 문 종류 구성은 논문에 없음.</li>
+  <li><b>teacher 도 참조 의존</b>: 단계가 참조 시간으로 정해져, 참조 없는 student 는 단계를 스스로 알아내야 한다 <span class="src">(p.9 C)</span>.</li>
+</ul>
+
+<h2 class="ps">11. 우리에게 가져올 것</h2>
+<div class="take"><ol>
+  <li><b>DAgger 손실은 차원별 정규화 행동 MSE</b> <span class="src">(식 5)</span>. 우리 출력은 상체 11 (rad)과 골반 6 (m/s, rad/s, m, rad)이 섞여, 정규화 없이 쓰면 큰 단위 차원이 손실을 지배한다. 정규화 통계는 teacher 행동 분포에서 잡는다.</li>
+  <li><b>리플레이 섞기를 그대로</b>: 미니배치 2/3 현재 + 1/3 갱신 전 리플레이, 워커당 300,000 샘플 (float16), 1 epoch, 미니배치 1,024, AdamW 10<sup>−4</sup>, 32 스텝 (0.64 s) 조각을 리셋 없이 이어 감 <span class="src">(표 VII)</span>. v2 student 의 체크포인트별 성공 출렁임을 줄일 후보 (추론).</li>
+  <li><b>DAgger env 수를 줄이지 말 것</b>: 1/2 이면 테스트 −7.74 pp, 1/4 이면 −10.38 pp, 실기 32/40 → 27/40 <span class="src">(표 II, p.6)</span>. 깊이 렌더 비용 때문에 env 를 줄이고 싶어도 teacher 학습과 같은 급 (논문은 16,384) 유지.</li>
+  <li><b>성긴 고유감각 이력</b>: 오프셋 [0, 1, 2, 3, 4, 8, 12, 16, 20] 스텝 (0.4 s) × (각속도 3, 중력 3, 관절 위치·속도) + 이전 행동 8 개 <span class="src">(p.9 B)</span>. K1 이면 9 × (3 + 3 + 23 + 23) + 8 × 17 = 604 차원 (계산). 팔 kp 22.3 이라 조이기 접촉이 팔 PD 추종 오차의 시간 변화로 드러나므로, 0.4 s 이력이 "접촉 정보" 격차를 일부 메울 수 있다 (추론).</li>
+  <li><b>단계 경계 리셋</b>: 단계 0 / 1 / 2 에서 0.25 / 0.15 / 0.60, 가장 어려운 단계에 60 % <span class="src">(표 VII)</span>. 우리 단계 ① 접근·숙이기 ② 손을 옆면에 대기 ③ 조여 들고 일어서기 ④ 유지 중 ③④ 비중을 높이고, 시작 상태는 teacher 롤아웃 스냅샷으로 만든다 (참조 궤적이 없으므로). 바닥 박스 도달 단계를 더 자주 연습하게 된다 (추론).</li>
+  <li><b>손–표면 거리 보상 모양</b>: 접촉 전 2·exp(−max(d − 0.06, 0)/0.18) (가중 1.0), 접촉 중 4·exp(−max(d − 0.04, 0)/0.12) (가중 2.8), 관통 −max(−0.02 − s, 0) (가중 0.45) <span class="src">(표 V)</span>. 우리 d = 손 공 중심 − 박스 옆면 거리 (손마다). 단 논문은 두 손 <b>평균</b>이라 한 손 밀기가 보상을 반은 받는다 → v2 한 손 밀기 국소 최적 대책으로 우리는 두 손 중 <b>최소값</b> 또는 곱을 쓴다 (추론).</li>
+  <li><b>진행 보상 + 최종 추적 쌍</b>: clip(진행/목표 변화, 0, 1) 에 진행도 게이트 (가중 6.0), 끝 단계 지수 추적 + L1 벌점 (12 + 8) <span class="src">(표 V)</span> → 박스 높이 진행 clip((z<sub>box</sub> − z<sub>0</sub>)/(z<sub>목표</sub> − z<sub>0</sub>), 0, 1) 과 "들고 유지" 단계의 높이 추적 + L1 로 옮긴다.</li>
+  <li><b>행동 규제 값</b>: 잔차 크기 2×10<sup>−4</sup>, 잔차 변화 5×10<sup>−4</sup>, 전체 행동 변화 0.01, 초기 std 0.25, 엔트로피 0.0025 → 0.0005 지수 감소, 목표 KL 0.01, actor·critic 기울기 norm 각각 1.0 <span class="src">(표 V, VII)</span>. v2 의 std 폭주 (환경 안 자르기 + 무벌점)와 on/off 포화 대책으로 "자르기 대신 크기·변화 벌점 + 낮은 초기 std" 쪽 근거. 논문은 행동 자르기 여부를 말하지 않는다.</li>
+  <li><b>평가 규약</b>: 고정 테스트 셋의 각 구성을 DR 독립 표본 5 회, 생존과 성공을 따로 보고 <span class="src">(p.5)</span>. 우리는 받침대 높이 4 × 거리 × 옆 × yaw 격자를 고정해 모든 체크포인트를 같은 셋으로 재 비단조 성공을 가린다.</li>
+  <li><b>teacher 특권 정보는 깊이로 복원 가능한 것 위주</b>: 이 논문 teacher 맥락 (단계·문 상태·접촉 목표)은 깊이에 보이고 접촉 항도 기하 거리뿐 → 격차 7.36 pp <span class="src">(표 II, p.9 E)</span>. v2 격차 21 pp 의 원인으로 본 손 접촉력·박스 질량은 teacher actor 에서 빼 critic 전용으로 (추론).</li>
+  <li><b>로봇 DR 출발값</b> (상위 학습 env 에도 걸어 상위가 하위의 불완전함을 보게): 골반·몸통 CoM ±0.03 m, 상체 kp·kd LU[0.9, 1.1], 하체·허리 LU[0.5, 2.0], armature LU[0.75, 1.25], 관절 오프셋 ±0.01 rad, 하체 목표 편향 ±0.1 rad, 밀기 U[4, 6] s 마다 선속도 ±0.5 (z ±0.2) m/s·각속도 ±0.52 (yaw ±0.78) rad/s, 중력 섭동 0–0.1 m/s² <span class="src">(표 VI)</span>. 하체 쪽은 동결 dev12 가 학습 때 본 범위 안에서만 (밖이면 하체가 못 견딘다).</li>
+</ol></div>
+
+<h3 class="ps">가져오지 않을 것</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>이유</th></tr></thead>
+  <tbody>
+    <tr><td>배포 시 단일 관절 정책 (29 관절 직접)</td><td>우리 전제는 dev12 하체 동결. 논문의 "관절 &gt; 중간 인터페이스" (77.55 대 58.30·20.94 %)는 학습 방식이 다른 비교군과의 비교라 골반 명령 인터페이스를 버릴 근거가 못 된다. 다만 동결 SONIC + 토큰 출력이 19.25 pp 낮았다는 점은 v2 (동결 SONIC) 경험과 같은 방향.</td></tr>
+    <tr><td>참조 모션 파이프라인 (TRUMANS → OmniRetarget → Kimodo → 궤적별 정제 → 군집 specialist)</td><td>K1 박스 조이기 참조가 없고 비용이 크다. 보상 34 항 중 12 항이 참조 추적이라 우리와 무관.</td></tr>
+    <tr><td>깊이 DR = 가우시안 블러만</td><td>D436 실측 구멍·잡음, 프레임 나이 14–45 ms, 카메라 장착 오차를 못 덮는다. 논문 실패 사례도 깊이 대비 부족.</td></tr>
+    <tr><td>접촉 시간 상수 U[0.015, 0.03] s, 접촉 감쇠비 LU[0.5, 2.0]</td><td>MuJoCo 접촉 모형 고유 값. Newton 엔 대응 파라미터를 따로 정해야 한다.</td></tr>
+    <tr><td>깊이 해상도 변경 (36×64, 4 장)</td><td>우리 26×64 × 6 장과 같은 급. 바꿀 근거 없음.</td></tr>
+    <tr><td>성공 기준 (끝 각도 &lt; 10°)</td><td>우리는 "박스가 들린 채 일정 시간 유지" 기준이 따로 필요.</td></tr>
+  </tbody>
+</table></div>
+
+<p class="src">출처 표기: (p.N), (표 N), (그림 N), (식 N), 코드는 파일 경로. 논문에 없는 값은 "논문에 없음".</p>
+</main>
+</body>
+</html>

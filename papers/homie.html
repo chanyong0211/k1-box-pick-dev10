@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HOMIE — 논문 상세</title>
+<link rel="stylesheet" href="paper.css">
+</head>
+<body>
+<main class="wrap">
+<a class="back" href="../index.html#catalog">← 자료 목록으로</a>
+
+<header class="ph">
+  <h1>HOMIE: 상체 무작위 자세 커리큘럼으로 학습한 걷기·쪼그림 하체 RL + 동형 외골격 조종석 텔레옵</h1>
+  <p class="orig">HOMIE: Humanoid Loco-Manipulation with Isomorphic Exoskeleton Cockpit</p>
+  <p class="meta">Qingwei Ben, Feiyu Jia (공동 1저자), Jia Zeng, Junting Dong, Dahua Lin, Jiangmiao Pang · Shanghai AI Laboratory, CUHK MMLab · RSS 2025 (arXiv v2 2025-04-28) · Unitree G1 (+ Fourier GR-1) · Isaac Gym (legged_gym + HIMLoco), Isaac Sim 이식</p>
+  <div class="chips">
+    <a class="chip loc" href="../reference/homie/paper.pdf">로컬 PDF</a>
+    <a class="chip loc" href="../reference/homie/code/">로컬 코드</a>
+    <a class="chip" href="https://arxiv.org/abs/2502.13013" target="_blank" rel="noopener">arXiv 2502.13013</a>
+    <a class="chip gh" href="https://github.com/InternRobotics/OpenHomie" target="_blank" rel="noopener">InternRobotics/OpenHomie</a>
+    <span class="simv s4">유사도 4</span>
+    <span class="badge">CC BY-NC 4.0 (README 는 BY-NC-SA)</span>
+    <span class="badge wt" title="HomieDeploy/deploy.onnx 1.8 MB 가 실제 가중치로 들어 있음">가중치</span>
+  </div>
+</header>
+
+<div class="callout blue tldr">하체 RL (다리 12) 이 [vx, vy, ωz, 골반 높이] 명령을 따르며 <b>임의로 움직이는 상체</b>를 견디도록, 상체 자세 범위를 넓혀 가는 커리큘럼 + 무릎 높이 보상 + 대칭 손실로 학습 (G1 높이 오차 0.022 m, 20 s 생존 19.95 s). 사람이 페달 (명령) + 동형 외골격 팔 (상체 관절) 로 조종하고, 그 시연 50 개로 학습한 IL 정책이 <b>상체 관절 + 높이</b>를 내어 실기 쪼그려 집기 <b>73.3 %</b>.</div>
+
+<h2 class="ps">우리와 무엇이 같고 다른가</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>이 논문</th><th>우리 (dev10 pelvis_pick)</th></tr></thead>
+  <tbody>
+    <tr><td>하위 제어기</td><td>π<sub>loco</sub>: 다리 12 관절, 명령 vx −0.8–1.2, vy ±0.5, ωz ±0.8, 골반 높이 0.24–0.74 m (코드). 상체 관절 상태만 관측 (목표는 안 봄). 50 Hz</td><td>dev12: 다리 12, vx ±0.8, vy ±0.4, ωz ±1.0, 높이 0.335–0.77 m, pitch ±45°, roll ±10°, 상체 11 의 저역 통과 목표 + 변화율 관측</td></tr>
+    <tr><td>상위 출력</td><td>사람 (페달 명령 + 외골격 관절) 또는 IL 정책 π<sub>auto</sub> (팔 관절·손·높이 명령), 10 Hz</td><td>RL teacher → 깊이 student 가 상체 11 + 골반 명령 6</td></tr>
+    <tr><td>과제·물체</td><td>텔레옵 다용도 (쪼그려 집기, 상자 옮기기, 오븐 열기 등). IL 은 토마토 쪼그려 집기·집어 놓기</td><td>바닥·받침대 0–0.3 m 박스 37×40.5×29 cm, 0.5–2 kg, 두 손바닥 조이기</td></tr>
+    <tr><td>지각·증류</td><td>teacher-student 없음. 하체는 HIM 추정기로 속도 자기 추정. 상위 IL 은 RGB 다중 시점 (Seer)</td><td>특권 teacher → D436 깊이 student (DAgger)</td></tr>
+    <tr><td>하중</td><td>손 −0.1–0.3 kg, 몸통 −5–10 kg (표 VII)</td><td>손 0–5 kg</td></tr>
+    <tr><td>로봇 크기</td><td>G1 130 cm, 36.4 kg, 손 1.42 kg (그림 8)</td><td>K1 35.7 kg — 거의 같은 무게</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li><b>가장 닮은 점</b>: 하체 RL 이 높이 명령 + 외부에서 정해지는 상체 자세를 견디는 분할 = dev12 의 설계 그대로. 상위가 "상체 + 높이" 를 함께 내어 쪼그려 집는 선례.</li>
+  <li><b>다른 점</b>: 하체가 <b>제자리에서만 쪼그리고</b> 걸을 땐 0.74 m 고정 (코드). 몸통 pitch·roll 명령이 없다. 상위는 RL 이 아니라 사람·IL.</li>
+</ul>
+
+<h2 class="ps">1. 문제와 과제</h2>
+<ul>
+  <li><b>문제</b> (p.1–2): RL 보행 정책은 환경 적응은 좋지만 정밀 텔레옵용 인터페이스가 없고, 텔레옵 시스템은 상체만 다뤄 이동이 작업 공간에 주는 영향을 무시한다. 기존 분할형 WBC 는 (1) 모캡 동작 사전 의존, (2) 시각 자세 추정의 부정확, (3) <b>몸 높이 제어 없음</b>, (4) 몸 움직임 기반 이동 명령의 비실용성이 한계.</li>
+  <li><b>제안</b>: π<sub>loco</sub> (하체 RL, 걷기 + 임의 높이 쪼그림, 임의 상체 자세 적응) + 조종석 (동형 7 자유도 외골격 팔, 15 자유도 홀 센서 장갑, 페달). 총 하드웨어 약 $500 (p.2).</li>
+  <li><b>명령</b>: C<sub>t</sub> = [v<sub>x,t</sub>, ω<sub>yaw,t</sub>, h<sub>t</sub>] (h = 몸통 목표 높이, p.4). 상체 관절 q<sub>upper</sub> 는 외골격 값을 그대로 로봇에 설정.</li>
+</ul>
+
+<h2 class="ps">2. 시스템 구조</h2>
+<div class="fig">
+  <div class="flow">
+    <span class="node">페달 3 개 → [vx, ωyaw, h]</span><span class="arr">→</span>
+    <span class="node frozen">π<sub>loco</sub> (HIM 추정기 + 정책), 50 Hz, 관측 6 스텝 이력</span><span class="arr">→</span>
+    <span class="node">다리 12 관절 목표 → PD 토크</span>
+  </div>
+  <div class="flow" style="margin-top:8px">
+    <span class="node">외골격 팔 (관절 일치) + 장갑</span><span class="arr">→</span>
+    <span class="node">q<sub>upper</sub>: 10 Hz 로 전송, 로봇에서 50 단계 보간</span><span class="arr">→</span>
+    <span class="node">팔·손 관절 위치 제어</span>
+  </div>
+  <div class="flow" style="margin-top:8px">
+    <span class="node">텔레옵 시연 50 개/과제 (RGB + 상태 + 명령, 10 Hz)</span><span class="arr">→</span>
+    <span class="node">π<sub>auto</sub> (Seer, 자기회귀 트랜스포머)</span><span class="arr">→</span>
+    <span class="node">팔 관절 + 손 + 높이 명령 (10 Hz) → π<sub>loco</sub></span>
+  </div>
+  <p class="src">(p.4, 그림 2–3; p.20, 부록 C, 그림 22) 점선 = 배포 중 고정된 하체 정책.</p>
+</div>
+<ul>
+  <li>π<sub>loco</sub> 는 G1 탑재 Jetson Orin 에서 50 Hz (학습과 같은 주기). 조종석 → 로봇은 Wi-Fi TCP, 패킷 128 바이트, 지연 16 ms (p.9, p.20).</li>
+  <li>π<sub>auto</sub> 는 유선으로 연결된 RTX 4080 호스트에서 추론, 전체 루프 10 Hz (p.20).</li>
+</ul>
+
+<h2 class="ps">3. 관측과 행동</h2>
+<h3 class="ps">π<sub>loco</sub> 관측</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>논문 (p.4)</th><th>코드</th></tr></thead>
+  <tbody>
+    <tr><td>명령</td><td>C<sub>t</sub> = [vx, ωyaw, h] (3)</td><td>[vx × 2, vy × 2, ωz × 0.25, h] (4)</td></tr>
+    <tr><td>각속도 (IMU, 골반)</td><td>3</td><td>3, × 0.25 (배포 설정)</td></tr>
+    <tr><td>투영 중력</td><td>3</td><td>3</td></tr>
+    <tr><td>전 관절 위치·속도</td><td>N<sub>joints</sub> × 2</td><td>27 × 2 (속도 × 0.05)</td></tr>
+    <tr><td>직전 행동</td><td>N<sub>lower</sub></td><td>12</td></tr>
+    <tr><td>스텝당 합</td><td>9 + 2N<sub>joints</sub> + N<sub>lower</sub></td><td>76</td></tr>
+    <tr><td>이력</td><td>O<sub>t−5:t</sub> (6 스텝)</td><td>76 × 6 = 456</td></tr>
+    <tr><td>critic</td><td>O<sub>t</sub> + 참값 [vx, ωyaw]</td><td>현재 관측 + 기저 선속도 3, 이력 1</td></tr>
+  </tbody>
+</table></div>
+<p class="src">(<a href="../reference/homie/code/HomieRL/legged_gym/legged_gym/envs/base/legged_robot.py"><code>legged_robot.py</code></a> <code>compute_observations</code> 313–331행, <a href="../reference/homie/code/HomieRL/legged_gym/legged_gym/envs/g1/g1_29dof_config.py"><code>g1_29dof_config.py</code></a> <code>env</code>, <a href="../reference/homie/code/MujocoDeploy/g1.yaml"><code>MujocoDeploy/g1.yaml</code></a>) 관측 잡음: 관절 위치 ±0.02, 관절 속도 ±2.0, 각속도 ±0.5, 중력 ±0.05 (표 VII).</p>
+<ul>
+  <li><b>상체 목표는 관측하지 않는다</b>: 상체 관절의 현재 위치·속도만 본다. 상체 목표가 바뀌면 그 결과 (관절 움직임) 로만 안다.</li>
+  <li><b>행동</b>: 다리 12 관절 목표, τ = K<sub>p</sub>(a − q<sub>0</sub>) − K<sub>d</sub>q̇ 형태의 PD (식 1). 코드: 목표 = 기본 자세 + a × 0.25, 하체는 토크로 계산해 넣고 상체는 위치 목표로 (<code>control_type = 'M'</code>). 자르기 범위 밖 행동에 "Action vanish" 벌점 −1.0 (표 VI).</li>
+  <li><b>지연</b> (코드만): 제어 스텝마다 env 별로 0–3 물리 하위 스텝 (0–15 ms) 동안 이전 행동을 유지 (<code>domain_rand.delay</code>).</li>
+</ul>
+
+<h3 class="ps">명령 표본 (코드)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>4 s 마다 env 별 추첨</th><th>비율</th><th>속도 명령</th><th>높이 명령</th></tr></thead>
+  <tbody>
+    <tr><td>쪼그림</td><td>1/3</td><td>0</td><td>0.74 + U(−0.5, 0) = 0.24–0.74 m</td></tr>
+    <tr><td>서기</td><td>1/6</td><td>0</td><td>0.74 m</td></tr>
+    <tr><td>걷기</td><td>1/2</td><td>vx U(−0.8, 1.2), vy U(−0.5, 0.5), ωz U(−0.8, 0.8)</td><td>0.74 m</td></tr>
+  </tbody>
+</table></div>
+<p class="src">(<code>legged_robot.py</code> <code>_resample_commands</code> 517–533행; 논문 p.5 "1/3 쪼그림, 2/3 서기·걷기", 표 VIII) 즉 <b>쪼그린 채 걷는 명령은 학습에 없다</b>. 표 VIII 의 쪼그림 범위 "[−0.24, 0.74]" 는 코드상 0.24–0.74 m 의 오기로 보인다.</p>
+
+<h2 class="ps">4. 보상 · 종료 · 커리큘럼</h2>
+<h3 class="ps">상체 자세 커리큘럼 (핵심 기법 1)</h3>
+<ul>
+  <li>상체 목표 = 관절별로 행동 최소 또는 최대 쪽 끝값 × 비율 a<sub>i</sub>. 비율 상한 ρ<sub>a</sub> 를 0 에서 시작해 x 방향 속도 추종 보상이 문턱 (에피소드 평균이 가중치의 80 %, 코드) 을 넘을 때마다 +0.05, 최대 1 (p.5).</li>
+  <li>표본: ρ′<sub>a</sub> 를 p(ρ′<sub>a</sub>|ρ<sub>a</sub>) = 20(1 − ρ<sub>a</sub>) e<sup>−20(1−ρ<sub>a</sub>)ρ′<sub>a</sub></sup> / (1 − e<sup>−20(1−ρ<sub>a</sub>)</sup>) 에서 뽑고 a<sub>i</sub> ∼ U(0, ρ′<sub>a</sub>) (식 2–3). ρ<sub>a</sub> 가 작을 땐 0 근처에 몰리고 1 에 가까워지면 U(0, 1) 이 된다 — <b>처음부터 전 범위에 0 이 아닌 확률</b>.</li>
+  <li>상체 목표를 1 s 마다 다시 뽑고, 1 s 동안 균등 (선형) 보간. 보간이 없으면 균형을 못 잡았다 (p.5). 코드: <code>upper_interval_s = 1</code>, 스텝마다 (목표 − 현재)/50 씩 이동.</li>
+</ul>
+<h3 class="ps">높이 추종 보상 (핵심 기법 2)</h3>
+<ul>
+  <li>r<sub>knee</sub> = −‖(h<sub>r,t</sub> − h<sub>t</sub>) × ((q<sub>knee,t</sub> − q<sub>knee,min</sub>)/(q<sub>knee,max</sub> − q<sub>knee,min</sub>) − 1/2)‖ (식 4). 실제 높이가 목표보다 낮으면 무릎을 펴고, 높으면 굽히도록 유도.</li>
+  <li>기저 높이 추종 = exp(−4|h<sub>t</sub> − h<sub>r,t</sub>|), 높이는 골반과 두 발 중 높은 쪽 차로 계산 (코드 <code>_reward_tracking_base_height</code>).</li>
+</ul>
+<h3 class="ps">대칭 활용 (핵심 기법 3)</h3>
+<ul>
+  <li>모든 전이 T<sub>t</sub> 를 x-z 평면에 대해 뒤집어 T′<sub>t</sub> 도 저장 (데이터 증강) + 학습 때 L<sub>sym</sub><sup>actor</sup> = MSE(a<sub>t</sub>, a′<sub>t</sub>), L<sub>sym</sub><sup>critic</sup> = MSE(V<sub>t</sub>, V′<sub>t</sub>) (식 5–6). 코드: <code>use_flip = True</code>, <code>symmetry_scale = 1.0</code> (<a href="../reference/homie/code/HomieRL/rsl_rl/rsl_rl/algorithms/him_ppo.py"><code>him_ppo.py</code></a>).</li>
+</ul>
+
+<details class="more" open>
+  <summary>보상 전체 (논문 표 VI, G1 가중치) <span class="cnt">33 항</span></summary>
+  <div class="body">
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>항</th><th>식</th><th>G1</th><th>GR-1</th></tr></thead>
+    <tbody>
+      <tr><td>x 속도 추종</td><td>exp(−4‖v<sub>x</sub> − v<sub>r,x</sub>‖²)</td><td>1.5</td><td>1.5</td></tr>
+      <tr><td>y 속도 추종</td><td>exp(−4‖v<sub>y</sub> − v<sub>r,y</sub>‖²)</td><td>1.0</td><td>1.0</td></tr>
+      <tr><td>yaw 각속도 추종</td><td>exp(−4‖ω<sub>yaw</sub> − ω<sub>r,yaw</sub>‖²)</td><td>2.0</td><td>1.0</td></tr>
+      <tr><td>기저 높이 추종</td><td>exp(−4‖h<sub>t</sub> − h<sub>r,t</sub>‖²)</td><td>2.0</td><td>2.0</td></tr>
+      <tr><td>z 선속도</td><td>v<sub>r,z</sub>²</td><td>−0.5</td><td>−0.5</td></tr>
+      <tr><td>xy 각속도</td><td>‖ω<sub>r,xy</sub>‖²</td><td>−0.025</td><td>−0.025</td></tr>
+      <tr><td>자세</td><td>‖g<sub>x</sub>‖² + ‖g<sub>y</sub>‖²</td><td>−1.5</td><td>−1.5</td></tr>
+      <tr><td>행동 변화율</td><td>‖a<sub>t</sub> − a<sub>t−1</sub>‖²</td><td>−0.01</td><td>−0.01</td></tr>
+      <tr><td>고관절 이탈</td><td>Σ|θ − θ<sub>default</sub>|²</td><td>−0.2</td><td>−0.5</td></tr>
+      <tr><td>발목 이탈</td><td>Σ|θ − θ<sub>default</sub>|²</td><td>−0.5</td><td>−0.75</td></tr>
+      <tr><td>쪼그림 무릎 r<sub>knee</sub></td><td>식 4</td><td>−0.75</td><td>−0.75</td></tr>
+      <tr><td>관절 가속</td><td>Σ‖(q̇<sub>t</sub> − q̇<sub>t−1</sub>)/dt‖²</td><td>−2.5×10<sup>−7</sup></td><td>−2.5×10<sup>−7</sup></td></tr>
+      <tr><td>관절 위치 한계</td><td>Σ out<sub>i</sub></td><td>−2.0</td><td>−2.0</td></tr>
+      <tr><td>발 체공 시간</td><td>1{첫 접촉}(T<sub>air</sub> − 0.5)</td><td>0.05</td><td>0.05</td></tr>
+      <tr><td>발 들림 높이</td><td>Σ(p<sub>z</sub><sup>target</sup> − p<sub>z</sub><sup>i</sup>)² · v<sub>xy</sub><sup>i</sup></td><td>−0.25</td><td>−0.25</td></tr>
+      <tr><td>발 옆 간격</td><td>|y<sub>left foot</sub> − y<sub>right foot</sub>| − d<sub>min</sub></td><td>0.5</td><td>0.5</td></tr>
+      <tr><td>무릎 옆 간격</td><td>|y<sub>left knee</sub> − y<sub>right knee</sub>| − d<sub>min</sub></td><td>1.0</td><td>1.0</td></tr>
+      <tr><td>발바닥 지면 평행</td><td>Σ Var(H<sub>i</sub>)</td><td>−2.0</td><td>−2.0</td></tr>
+      <tr><td>두 발 평행</td><td>Var(D)</td><td>−3.0</td><td>−3.0</td></tr>
+      <tr><td>부드러움</td><td>‖a<sub>t</sub> − 2a<sub>t−1</sub> + a<sub>t−2</sub>‖²</td><td>−0.05</td><td>−0.05</td></tr>
+      <tr><td>관절 일률</td><td>|τ||θ̇|<sup>T</sup> / (‖v‖² + 0.2‖ω<sub>xy</sub>‖²)</td><td>−2.0×10<sup>−5</sup></td><td>−2.0×10<sup>−5</sup></td></tr>
+      <tr><td>발 걸림</td><td>1{∃i, F<sub>i,xy</sub> &gt; 3 F<sub>i,z</sub>}</td><td>−1.5</td><td>−1.5</td></tr>
+      <tr><td>토크</td><td>Σ|τ<sub>i</sub>/k<sub>p,i</sub>|²</td><td>−2.5×10<sup>−6</sup></td><td>−2.5×10<sup>−6</sup></td></tr>
+      <tr><td>관절 속도</td><td>Σ|θ̇<sub>i</sub>|²</td><td>−1×10<sup>−4</sup></td><td>−1×10<sup>−4</sup></td></tr>
+      <tr><td>관절 속도 한계</td><td>Σ ReLU(θ̂<sub>i</sub> − θ̂<sub>i,max</sub>)</td><td>−2×10<sup>−3</sup></td><td>−2×10<sup>−3</sup></td></tr>
+      <tr><td>토크 한계</td><td>Σ ReLU(τ̂<sub>i</sub> − τ̂<sub>i,max</sub>)</td><td>−0.1</td><td>−0.2</td></tr>
+      <tr><td>체공 없음</td><td>1{한 발만 지면}</td><td>0.75</td><td>0.5</td></tr>
+      <tr><td>관절 추종 오차</td><td>Σ|θ<sub>i</sub> − θ<sub>i,target</sub>|²</td><td>−0.1</td><td>−0.25</td></tr>
+      <tr><td>발 미끄럼</td><td>Σ v<sub>foot</sub> · 1<sub>new contact</sub></td><td>−0.25</td><td>−0.25</td></tr>
+      <tr><td>발 접촉력</td><td>Σ ReLU(F<sub>i,z</sub> − F<sub>th</sub>)</td><td>−2.5×10<sup>−4</sup></td><td>−2.5×10<sup>−4</sup></td></tr>
+      <tr><td>접촉 운동량</td><td>Σ|v<sub>i,z</sub> F<sub>i,z</sub>|</td><td>2.5×10<sup>−4</sup></td><td>2.5×10<sup>−4</sup></td></tr>
+      <tr><td><b>행동 소멸 (범위 밖)</b></td><td>Σ(max{0, a<sub>i,t</sub> − a<sub>i,max</sub>} + min{0, a<sub>i,min</sub> − a<sub>i,t</sub>})</td><td>−1.0</td><td>−1.0</td></tr>
+      <tr><td>가만히 서기</td><td>(땅에 안 닿은 발 수) × 1<sub>stand still</sub></td><td>−0.15</td><td>−0.2</td></tr>
+    </tbody>
+  </table></div>
+  <p class="src">(p.15, 표 VI) 코드 가중치는 이 표와 같다 (<a href="../reference/homie/code/HomieRL/legged_gym/legged_gym/envs/g1/g1_29dof_config.py"><code>g1_29dof_config.py</code></a> <code>rewards.scales</code>). 저자 관찰: "가만히 서기" 보상은 정지·이동 전환을 불안정하게 했고, <b>발목 K<sub>p</sub> 를 낮추자</b> 완화됨 (p.15, 부록 A-B).</p>
+  </div>
+</details>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>주요 매개변수 (표 VIII, G1)</th><th>값</th></tr></thead>
+  <tbody>
+    <tr><td>걷기 높이 목표</td><td>0.74 m</td></tr>
+    <tr><td>소프트 한계 (관절 위치 / 속도 / 토크)</td><td>0.975 / 0.80 / 0.95</td></tr>
+    <tr><td>최대 접촉력</td><td>400 N</td></tr>
+    <tr><td>발·무릎 옆 간격</td><td>0.20–0.35 m</td></tr>
+    <tr><td>발 들림 목표</td><td>0.14 m</td></tr>
+    <tr><td>밀기 간격 / 상체 재표본 / 명령 재표본</td><td>4 s / 1 s / 4 s</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li><b>종료</b> (코드): 몸통 접촉력 &gt; 10 N, 투영 중력 xy 노름 &gt; 0.8, 시간 초과 20 s.</li>
+</ul>
+
+<h2 class="ps">5. 학습 설정 (알고리즘 · 망 · 무작위화)</h2>
+<h3 class="ps">망: HIM (Hybrid Internal Model) 구조</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>부분</th><th>구조</th><th>역할</th></tr></thead>
+  <tbody>
+    <tr><td>추정기 E — encoder</td><td>6 × (9 + 2N<sub>joints</sub> + N<sub>lower</sub>) → 256 → 256 → 35 (ELU)</td><td>6 스텝 이력에서 속도 + 잠재 Î<sub>t</sub> 추정 (참값 [vx, ωyaw] 로 지도)</td></tr>
+    <tr><td>E — target</td><td>(9 + 2N<sub>joints</sub> + N<sub>lower</sub>) → 256 → 256 → 32, 원형 Embedding(64, 32)</td><td>다음 관측과 대조 학습</td></tr>
+    <tr><td>정책 N</td><td>(35 + 관측) → 512 → 256 → 256 → N<sub>lower</sub></td><td>다리 12 행동</td></tr>
+    <tr><td>critic C</td><td>(2 + 관측) → 512 → 256 → 256 → 1</td><td>참 속도 포함</td></tr>
+  </tbody>
+</table></div>
+<p class="src">(p.14, 부록 A-A, Listing 1)</p>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>PPO (코드)</th><th>값</th></tr></thead>
+  <tbody>
+    <tr><td>env / env 당 스텝</td><td>4096 / 50</td></tr>
+    <tr><td>학습률 / 에폭 / 미니배치</td><td>1e-3 adaptive (KL 0.01) / 5 / 4</td></tr>
+    <tr><td>γ / λ / clip</td><td>0.99 / 0.95 / 0.2</td></tr>
+    <tr><td>엔트로피 / 초기 std</td><td>0.01 / 1.0</td></tr>
+    <tr><td>대칭</td><td>뒤집기 증강 + 대칭 손실 계수 1.0</td></tr>
+    <tr><td>최대 반복</td><td>100,000 (설정값). 논문 평가는 2k 반복 시점 정책 (p.8)</td></tr>
+    <tr><td>제어 / 물리</td><td>50 Hz / decimation 4</td></tr>
+    <tr><td>PD (학습)</td><td>hip 100/2, knee 150/4, ankle 40/2, 허리 300/5, 어깨 200/4, 팔꿈치 100/1, 손목 20/0.5</td></tr>
+    <tr><td>하드웨어</td><td>RTX 4090, Isaac Gym 4096 병렬 (p.7)</td></tr>
+  </tbody>
+</table></div>
+<p class="src">(<code>g1_29dof_config.py</code>, <a href="../reference/homie/code/HomieRL/legged_gym/legged_gym/envs/base/legged_robot_config.py"><code>legged_robot_config.py</code></a>)</p>
+
+<h3 class="ps">무작위화 (표 VII)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>논문 범위</th><th>코드</th></tr></thead>
+  <tbody>
+    <tr><td>구동 토크 오프셋</td><td>±0.05 N·m</td><td>±0.05 + 관절별 주입 ±0.05 × 토크 한계</td></tr>
+    <tr><td>몸통 하중</td><td>−5.00–10.00 kg</td><td>같음</td></tr>
+    <tr><td><b>손 하중</b></td><td><b>−0.10–0.30 kg</b></td><td>같음 (양손 따로)</td></tr>
+    <tr><td>몸통 COM</td><td>±0.1 m</td><td>몸체 변위 ±0.1 (COM 변위 항은 꺼짐)</td></tr>
+    <tr><td>링크 질량 배율</td><td>0.80–1.20</td><td>같음</td></tr>
+    <tr><td>마찰</td><td>0.10–2.00</td><td>0.1–3.0</td></tr>
+    <tr><td>반발</td><td>0.00–1.00</td><td>같음</td></tr>
+    <tr><td>K<sub>p</sub>, K<sub>d</sub> 배율</td><td>0.90–1.10</td><td>같음</td></tr>
+    <tr><td>초기 관절 배율 / 오프셋</td><td>0.80–1.20 / ±0.10 rad</td><td>같음</td></tr>
+    <tr><td>밀기</td><td>x·y ±0.50 m/s, 4 s 마다</td><td>같음</td></tr>
+    <tr><td>행동 지연</td><td>논문에 없음</td><td>0–3 물리 하위 스텝 (0–15 ms)</td></tr>
+  </tbody>
+</table></div>
+<p class="src">(p.16, 표 VII) 손 하중 항은 "물체를 잘 들기 위해" 넣었다고 설명 (p.16).</p>
+
+<h2 class="ps">6. teacher → student / 증류</h2>
+<p>해당 없음 — 특권 teacher → student 증류가 없다. 하체는 HIM 추정기가 이력에서 속도를 추정하는 단일 PPO 이고, 상위는 텔레옵 시연으로 학습한 IL (7절).</p>
+
+<h2 class="ps">7. 결과</h2>
+<h3 class="ps">하체 정책 (시뮬, 1000 env × 20 s, 무작위 상체 ρ<sub>a</sub> → 1, 시드 3)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>지표</th><th>Unitree G1</th><th>Fourier GR-1</th></tr></thead>
+  <tbody>
+    <tr><td>선속도 오차 (m/s)</td><td>0.194 (±0.003)</td><td>0.273 (±0.003)</td></tr>
+    <tr><td>각속도 오차 (rad/s)</td><td>0.451 (±0.006)</td><td>0.540 (±0.002)</td></tr>
+    <tr><td>높이 오차 (m)</td><td>0.022 (±0.019)</td><td>0.038 (±0.003)</td></tr>
+    <tr><td>대칭 손실</td><td>0.019 (±0.017)</td><td>0.009 (±0.001)</td></tr>
+    <tr><td>생존 시간 (s, 최대 20)</td><td>19.947 (±0.092)</td><td>19.960 (±0.035)</td></tr>
+  </tbody>
+</table></div>
+<p class="src">(p.8, 표 II) GR-1 은 높이 범위와 로봇별 거리값만 바꾸고 보상 배율·파이프라인은 그대로.</p>
+<h3 class="ps">절제 (그림 7, 곡선만)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>실험</th><th>비교</th><th>결과</th></tr></thead>
+  <tbody>
+    <tr><td>상체 커리큘럼</td><td>ours / w/o cur (a<sub>i</sub> = U(0, U(0, 1)), 처음부터 전 범위) / rand (a<sub>i</sub> = U(0, U(0, ρ<sub>a</sub>)))</td><td>ours 가 선속도·각속도·높이 오차 모두 더 빨리, 더 낮게 수렴. rand 는 (ρ<sub>a</sub>, 1] 을 학습 중 못 봐 수렴이 어려움. 생존 시간은 비슷</td></tr>
+    <tr><td>높이 보상</td><td>ours / w/o knee / hei (r<sub>knee</sub> 없이 높이 보상만 키움)</td><td>hei 는 초반 (400 스텝) 높이 오차가 빨리 줄지만 속도 오차가 크게 나빠지고 최종 높이 수렴도 ours 보다 느림. r<sub>knee</sub> 가 쪼그림 학습을 직접 이끈다</td></tr>
+    <tr><td>대칭</td><td>ours (증강 + 손실) / w/ aug / w/ sym / none</td><td>증강은 학습 효율, 손실은 좌우 대칭 유지 (w/ aug 는 대칭 손실 큼). none·w/ sym 은 학습이 훨씬 느림</td></tr>
+  </tbody>
+</table></div>
+<p class="src">(p.7–8, 그림 7) 수치는 그림에만 있다.</p>
+<h3 class="ps">조종석·IL</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>값</th><th>출처</th></tr></thead>
+  <tbody>
+    <tr><td>하드웨어 비용</td><td>외골격 $430, 장갑 $30 × 2, 페달 $20</td><td>p.9, 표 III</td></tr>
+    <tr><td>수집 주기</td><td>외골격 0.26 kHz, 장갑 0.3 kHz, 페달 0.5 kHz (12 비트)</td><td>표 III</td></tr>
+    <tr><td>상체 출력 주기</td><td>팔 263 Hz / 손 293 Hz (OpenTeleVision 60 / 60, AnyTeleop 125 / 111)</td><td>표 IV</td></tr>
+    <tr><td>탁상 과제 완료 시간</td><td>OpenTeleVision 의 약 절반</td><td>p.9, 그림 11</td></tr>
+    <tr><td>초보 5 명 손 넘기기 평균</td><td>24.8 → 23.0 → 14.2 → 13.0 → 8.0 s</td><td>p.21, 표 X</td></tr>
+    <tr class="ours"><td><b>IL 실기 성공률</b></td><td><b>쪼그려 집기 73.3 %</b>, 집어 놓기 80.0 % (시도 수 논문에 없음)</td><td>p.11, 표 V</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>IL 설정 (p.10–11): 과제당 50 에피소드, RGB·로봇 상태·상체 명령·이동 명령을 10 Hz 로 기록. Seer (자기회귀 트랜스포머), MAE 사전학습 ViT-B, 다중 시점 (머리 D455 + 팔 D435), 순서 길이 7, 시각 예측·행동 예측 3 스텝, SmoothL1, 회귀 머리 3 개 (팔 관절, 손, 높이 명령), A100 8 장 40 에폭, 검증 손실 최저 체크포인트.</li>
+</ul>
+
+<h2 class="ps">8. 실기 · sim2real</h2>
+<ul>
+  <li>π<sub>loco</sub> 를 G1 Jetson Orin 에 바로 올려 50 Hz (p.20). 텔레옵 실기 과제 (그림 1): 쪼그려 테이프 집어 높은 선반에, 두 로봇 사과 넘기기, 상자 들고 다른 선반으로, 60 kg 사람 앉은 의자 밀기 (로봇 무게의 약 2 배), 오븐 열기 (잡고 뒤로 걷기), 바닥 병 집기, 꽃다발을 양팔로 상자에, 격한 상체 동작 중 균형.</li>
+  <li><b>상체 명령 주기</b>: 하드웨어·TCP 제약으로 팔 목표를 10 Hz 로 보내고 로봇에서 50 단계로 보간. 로봇이 받으면 200 Hz 넘게도 가능 (p.20).</li>
+  <li><b>sim2sim</b>: Isaac Gym → Isaac Sim (GRUtopia 장면) 이식 시 관절 순서 (깊이 우선 대 너비 우선) 와 쿼터니언 (xyzw 대 wxyz) 정렬이 핵심 (p.20).</li>
+  <li><b>실패·한계</b>: 계단은 시뮬에선 학습됐지만 실기에선 머리에 단 LiDAR 가 흔들려 불안정, 계단에 부딪힘 (p.17, 그림 17). 힘 피드백 없음, 허리 텔레옵 없음 (p.11).</li>
+</ul>
+
+<h2 class="ps">9. 코드에서 확인한 것</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>주제</th><th>확인 내용</th><th>파일</th></tr></thead>
+  <tbody>
+    <tr><td>구성</td><td>HomieRL (Isaac Gym, legged_gym + HIMLoco rsl_rl), HomieDeploy (G1 실기, ONNX), MujocoDeploy (sim2sim), HomieHardware (설계)</td><td><a href="../reference/homie/code/README.md">README.md</a></td></tr>
+    <tr><td>상체 커리큘럼 구현</td><td>1 s 마다 관절별 행동 최소·최대 끝값 × 비율, 식 3 의 역변환 표본 (계수 0.99 로 ρ<sub>a</sub> = 1 특이점 회피), 1 s 선형 보간. 에피소드 길이마다 x 속도 보상 &gt; 0.8 × 가중치면 +0.05</td><td><a href="../reference/homie/code/HomieRL/legged_gym/legged_gym/envs/base/legged_robot.py"><code>legged_robot.py</code></a> 117–127, 635–643행</td></tr>
+    <tr><td>명령 추첨</td><td>쪼그림 1/3 (속도 0), 서기 1/6, 걷기 1/2 (높이 0.74 고정)</td><td>같은 파일 517–533행</td></tr>
+    <tr><td>손 하중</td><td>양손 링크 질량에 U(−0.1, 0.3) kg 더함</td><td>같은 파일 479–490행</td></tr>
+    <tr><td>대칭</td><td>G1 관측·행동 뒤집기 함수 직접 구현</td><td><a href="../reference/homie/code/HomieRL/rsl_rl/rsl_rl/algorithms/him_ppo.py"><code>him_ppo.py</code></a></td></tr>
+    <tr><td>실기 배포</td><td><code>deploy.onnx</code> (1.8 MB, 실제 파일) 를 onnxruntime 으로 50 Hz 실행. <b>배포 PD 는 학습과 다름</b>: hip 150 (학습 100), knee 300 (학습 150), ankle 40</td><td><a href="../reference/homie/code/HomieDeploy/g1_gym_deploy/scripts/deploy_policy.py"><code>deploy_policy.py</code></a>, <a href="../reference/homie/code/HomieDeploy/g1_gym_deploy/envs/lcm_agent.py"><code>lcm_agent.py</code></a></td></tr>
+    <tr><td>MuJoCo 배포</td><td>dt 0.002, decimation 10 (50 Hz), 관측 456 = 76 × 6, 명령 배율 [2, 2, 0.25], 예시 높이 명령 0.34 m</td><td><a href="../reference/homie/code/MujocoDeploy/g1.yaml"><code>g1.yaml</code></a>, <a href="../reference/homie/code/MujocoDeploy/mujoco_deploy_g1.py"><code>mujoco_deploy_g1.py</code></a></td></tr>
+    <tr><td>라이선스</td><td>LICENSE 파일은 CC BY-NC 4.0, README 는 CC BY-NC-SA 4.0 — 불일치, 어느 쪽이든 비상업</td><td><a href="../reference/homie/code/LICENSE">LICENSE</a></td></tr>
+    <tr><td>없는 것</td><td>IL (Seer) 학습 코드, 상위 정책</td><td>–</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">10. 한계</h2>
+<ul>
+  <li>저자 언급 (p.11): 다양한 지형 통과 신뢰성 부족, 장갑 엄지 설계, 힘 피드백 없음, 허리 텔레옵 없음.</li>
+  <li>하체가 <b>쪼그린 채 걷기</b>를 학습하지 않았다 (코드). 높이 명령은 정지 중에만 바뀐다.</li>
+  <li>상체 목표 자체를 관측하지 않아, 상체가 빠르게 움직일 때 하체가 미리 대비할 신호가 없다 (구조상 판단).</li>
+  <li>손 하중 −0.1–0.3 kg 은 작아 무거운 물체 근거가 되지 못한다. 몸통 하중 −5–10 kg 은 크다.</li>
+  <li>IL 성공률의 시도 수가 없고, 상위가 사람·IL 이라 RL 상위와의 결합 결과는 없다.</li>
+  <li>논문 표와 코드가 다른 곳: 명령에 vy 포함 여부 (본문 C<sub>t</sub> 3 개 대 코드 4 개), 마찰 상한 2.0 대 3.0, 쪼그림 범위 표기, 배포 PD.</li>
+</ul>
+
+<h2 class="ps">11. 우리에게 가져올 것</h2>
+<div class="take"><ol>
+  <li><b>dev12 점검 1 — 쪼그린 채 걷기</b>: HOMIE 는 쪼그림 1/3 · 서기 1/6 · 걷기 1/2 로 나누고 쪼그림 중 속도 0 이었다. dev12 는 걷기 높이 0.42–0.77 m 를 요구하므로 이 조합이 실제로 학습 분포에 충분히 있는지 확인 (dev10 의 접근·운반 단계가 쓰는 영역).</li>
+  <li><b>dev12 점검 2 — 상체 무작위 분포</b>: HOMIE 는 1 s 마다 관절 한계 끝값 × 비율로 목표를 뽑고 1 s 선형 보간, 비율 상한을 식 2–3 커리큘럼으로 0 → 1. 상위 RL 이 낼 상체 변화 (특히 박스를 향해 두 팔을 앞·아래로 뻗는 자세 + 허리 yaw) 가 dev12 학습 분포 안인지, 변화율이 dev12 가 본 범위 안인지 비교한다. 밖이면 상위 증분 배율을 그 안으로 묶는다.</li>
+  <li><b>상위 출력 = 상체 + 높이</b>: HOMIE IL 의 회귀 머리는 팔·손·높이 셋이었고 쪼그려 집기 73.3 %. 우리 상위가 골반 높이와 상체를 함께 내는 설계의 실기 선례로 쓸 수 있다. 쪼그림·조이기 단계에선 속도 명령을 0 으로 묶는 것도 HOMIE 하체 분포와 같은 꼴.</li>
+  <li><b>상위 주기와 보간</b>: HOMIE 실기는 상위 10 Hz + 로봇 쪽 선형 보간 (50 단계). 우리 상위를 50 Hz 증분으로 내더라도, dev12 가 보는 저역 통과 목표의 변화율이 학습 분포 안에 머무르도록 같은 역할의 필터를 상위 출력 뒤에 둔다.</li>
+  <li><b>높이 추종 무릎 보상 r<sub>knee</sub></b> (가중치 −0.75): dev12 를 다시 학습할 때 낮은 높이 (0.335 m) 수렴이 느리면 높이 보상 배율을 키우기보다 이 항을 쓴다 — 배율만 키우면 속도 추종이 크게 나빠졌다.</li>
+  <li><b>대칭 = 증강 + 손실 둘 다</b> (계수 1.0): 증강만 쓰면 대칭 손실이 컸다. dev12·상위 teacher 모두 좌우 거울 (두 손 조이기는 대칭 과제) 에 쓸 수 있다.</li>
+  <li><b>"Action vanish" 벌점</b> (−1.0): 행동이 자르기 범위를 넘은 양에 선형 벌점. v2 의 "환경 안 자르기 → std 발산" 대책과 같은 꼴을 하체 쪽에서 이미 쓰고 있다.</li>
+  <li><b>발목 K<sub>p</sub> 를 낮추면 정지·이동 전환이 안정</b> 됐다는 관찰: K1 실기 한 발·정지 흔들림 문제와 같은 축의 실험 근거로 기록해 둔다.</li>
+</ol></div>
+<h3 class="ps">가져오지 말 것</h3>
+<ul>
+  <li><b>손 하중 범위</b> −0.1–0.3 kg: 우리 박스 0.5–2 kg 와 조이기 반작용엔 턱없이 작다. dev12 의 0–5 kg 가 맞다.</li>
+  <li><b>상체 목표를 관측하지 않는 하체</b>: dev12 는 목표와 변화율을 보는 쪽이 이미 앞서 있다. 되돌리지 않는다.</li>
+  <li><b>HIM 추정기·Isaac Gym 코드</b>: 우리는 Isaac Lab + Newton + rsl_rl. 구조 이식 가치가 작고, 라이선스도 비상업 (CC BY-NC / NC-SA).</li>
+  <li><b>사람 텔레옵 → IL 상위</b>: 우리 상위는 RL + 깊이 student. 시연 수집 장비가 없다.</li>
+  <li><b>몸통 pitch 없는 명령 공간</b>: 바닥 박스에는 숙임 (pitch) 이 필요하다 (K1 은 숙여야 최저 자세가 나옴).</li>
+</ul>
+
+<p class="src">출처 표기: (p.N) 은 PDF 쪽 (부록 A-A = p.14, 부록 A-B·표 VI = p.15, 표 VII·VIII = p.16, 부록 C = p.20, 표 X = p.21), (표 N), (그림 N), (식 N), 코드는 파일 경로. 논문에 없는 값은 "논문에 없음". "추론" 은 이 페이지 작성자의 판단.</p>
+</main>
+</body>
+</html>

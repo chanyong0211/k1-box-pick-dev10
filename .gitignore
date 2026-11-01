@@ -1,0 +1,16 @@
+# 큰 파일: 논문 원문·코드, 학습 결과, 영상
+reference/
+logs/
+runs/
+*.pt
+*.pth
+*.onnx
+*.pdf
+*.mp4
+*.webm
+*.tfevents*
+events.out.*
+__pycache__/
+.pytest_cache/
+*.pyc
+docker/.x11/

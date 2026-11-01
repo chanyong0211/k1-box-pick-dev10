@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Xie 상자 계층 제어 — 논문 상세</title>
+<link rel="stylesheet" href="paper.css">
+</head>
+<body>
+<main class="wrap">
+<a class="back" href="../index.html#catalog">← 자료 목록으로</a>
+
+<header class="ph">
+  <h1>Xie 상자 계층 제어: A* 계획 → 확산 모델 동작 생성 → RL 추종으로 상자 집기·나르기·내려놓기</h1>
+  <p class="orig">Hierarchical Planning and Control for Box Loco-Manipulation</p>
+  <p class="meta">Zhaoming Xie, Jonathan Tseng, Sebastian Starke, Michiel van de Panne, C. Karen Liu · Stanford, Meta, UBC · Proc. ACM CGIT 6(2), Article 1, 2023 · 물리 시뮬 가상 캐릭터 (59 자유도, 로봇 아님) · RaiSim</p>
+  <div class="chips">
+    <a class="chip loc" href="../reference/boxlocomanip/paper.pdf">로컬 PDF</a>
+    <a class="chip" href="https://arxiv.org/abs/2306.09532" target="_blank" rel="noopener">arXiv 2306.09532</a>
+    <span class="simv s3">유사도 3</span>
+    <span class="badge only">논문만 (코드 링크 없음)</span>
+  </div>
+</header>
+
+<div class="callout blue tldr">A* 경로 → 확산 모델이 걷기 전신 궤적 생성 → RL 정책이 물리 시뮬에서 추종. 집기·내려놓기는 "웅크렸다 일어서기" 참조 클립 하나에 상자 손 위치·직립·높이 보상을 더한 RL 정책 하나로 처리. 학습 받침 높이 0.3–0.7 m · 1 kg 에서 받침 0.05–1.00 m, 8 kg 까지 일반화 (상자 1 개, 3 회 이상 연속 성공 기준).</div>
+
+<h2 class="ps">우리와 무엇이 같고 다른가</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>이 논문</th><th>우리 (dev10 pelvis_pick)</th></tr></thead>
+  <tbody>
+    <tr><td>하위 제어기</td><td>기술별 RL 추종 정책: 걷기, 걷기-나르기, 집기·내려놓기(하나로 통합). 참조 관절 PD + 정책 보정 토크 (p.8)</td><td>dev12 하체 RL 동결, 골반 vx·vy·ωz·높이·pitch·roll 추종, 상체 11 외부 PD</td></tr>
+    <tr><td>상위 출력</td><td>학습된 상위 정책 없음. A* 경유점 → 확산 모델 전신 궤적(걷기), 고정 참조 클립 1 개(집기·내려놓기) (p.4, p.9–10)</td><td>상체 11 + 골반 명령 (RL)</td></tr>
+    <tr><td>과제·물체</td><td>받침 위 상자 집기 → 들고 걷기 → 내려놓기, 여러 상자 쌓아 나르기. 학습: 받침 높이 0.3–0.7 m, 상자 1 kg, 폭 0.3–0.5 m (표 1)</td><td>바닥·받침대 0–0.3 m 박스 37×40.5×29 cm, 0.5–2 kg, 쪼그려·숙여 집고 서서 유지</td></tr>
+    <tr><td>몸·손</td><td>59 자유도(부유 기저 포함) 캐릭터, SPD 제어. 손가락 없이 두 손을 상자 반대 옆면에 붙여 듦 (p.8, p.10, p.16)</td><td>K1 23 자유도, 손가락 없는 고무 공 손으로 옆면 조이기 — <b>접촉 방식이 같음</b></td></tr>
+    <tr><td>지각·증류</td><td>상태 기반 (상자 위치·방향, 받침 위치). 증류 없음</td><td>특권 teacher → D436 깊이 student (DAgger)</td></tr>
+    <tr><td>시뮬·주기</td><td>RaiSim 120 Hz, 정책 60 Hz (p.7)</td><td>Isaac Lab + Newton, rsl_rl PPO</td></tr>
+  </tbody>
+</table></div>
+<p>요약: 로봇이 아니라 캐릭터이고 상위가 RL 이 아니지만, <b>"명목 웅크림-일어섬 궤적 하나 + RL 보정"으로 높이 범위를 넓게 덮은 것</b>과 <b>두 손 옆면 보상·상자 높이 일정 보상의 구체 식</b>이 우리 집기 단계에 바로 대응한다.</p>
+
+<h2 class="ps">1. 문제와 과제</h2>
+<ul>
+  <li>어수선한 3D 장면에서 상자를 집고, 들고 걷고, 내려놓아 원하는 배치로 옮기는 물리 시뮬 캐릭터 (p.1, p.4).</li>
+  <li>기본 동작 4 개: 걷기(빈손), 걷기-나르기, 집기, 내려놓기. 기본 동작 그래프로 실행 순서를 정함 (그림 2, p.4).</li>
+  <li>입력: 3D 장면 + 기본 동작 순서(사용자 지정). 출력: 애니메이션 (그림 2).</li>
+  <li>상자 무게·크기·모양, 놓는 높이가 바뀌어도 되게, 여러 상자 쌓아 나르기도 (p.1–2).</li>
+  <li>성공률 지표는 없고, 일반화는 "한 변수만 바꿔 집기·내려놓기를 3 회 이상 해내는 극값"으로 보고 (표 1).</li>
+</ul>
+
+<h2 class="ps">2. 시스템 구조</h2>
+<div class="fig">
+  <p><b>이동 기본 동작 (걷기, 걷기-나르기)</b></p>
+  <div class="flow">
+    <span class="node">3D 장면 + 기본 동작 순서</span><span class="arr">→</span>
+    <span class="node">kinodynamic A* + 3차 스플라인 평활</span><span class="arr">→</span>
+    <span class="node">경유점 (루트 위치·방향)</span><span class="arr">→</span>
+    <span class="node frozen">확산 모델 (트랜스포머 인코더 + FiLM, 별도 학습)</span><span class="arr">→</span>
+    <span class="node">전신 운동학 참조 궤적</span><span class="arr">→</span>
+    <span class="node">RL 추종 정책 60 Hz</span><span class="arr">→</span>
+    <span class="node">RaiSim 120 Hz</span>
+  </div>
+  <p><b>조작 기본 동작 (집기, 내려놓기 — 정책 하나 공유)</b></p>
+  <div class="flow">
+    <span class="node frozen">고정 참조 클립 1 개 (웅크림 → 일어섬, 팔 쉼 ↔ 운반 자세 선형 보간)</span><span class="arr">+</span>
+    <span class="node">상자 상태 · 받침 위치 · 집기/내려놓기 원-핫</span><span class="arr">→</span>
+    <span class="node">조작 RL 정책</span><span class="arr">→</span>
+    <span class="node">τ = kp(q̄ ⊖ q) − kd q̇ + τ_a</span>
+  </div>
+  <p><b>전환</b></p>
+  <div class="flow">
+    <span class="node">이동 끝에 서기 자세 30–60 프레임 추가</span><span class="arr">→</span>
+    <span class="node">조작</span><span class="arr">→</span>
+    <span class="node">서기 자세 30–60 프레임 동안 a = (1 − λ) a_manip + λ a_loco, λ: 0 → 1</span><span class="arr">→</span>
+    <span class="node">이동</span>
+  </div>
+</div>
+<ul>
+  <li>계층 사이에 되먹임이 없다. 확산 모델은 하위 정책의 실제 상태를 보지 않고 궤적을 만든다 (p.15).</li>
+  <li>확산 모델과 RL 정책은 따로 학습했는데도 확산 궤적을 추종 가능 (p.11).</li>
+</ul>
+
+<h2 class="ps">3. 관측과 행동</h2>
+<h3 class="ps">정책 입력</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>정책</th><th>입력</th><th>출처</th></tr></thead>
+  <tbody>
+    <tr><td>걷기</td><td>캐릭터: 루트 높이 p_z, 국소 좌표 루트 선·각속도, 관절 방향 q(쿼터니언), 관절 속도 q̇. 참조: 다음 프레임과의 루트 위치 차 t̄ − t_p, 루트 방향 차 t̄_d ⊖ t_d, 관절 방향 차 q̄ ⊖ q (모두 캐릭터 국소 좌표)</td><td>p.7</td></tr>
+    <tr><td>걷기-나르기</td><td>걷기 입력 + 캐릭터 좌표계 상자 위치·방향</td><td>p.8</td></tr>
+    <tr><td>집기·내려놓기</td><td>걷기 입력 + 바닥 상자가 놓인 받침 위치 + 집기/내려놓기 원-핫 (+ 걷기-나르기의 상자 입력으로 읽힘)</td><td>p.9</td></tr>
+  </tbody>
+</table></div>
+<h3 class="ps">행동</h3>
+<ul>
+  <li>PD + 토크 혼합: τ = kp(q̄_{t+1} ⊖ q) − kd q̇ + τ_a. τ_a 가 정책 출력(보정 토크), q̄_{t+1} 은 참조 (p.8). kp, kd 값은 논문에 없음.</li>
+  <li>τ_a 가 고주파로 흔들려 발목 떨림·발 미끄럼이 생겨, 시뮬에서 이동 평균을 씀: τ^a_{t+1} = 0.3 τ^a_t + 0.7 τ^a (새 출력 70 %) (p.8).</li>
+  <li>망: 층별 전문가 혼합(layer-wise MoE, [Xie 2022]). 크기는 논문에 없음 (p.7).</li>
+  <li>캐릭터: Scadiver 각색 59 자유도(부유 기저 포함), SPD 제어기 (p.10).</li>
+</ul>
+<h3 class="ps">확산 모델 표현</h3>
+<ul>
+  <li>조건 c = {경유점 2 개의 루트 위치 c_p ∈ R³, 방향 c_d ∈ R⁶ (회전 행렬 앞 두 열)} (p.5).</li>
+  <li>프레임 = {출발 기준 루트 궤적 t_p ∈ R³, t_d ∈ R⁶; 다음 목표 기준 루트 궤적 t̃_p, t̃_d; 관절각 q ∈ R^{6M}} (p.5).</li>
+  <li>경유점 2 개 → 2N 프레임, N = 15, 경유점 간격 0.5 s (p.6). 양방향 루트: λ{t} + (1 − λ){t̃}, λ 는 경유점에 다가가며 0 으로 선형 감소. 연속성은 다음 조각의 첫 경유점 = 앞 조각의 둘째 경유점으로 강제 (p.6–7).</li>
+</ul>
+
+<h2 class="ps">4. 보상 · 종료 · 커리큘럼</h2>
+<h3 class="ps">보상 항</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항</th><th>식</th><th>뜻</th><th>출처</th></tr></thead>
+  <tbody>
+    <tr><td>r_joint</td><td>exp(−3 ‖q̄_{t+1} ⊖ q‖²)</td><td>관절 방향 추종</td><td>p.7</td></tr>
+    <tr><td>r_translation</td><td>exp(−‖t̄_p − t_p‖²)</td><td>루트 위치 추종</td><td>p.7</td></tr>
+    <tr><td>r_orientation</td><td>exp(−2 ‖t̄_d ⊖ t_d‖²)</td><td>루트 방향 추종</td><td>p.7</td></tr>
+    <tr><td>r_smooth</td><td>exp(−‖τ^a_{t+1} − τ^a_t‖²)</td><td>보정 토크 매끄러움</td><td>p.8</td></tr>
+    <tr class="ours"><td>r_box-hand</td><td>exp(−‖p_lhand − p_lbox‖² − ‖p_rhand − p_rbox‖²)</td><td>두 손을 상자 반대 옆면의 미리 정한 점에 (손·상자 위 미리 정한 점, 세계 좌표)</td><td>p.8</td></tr>
+    <tr><td>r_box-orientation</td><td>exp(−10 ‖b_d ⊖ b̄_d‖²)</td><td>상자 직립</td><td>p.8</td></tr>
+    <tr><td>r_box-stack</td><td>exp(−‖b_p^top − b_p^bottom‖²)</td><td>쌓인 상자 정렬</td><td>p.8</td></tr>
+    <tr class="ours"><td>r_box-height</td><td>exp(−10 (λ h_end + (1 − λ) h_begin − b_z^base)²)</td><td>잡은 상자 높이를 일정에 맞춤, λ: 0 → 1</td><td>p.9–10</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>r_base = r_box-hand + r_box-orientation. 추가 상자 i 마다 r_box^i = r_box-orientation + r_box-stack (p.8).</li>
+  <li>r_box-height 일정: 집기는 h_begin = 받침 높이, h_end = 몸통 높이 1.2 m (지면 기준). 내려놓기는 반대. 조작 구간: 내려놓기는 참조 시작 → 가장 낮게 웅크린 시점, 집기는 그 이후 나머지 (p.10).</li>
+</ul>
+<h3 class="ps">합치는 방법</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>정책</th><th>총 보상</th><th>출처</th></tr></thead>
+  <tbody>
+    <tr><td>걷기</td><td>r_joint · r_translation · r_orientation (곱 — 어떤 항도 무시 못 하게, [Won 2020])</td><td>p.8</td></tr>
+    <tr><td>걷기-나르기 (상자 P 개)</td><td>r_joint · r_translation · r_orientation · r_base · Π_{i=1}^{P−1} r_box^i + r_smooth</td><td>p.8</td></tr>
+    <tr><td>집기·내려놓기 (상자 1 개)</td><td>r_joint · r_translation · r_orientation + r_base — r_base 를 <b>곱하지 않음</b>: "조작 목표와 참조 추종을 맞바꿀 여지"</td><td>p.10</td></tr>
+    <tr><td>집기·내려놓기 (여러 개)</td><td>r_joint · r_translation · r_orientation + (r_base · Π r_box^i) + r_smooth</td><td>p.10</td></tr>
+  </tbody>
+</table></div>
+<p>본문은 조작 보상 = 걷기-나르기 보상 + r_box-height 라고 쓰지만 총 보상 식에 r_box-height 가 따로 보이지 않는다. r_base 에 더해진 것으로 읽히나 논문에 명시 없음 (p.9–10).</p>
+<h3 class="ps">초기화 · 무작위화 · 종료</h3>
+<ul>
+  <li>걷기: 데이터에서 동작 하나를 뽑아 첫 프레임 상태로 시작 (p.8).</li>
+  <li>걷기-나르기: 상자를 캐릭터 바로 앞 두 손 사이에 놓고 시작. 상자 개수 무작위 (p.8).</li>
+  <li>집기·내려놓기: 무작위 높이 받침 위 상자 앞에서 시작해, 같은 받침에 집기와 내려놓기를 반복 (p.9). 두 과제를 함께 학습하면 다양한 상대 상태를 겪어 일반화에 유리하다고 설명.</li>
+  <li>학습 분포: 받침 앞뒤 0.35–0.40 m, 좌우 −0.10–0.10 m, 높이 0.3–0.7 m, 상자 1.0 kg, 폭 0.3–0.5 m (표 1). 걷기-나르기: 1.0 kg, 폭 0.3–0.5 m, 투사체 없음 (표 2).</li>
+  <li>종료 조건: 논문에 없음. 커리큘럼: 언급 없음.</li>
+</ul>
+
+<h2 class="ps">5. 학습 설정 (알고리즘 · 망 · 무작위화)</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>값</th><th>출처</th></tr></thead>
+  <tbody>
+    <tr><td>RL 알고리즘</td><td>PPO</td><td>p.7</td></tr>
+    <tr><td>시뮬 · 주기</td><td>RaiSim 120 Hz, 정책 60 Hz</td><td>p.7</td></tr>
+    <tr><td>이동 정책 학습 시간</td><td>24 h, RTX A5000 + 12 코어 CPU</td><td>p.7</td></tr>
+    <tr><td>조작 정책 학습 시간</td><td>24 h, 같은 장비</td><td>p.9</td></tr>
+    <tr><td>확산 모델</td><td>약 25 분 걷기 모캡 ([Starke 2019]), 학습 약 3 h (RTX 3080 하나)</td><td>p.4, p.6</td></tr>
+    <tr><td>정책 망</td><td>layer-wise MoE, 크기 논문에 없음</td><td>p.7</td></tr>
+    <tr><td>env 수 · PPO 하이퍼파라미터 · 반복 수</td><td>논문에 없음</td><td>–</td></tr>
+    <tr><td>비교 (저자 주장)</td><td>Catch &amp; Carry 상위 학습은 몇 주, ASE 하위는 10 일인데 이 방법 정책은 하루</td><td>p.15</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">6. teacher → student / 증류</h2>
+<p>해당 없음 — 모든 정책이 상태 기반이고 지각 student·증류가 없다.</p>
+
+<h2 class="ps">7. 결과</h2>
+<h3 class="ps">조작 정책 일반화 (표 1)</h3>
+<p>기본값: 받침 (앞 0.4, 옆 0) m, 높이 0.5 m, 상자 1 kg, 폭 0.4 m. 한 변수만 바꿔 집기·내려놓기를 3 회 이상 해낸 극값.</p>
+<div class="tbl-wrap"><table>
+  <thead><tr><th></th><th>앞뒤 (m)</th><th>좌우 (m)</th><th>높이 (m)</th><th>상자당 무게 (kg)</th><th>폭 (m)</th></tr></thead>
+  <tbody>
+    <tr><td>학습</td><td>0.35–0.40</td><td>−0.10–0.10</td><td>0.3–0.7</td><td>1.0</td><td>0.3–0.5</td></tr>
+    <tr class="ours"><td>상자 1</td><td>0.20–0.68</td><td>−0.30–0.32</td><td>0.05–1.00</td><td>8.0</td><td>0.12–0.79</td></tr>
+    <tr><td>상자 2</td><td>0.28–0.70</td><td>−0.29–0.29</td><td>0.09–0.92</td><td>3.7</td><td>0.14–0.79</td></tr>
+    <tr><td>상자 3</td><td>0.30–0.52</td><td>−0.26–0.28</td><td>0.13–0.92</td><td>2.5</td><td>0.16–0.79</td></tr>
+  </tbody>
+</table></div>
+<p>표의 열 이름은 sagittal / frontal / transverse 이고, 캡션의 기본 높이 0.5 m 와 학습 범위로 보아 transverse 가 높이다.</p>
+<h3 class="ps">나르기 정책 견고성 (표 2)</h3>
+<p>뒤에서 수평 3 m/s 투사체를 0.5 s 마다 10 s 동안 던져 버틴 최대 투사체 무게.</p>
+<div class="tbl-wrap"><table>
+  <thead><tr><th></th><th>상자당 무게 (kg)</th><th>폭 (m)</th><th>투사체 무게 (kg)</th></tr></thead>
+  <tbody>
+    <tr><td>학습</td><td>1.0</td><td>0.3–0.5</td><td>0</td></tr>
+    <tr><td>상자 1</td><td>5.4</td><td>0.21–0.56</td><td>3.7</td></tr>
+    <tr><td>상자 2</td><td>2.1</td><td>0.23–0.56</td><td>2.6</td></tr>
+    <tr><td>상자 3</td><td>1.1</td><td>0.31–0.60</td><td>0.9</td></tr>
+  </tbody>
+</table></div>
+<h3 class="ps">추종 품질과 확산 모델 (표 3, 그림 11)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>참조 생성</th><th>r_joint</th><th>r_translation</th><th>r_orientation</th></tr></thead>
+  <tbody>
+    <tr><td>확산 모델</td><td>0.94</td><td>0.92</td><td>0.98</td></tr>
+    <tr><td>모션 매칭</td><td>0.90</td><td>0.62</td><td>0.95</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>평균 0.8 m/s, 10 s 궤적. 정책은 확산 궤적으로 학습한 적이 없는데도 추종이 더 좋음 → 확산 출력이 모캡 분포에 더 가깝다는 해석 (p.14).</li>
+  <li>양방향 루트 표현: 출발 기준만 쓰는 모형보다 평균 오차 70 % 감소, 꼬리 분포도 안정 (n = 297, 그림 11, p.15).</li>
+  <li>무작위 경유점 10 s 궤적 10 개를 모두 추종 (p.11).</li>
+  <li>직진 0.8 m/s, 10 s 에서 최종 루트 오차 최대 앞 0.5 m, 옆 0.15 m. 정책이 오차를 따라잡으려다 비틀거리고 환경에 부딪히는 일이 있음 (p.16).</li>
+</ul>
+
+<h2 class="ps">8. 실기 · sim2real</h2>
+<p>해당 없음 — 캐릭터 애니메이션 연구로 실기 실험이 없다.</p>
+
+<h2 class="ps">9. 코드에서 확인한 것</h2>
+<p>해당 없음 — 초록은 "코드와 학습된 정책을 제공"한다고 쓰지만 PDF 에 링크가 없고 <code>reference/boxlocomanip/</code> 에 code/ 폴더가 없다.</p>
+
+<h2 class="ps">10. 한계</h2>
+<ul>
+  <li>저자 언급: 계획기·확산 모델·하위 제어기 사이에 되먹임이 없어 외란에 약함. 루트 추종 오차로 충돌·도착 실패. 기본 동작 순서를 미리 줘야 하고 전환 전에 서기 자세가 필요. A* 로는 옆걸음·뒷걸음 같은 자연스러운 발 순서가 어려움 (p.15–16).</li>
+  <li>저자 언급: 무거운 상자는 손가락으로 바닥을 감싸거나 손잡이를 잡아야 하고, 몸 전체로 받쳐야 할 것 (p.16). <b>손가락 없는 두 손 옆면 방식의 무게 한계를 저자도 인정</b>.</li>
+  <li>우리 관점: 캐릭터 몸(59 자유도, SPD, 토크 한계 언급 없음)이라 8 kg 같은 숫자는 로봇에 옮길 수 없다. 성공률이 아니라 "3 회 이상" 극값만 있음. 종료 조건·망 크기·PPO 설정이 없음.</li>
+</ul>
+
+<h2 class="ps">11. 우리에게 가져올 것</h2>
+<div class="take"><ol>
+  <li><b>명목 "웅크림 → 일어섬" 일정 하나 + RL 보정.</b> 참조 하나로 학습 높이 0.3–0.7 m 에서 0.05–1.00 m 까지 덮었다 (표 1). 우리 상위 출력을 "단계(시간) 함수인 명목 골반 높이·pitch + 명목 팔 자세(쉼 → 조이기 직전 선형 보간)"에 작은 잔차를 더하는 꼴로 정의하면, 처음부터 dev12 가 따라갈 수 있는 명령만 나오고 켜짐/꺼짐 포화도 줄어든다 (우리 적용안). 명목 일정은 dev12 도달 영역(서기 높이 0.335–0.77 m, pitch −45°–45°) 안에서 잡는다.</li>
+  <li><b>상자 높이 일정 보상.</b> r = exp(−k (λ h_end + (1 − λ) h_begin − b_z)²), λ 를 들기 구간에서 0 → 1. h_begin = 받침 높이(0/0.1/0.2/0.3 m), h_end = 우리 유지 높이. 단 이 논문의 k = 10 은 오차 0.1 m 에서 0.90, 0.3 m 에서 0.41 이라 꽤 평평하다. 우리 들기 거리(수십 cm)에선 k 를 키울지 확인 (계산).</li>
+  <li><b>두 손 목표를 한 exp 안에, 단 배율을 붙여서.</b> 이 논문 r_box-hand 는 배율이 1 이라 두 손 오차가 각 0.1 m 여도 exp(−0.02) = 0.98, 0.2 m 여도 0.92 로 기울기가 거의 없다 (계산). 우리는 exp(−k(d_L² + d_R²)) 에 k = 20–50 m⁻² 정도(0.1 m 씩이면 0.67–0.37)를 출발점으로 잡는다 (우리 적용안). 곱 꼴이라 한 손 밀기 해를 덜 보상한다. 목표점은 "반대 옆면의 미리 정한 점"이며 논문은 면 중심이라고는 쓰지 않았다.</li>
+  <li><b>조작 항은 명목 추종 항에 곱하지 말고 더하기.</b> 조작 정책은 r_base 를 곱하지 않아 참조에서 벗어나 상자를 잡을 여지를 줬다 (p.10). 우리도 명목 자세 추종 항이 있다면 작게, 그리고 덧셈으로.</li>
+  <li><b>출력 이동 평균 + 매끄러움 보상.</b> 새 출력 70 % 섞기(τ_{t+1} = 0.3 τ_t + 0.7 τ_new)와 exp(−‖Δ‖²) 보상 (p.8). 우리 상위 출력에도 환경 쪽 1 차 필터는 걸 수 있다(자르기가 아니라 PPO std 문제를 만들지 않음). 다만 범위 제한은 별도로 유계 분포로 해야 한다.</li>
+  <li><b>집기와 내려놓기를 한 정책으로 번갈아 학습.</b> 같은 받침에서 반복하며 상태 다양성을 얻었다 (p.9). 나중 "내려놓기"를 붙일 때 별도 정책 대신 원-핫 하나로 같이 학습할 근거.</li>
+  <li><b>상자 직립 보상</b> exp(−10 ‖·‖²) 은 그대로 써도 무리 없다.</li>
+</ol>
+<p><b>가져오지 말 것</b></p>
+<ul>
+  <li>A* + 확산 모델 동작 생성: 우리 접근·운반은 dev12 골반 명령으로 한다. 나중에 경로가 필요해도 루트 추종 오차(10 s 에 0.5 m)를 보면 되먹임 없는 개루프는 피할 것.</li>
+  <li>보정 토크 행동: 우리 하위는 관절 위치 목표와 골반 명령을 받는다.</li>
+  <li>일반화 숫자(8 kg, 0.05–1.00 m)를 K1 기대치로 삼기: 캐릭터 몸과 SPD 는 K1 팔 kp 22.3·고무 공 손 마찰 한계를 반영하지 않는다.</li>
+  <li>layer-wise MoE 망: 우리 과제 하나엔 MLP 로 충분하다.</li>
+</ul></div>
+
+<p class="src">출처 표기: (p.N) 은 PDF 쪽(= 논문 1:N), (표 N), (그림 N). 코드는 없음. 논문에 없는 값은 "논문에 없음", 직접 계산은 "계산", 우리 쪽 해석은 "우리 적용안"으로 표시.</p>
+</main>
+</body>
+</html>

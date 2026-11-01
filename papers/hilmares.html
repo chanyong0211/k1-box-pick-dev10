@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HiLMa-Res — 논문 상세</title>
+<link rel="stylesheet" href="paper.css">
+</head>
+<body>
+<main class="wrap">
+<a class="back" href="../index.html#catalog">← 자료 목록으로</a>
+
+<header class="ph">
+  <h1>HiLMa-Res: 명목 궤적 + 잔차를 상위가 고르는 사족 보행·다리 조작 계층 RL</h1>
+  <p class="orig">HiLMa-Res: A General Hierarchical Framework via Residual RL for Combining Quadrupedal Locomotion and Manipulation</p>
+  <p class="meta">Xiaoyu Huang, Qiayuan Liao, Yiming Ni, Zhongyu Li, Laura Smith, Sergey Levine, Xue Bin Peng, Koushil Sreenath · UC Berkeley, Simon Fraser Univ. · IROS 2024 (목록 기준, 로컬 PDF 는 arXiv v1 2024-07) · 사족 로봇(논문에 기종 이름 없음) · Isaac Gym 학습, Gazebo 시험</p>
+  <div class="chips">
+    <a class="chip loc" href="../reference/hilmares/paper.pdf">로컬 PDF</a>
+    <a class="chip" href="https://arxiv.org/abs/2407.06584" target="_blank" rel="noopener">arXiv 2407.06584</a>
+    <span class="simv s3">유사도 3</span>
+    <span class="badge">라이선스 정보 없음 · 코드 확인 못함</span>
+  </div>
+</header>
+
+<div class="callout blue tldr">CPG 명목 발끝 궤적 + Bézier 잔차(제어점) + 기저 속도 명령을 추종하는 보행 정책을 한 번 학습·실기 검증해 고정하고, 과제마다 상위 계획기가 그 매개변수만 고른다. 짐 밀기에서 sim-to-sim 100 % (종단 학습 기준선 0–62.5 %), 실기 zero-shot 80 % → 실데이터 9분 학습 뒤 100 % (표 II).</div>
+
+<h2 class="ps">우리와 무엇이 같고 다른가</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>이 논문</th><th>우리 (dev10 pelvis_pick)</th></tr></thead>
+  <tbody>
+    <tr><td>하위 제어기</td><td>발끝 궤적 추종 PPO 보행기 (50 Hz, PD 1 kHz). 입력 = 고유감각 + 4스텝 입출력 이력 + 위상 + 목표(Bézier 제어점·CPG 속도 명령). 실기 검증 후 <b>고정·재사용</b> (p.2–3)</td><td>dev12 하체 RL, 골반 vx·vy·ωz·높이·pitch·roll 추종, 상체 11 외부 PD, 고정 예정 (지금은 스모크 시험만)</td></tr>
+    <tr><td>상위 출력</td><td>스윙 다리 Bézier 제어점(P0, P2 ∈ R², P1 ∈ R³) + CPG 명령(vx, vy, ωz) — "명목 + 잔차 + 기저 속도" (p.3)</td><td>상체 11 + 골반 명령 — 같은 꼴(상체 명목 자세 + 잔차, 골반 명령)으로 만들 수 있음</td></tr>
+    <tr><td>과제·물체</td><td>다리로 하는 비파지 조작: 공 드리블, 작은 돌 피해 걷기, 짐(상자) 밀기 (p.2)</td><td>바닥·받침대 0–0.3 m 박스 37×40×29 cm, 0.5–2 kg, 두 손 옆면 조이기</td></tr>
+    <tr><td>지각·증류</td><td>돌 피하기: 깊이 43×29 를 상위가 직접 PPO 로 학습(증류 없음, 5 시간). 짐 밀기: UWB 측위 상태 (p.4–6)</td><td>특권 teacher → D436 깊이 26×64 × 6 프레임 student (DAgger)</td></tr>
+    <tr><td>실기</td><td>세 과제 모두 실기. 짐 밀기는 실데이터 RL (RLPD)</td><td>K1 실기 목표</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">1. 문제와 과제</h2>
+<ul>
+  <li><b>문제</b>: 다리로 조작하면서 계속 걸어야 하는 과제마다 따로 정책·보상을 만들면 일반화가 안 된다. 보행과 조작 계획을 분리해 각각 RL 로 풀자 (p.1–2).</li>
+  <li><b>핵심 주장</b>: 실기에서 검증된 저수준을 재사용하면 상위가 "동역학적으로 불가능한 행동"을 배우지 않고, 종단 학습보다 표본 효율이 크게 높다 (그림 2 설명, p.7).</li>
+</ul>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>과제</th><th>상위 관측(과제별)</th><th>상위 보상</th><th>학습</th></tr></thead>
+  <tbody>
+    <tr><td>Dribble 공 드리블</td><td>공 상대 위치 + 로봇 전역 heading 4스텝 이력, 목표 공 속도(크기·각도)</td><td>공 속도·방향 추종 오차 최소화 + r<sub>close</sub> = exp(−σ<sub>ball</sub> d<sub>ball</sub>)</td><td>PPO, Isaac Gym, 공 끌림 힘 모사 → 실기 zero-shot</td></tr>
+    <tr><td>StepOStone 돌 피하기</td><td>로봇 자기 시점(ego view) 깊이 영상, 원본을 축소해 사용(실기 43×29)</td><td>r<sub>contact</sub> (종아리 접촉 시 0, 아니면 1) × 0.7 + r<sub>stepping</sub> (물체 밟으면 0) × 0.3</td><td>PPO 깊이 end-to-end, 5 시간 → 실기 zero-shot</td></tr>
+    <tr><td>NavLoad 짐 밀기</td><td>로봇 자세 + 짐 위치 + 목표(전역, 이력 없음)</td><td>r<sub>move</sub> = d<sub>k−1</sub> − d<sub>k</sub> (짐–목표 거리 감소) + r<sub>close</sub> = exp(−σ<sub>load</sub> d<sub>load</sub>)</td><td>DroQ 시뮬 → 실기 RLPD</td></tr>
+  </tbody>
+</table></div>
+<p>σ 값과 보상 가중치(StepOStone 제외)는 논문에 없음.</p>
+
+<h2 class="ps">2. 시스템 구조</h2>
+<div class="fig">
+  <div class="flow">
+    <span class="node">과제 관측(상태 또는 깊이) + 기저 자세·각속도 + 위상 (sin φ, cos φ)</span><span class="arr">→</span>
+    <span class="node">과제별 계획기 (학습)</span><span class="arr">→</span>
+    <span class="node">Bézier 제어점 + CPG 명령 (vx, vy, ωz)</span><span class="arr">→</span>
+    <span class="node">발끝 목표 = CPG 명목 ξ<sub>n</sub>(t) + Bézier 잔차 ξ<sub>r</sub>(t)</span><span class="arr">→</span>
+    <span class="node frozen">보행 제어기 (고정, 50 Hz)</span><span class="arr">→</span>
+    <span class="node">모터 위치 목표 → PD 1 kHz</span>
+  </div>
+</div>
+<ul>
+  <li><b>CPG 명목 궤적</b>: 발 4개의 3D 궤적을 고차 다항식으로, 매개 = 목표 기저 속도 vx·vy 와 yaw rate, 스윙 정점 높이. 진동자 매개를 고정해 트로트 하나만(주기 T<sub>g</sub> 고정) (p.3).</li>
+  <li><b>Bézier 잔차</b>: 스윙 다리마다 제어점 3개. 처음·끝 점의 z 를 0 으로 고정해 착지·이륙이 바닥에서 시작·끝나게 → 고르는 값은 P0, P2 ∈ R² (x, y), P1 ∈ R³. 시간은 스윙 시간 T<sub>sw</sub> = T<sub>g</sub>/2 로 [0, 1] 정규화. 디딤 다리는 그 자리 한 점. 좌표는 기저 footprint 프레임 (p.3).</li>
+  <li><b>위상 공유</b>: 상위도 같은 (sin φ, cos φ), φ = 2πt/T<sub>g</sub> 를 받아 하위 보행 주기와 동기 (p.4).</li>
+  <li>상위 실행 주기는 논문에 없음("각 timestep k").</li>
+</ul>
+
+<h2 class="ps">3. 관측과 행동</h2>
+<h3 class="ps">하위 보행 제어기 (p.3, 표 I)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>구분</th><th>내용</th></tr></thead>
+  <tbody>
+    <tr><td>행동</td><td>모터 위치 목표 a<sub>k</sub>, 50 Hz → 관절 PD 1 kHz. 모터 수 논문에 없음</td></tr>
+    <tr><td>관측</td><td>기저 각위치 q<sub>φ,θ,ψ</sub>, 각속도, 모터 위치·속도 + 4스텝 입출력 이력 (o<sub>k:k−4</sub>, a<sub>k−1:k−4</sub>) + 위상 (sin φ, cos φ)</td></tr>
+    <tr><td>목표</td><td>스윙 다리 Bézier 제어점 + CPG 명령 (vx, vy, ωz)</td></tr>
+  </tbody>
+</table></div>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>학습 매개 (표 I)</th><th>x [m]</th><th>y [m]</th><th>z [m]</th></tr></thead>
+  <tbody>
+    <tr><td>P0</td><td>−0.07 – 0.03</td><td>−0.1 – 0.1</td><td>(0 고정)</td></tr>
+    <tr><td>P1</td><td>−0.035 – 0.035</td><td>−0.1 – 0.1</td><td>−0.05 – 0.05</td></tr>
+    <tr><td>P2</td><td>−0.03 – 0.07</td><td>−0.1 – 0.1</td><td>(0 고정)</td></tr>
+    <tr><td>CPG 명령</td><td colspan="3">vx −1 – 1 m/s, vy −0.3 – 0.3 m/s, ωz −1 – 1 rad/s</td></tr>
+  </tbody>
+</table></div>
+<h3 class="ps">상위 계획기 (p.4–5)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>과제</th><th>망</th></tr></thead>
+  <tbody>
+    <tr><td>Dribble</td><td>MLP [128, 64, 32] ELU, PPO</td></tr>
+    <tr><td>StepOStone</td><td>conv 5×5 32 필터 → max-pool 2×2 stride 2 → conv 3×3 64 → ReLU → 선형 64 → GRU 64 → 상태와 합침 → MLP [64, 32] ELU, PPO</td></tr>
+    <tr><td>NavLoad</td><td>DroQ actor: 128 ReLU → 64 Tanh. critic: [256, 128] ReLU + 활성 전 LayerNorm</td></tr>
+  </tbody>
+</table></div>
+<p>상위 행동을 표 I 범위로 자르는지는 논문에 없음. "이 행동 공간이 과제 무관 보행 제어기와의 호환을 보장한다"고만 적음 (p.4).</p>
+
+<h2 class="ps">4. 보상 · 종료 · 커리큘럼</h2>
+<ul>
+  <li><b>하위 보상</b>: 가장 큰 가중치 = 발끝 추종 r<sub>tracking</sub> = exp(−σ<sub>e</sub>‖x<sub>e,t</sub> − (ξ<sub>n</sub>(t) + ξ<sub>r</sub>(t))‖²) (네 발, 디딤발은 고정점). + 롤·피치 각속도 벌점, 수직 속도 벌점, yaw 위치 추종 (p.3). 가중치·σ<sub>e</sub> 값 논문에 없음.</li>
+  <li><b>과제 무작위화</b>: Bézier·CPG 매개를 표 I 범위에서 균등 표본, <b>10 s 마다</b> 새로 뽑음 (p.3).</li>
+  <li><b>동역학 무작위화</b>: 관절 PD 게인, 지면 마찰, 기저 질량, 무작위 밀기 — 범위는 GenLoco [23] 표 3 참조, 본문에 수치 없음 (p.3).</li>
+  <li><b>에피소드</b>: 4,000 스텝 = 80 s (p.3). 종료 조건 논문에 없음.</li>
+  <li><b>커리큘럼</b>: 논문에 없음.</li>
+</ul>
+
+<h2 class="ps">5. 학습 설정 (알고리즘 · 망 · 무작위화)</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>단계</th><th>설정</th></tr></thead>
+  <tbody>
+    <tr><td>하위 보행</td><td>PPO, Isaac Gym, MLP [128, 64, 32] ELU. 수렴 후 실기 zero-shot. env 수·반복 수·시간 논문에 없음</td></tr>
+    <tr><td>상위 Dribble</td><td>PPO, Isaac Gym, 공 끌림 힘 모사(DribbleBot)</td></tr>
+    <tr><td>상위 StepOStone</td><td>PPO 깊이 end-to-end, 벽시계 5 시간</td></tr>
+    <tr><td>상위 NavLoad</td><td>시뮬 DroQ → base 정책. 실기에서 base 로 10,000 전이 수집 → <b>새 정책을 처음부터</b> DroQ 로, 버퍼 = base 데이터 70 % : 새 실데이터 30 % (RLPD). 9분, 1,000 스텝</td></tr>
+    <tr><td>기준선</td><td>Reward Shaping (Rudin 2022 보상 + 과제 보상), AMP (Escontrela 2022), Motion Tracking (같은 저수준을 Bézier·CPG 없이 + 과제 관측·보상). 모두 Isaac Gym 에서 비슷한 성공률까지 수렴시킨 뒤 Gazebo 로 옮김</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">6. teacher → student / 증류</h2>
+<p>해당 없음 — 증류를 쓰지 않는다. 저자는 하위가 효율적이라 깊이 정책을 teacher-student 없이 PPO 로 직접 학습할 수 있었다고 주장 (StepOStone, 5 시간, p.5).</p>
+
+<h2 class="ps">7. 결과</h2>
+<h3 class="ps">짐 밀기 (표 II)</h3>
+<p>Gazebo: 목표 4개(짐 기준 앞·뒤·좌·우 1 m) × 2회 = 8회, 로봇은 매번 짐 1 m 뒤에서 시작 (p.6).</p>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>방법</th><th>성공률 %</th><th>평균 시간 s</th></tr></thead>
+  <tbody>
+    <tr><td colspan="3"><b>sim-to-sim (Isaac Gym → Gazebo)</b></td></tr>
+    <tr><td>Reward Shaping</td><td>25</td><td>1.9</td></tr>
+    <tr><td>AMP</td><td>0</td><td>/</td></tr>
+    <tr><td>Motion Tracking</td><td>62.5</td><td>40.94</td></tr>
+    <tr class="ours"><td>HiLMa-Res</td><td>100</td><td>23.2</td></tr>
+    <tr><td colspan="3"><b>실기</b></td></tr>
+    <tr><td>HiLMa-Res base (시뮬 학습)</td><td>80</td><td>57.75</td></tr>
+    <tr class="ours"><td>HiLMa-Res (실데이터 학습)</td><td>100</td><td>47.6</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>Reward Shaping: 균형을 잃고 우연히 짐을 차기만. AMP: 멀 때는 움직이지만 짐 근처에서 몸을 못 가눔(모드 붕괴 추정). MT: 모방과 과제 보상 균형이 불안정 (p.6).</li>
+</ul>
+<h3 class="ps">돌 피하기 실기 (표 III, 4회)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>시도</th><th>지나간 돌</th><th>쓰러뜨린 돌</th><th>%</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>22</td><td>2</td><td>9.09</td></tr>
+    <tr><td>2</td><td>20</td><td>3</td><td>15</td></tr>
+    <tr><td>3</td><td>19</td><td>2</td><td>10.5</td></tr>
+    <tr><td>4</td><td>19</td><td>3</td><td>15.8</td></tr>
+    <tr class="ours"><td>평균</td><td>20</td><td>2.5</td><td>12.5 (회피 87.5 %)</td></tr>
+  </tbody>
+</table></div>
+<p>나무 블록 폭 3–5 cm, 높이 5–10 cm, 패드 바닥. 명목 CPG 스윙 높이 10 cm 로는 걸릴 블록을 Bézier 잔차로 넘거나 다리를 당겨 피함. 일부는 착지 충격으로 쓰러짐 (p.7, 그림 6).</p>
+<h3 class="ps">드리블 실기 (그림 5)</h3>
+<p>폭 3.3 m 미만 공간에서 급 U턴. 16 s 에 공 검출 오류가 있어도 이력 관측 덕에 공으로 감. 실제 공과 시뮬 공의 물성 차이로 속도 추종 오차는 큼 (p.7).</p>
+
+<h2 class="ps">8. 실기 · sim2real</h2>
+<ul>
+  <li><b>하위</b>: 동역학 무작위화 + 4스텝 이력으로 zero-shot 이전.</li>
+  <li><b>짐 밀기 base 실패 원인</b>: 짐이 시뮬처럼 완전한 정육면체가 아님, 짐 가까이서 UWB 측위 잡음 → 빗나간 밀기, 크게 돌아가는 경로 (그림 4a).</li>
+  <li><b>실데이터 학습 뒤</b>: 먼저 자세를 맞추고 목표 방향으로 밀기, 놓치면 좁게 돌아 재시도 → 경로 단축 (그림 4b).</li>
+  <li><b>드리블</b>: 정확한 측정 시스템이 없어 보상이 잡음투성이 → 실데이터 학습은 못 함 (p.7).</li>
+</ul>
+
+<h2 class="ps">9. 코드에서 확인한 것</h2>
+<p>해당 없음 — 공개 코드를 확인하지 못했고(목록 "코드: 확인 못함") 로컬 <code>code/</code> 폴더가 없다.</p>
+
+<h2 class="ps">10. 한계</h2>
+<ul>
+  <li>트로트 하나(고정 CPG 주기)만. 다른 보행·스텝 높이는 향후 과제 (p.7).</li>
+  <li>다리로 하는 비파지 조작만 — 쥐기·들기 없음.</li>
+  <li>하위 보상 가중치·σ, DR 범위, env 수, 상위 행동 범위·주기가 본문에 없다.</li>
+  <li>기준선 비교가 8회 시도, 실기 성공률의 시도 수 미공개. 실데이터 학습에는 외부 측위(UWB)가 필요.</li>
+</ul>
+
+<h2 class="ps">11. 우리에게 가져올 것</h2>
+<div class="take"><ol>
+  <li><b>"명목 + 작은 잔차"로 상체 탐색 공간 줄이기</b>: HiLMa-Res 잔차는 명목 궤적 대비 x 3.5–7 cm, y ±10 cm, z ±5 cm 이내(표 I). 우리: 상체 11 = 단계별 명목 자세(접근 · 쪼그림 · 옆면 조이기 · 들기) + a · Δmax. Δmax 는 dev12 가 학습 중 본 상체 목표 변화(저역 필터 목표와 그 변화율) 범위 안에서 정한다.</li>
+  <li><b>상위 명령 공간 = 하위 학습 명령 공간</b>: 하위는 표 I 범위를 10 s 마다 새로 뽑아 학습했다. 우리: 골반 명령을 dev12 학습 범위(vx ±0.8, vy ±0.4, ωz ±1.0, 높이 정지 0.335–0.77 · 보행 0.42–0.77, pitch ±45°, roll ±10° 정지만)로 자르고, 상위가 실제로 쓰는 조합(쪼그림 + pitch + 손 하중 동시)이 dev12 샘플러에서도 나오는지 확인한다. (논문은 상위 출력을 자른다고 명시하지 않음 — 이 항목은 추론.)</li>
+  <li><b>하위 실기 검증이 먼저</b>: 이 틀의 전제는 "하위가 실기에서 평가된 뒤" 재사용하는 것이다(p.2). dev12 는 아직 스모크 시험뿐이므로, pelvis_pick 실기 시험 전에 dev12 단독으로 골반 명령 격자(높이 × pitch)와 손 하중 0–5 kg 추종을 실기에서 잰다.</li>
+  <li><b>위상 공유</b>: dev12 가 보행 위상을 쓴다면 같은 (sin φ, cos φ) 를 상위 관측에도 넣는다(확인 필요).</li>
+  <li><b>깊이 직접 PPO 가 가능한 크기</b>: 43×29 깊이 + 작은 CNN + GRU 64 로 증류 없이 5 시간. 우리 26×64 × 6 프레임과 크기가 비슷하다 — student 격차(Isaac 69 % vs teacher 90 %)를 줄이는 "student RL 미세조정" 실험의 근거 하나로 쓸 수 있다(과제 난이도는 다름).</li>
+</ol>
+<p><b>가져오지 말 것</b></p>
+<ul>
+  <li>CPG·Bézier 발끝 궤적 인터페이스 자체: 사족 트로트용. 우리 하위 인터페이스는 골반 명령 + 상체 관절이다.</li>
+  <li>DroQ/RLPD 실기 학습: 사람이 리셋하고 외부 측위로 보상을 재야 한다. K1 박스 집기에서 지금 쓸 단계가 아니다(실기 실패가 반복될 때 후보).</li>
+  <li>기준선 대비 수치(100 vs 0–62.5 %)를 일반화하지 말 것: 8회 시도, 기준선은 Gazebo 로 옮긴 sim-to-sim 결과.</li>
+</ul>
+</div>
+
+<p class="src">출처 표기: (p.N), (표 N), (그림 N), (식 N), 코드는 파일 경로. 논문에 없는 값은 "논문에 없음".</p>
+</main>
+</body>
+</html>

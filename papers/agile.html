@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AGILE — 논문 상세</title>
+<link rel="stylesheet" href="paper.css">
+</head>
+<body>
+<main class="wrap">
+<a class="back" href="../index.html#catalog">← 자료 목록으로</a>
+
+<header class="ph">
+  <h1>AGILE: Isaac Lab + RSL-RL 휴머노이드 RL 작업 흐름 — 동결 속도·높이 하체를 행동 항으로 감싼 상체 RL 포함</h1>
+  <p class="orig">AGILE: A Comprehensive Workflow for Humanoid Loco-Manipulation Learning</p>
+  <p class="meta">Huihua Zhao, Rafael Cathomen (공동 1저자), Lionel Gulich, Wei Liu, … Yan Chang · NVIDIA (© 표기) · 프리프린트 (arXiv v1 2026-03-20) · Unitree G1, Booster T1 · Isaac Lab (코드: 3.0.0-beta2, Isaac Sim 6.0) + RSL-RL 5.4.1, MuJoCo sim2sim</p>
+  <div class="chips">
+    <a class="chip loc" href="../reference/agile/paper.pdf">로컬 PDF</a>
+    <a class="chip loc" href="../reference/agile/code/">로컬 코드</a>
+    <a class="chip" href="https://arxiv.org/abs/2603.20147" target="_blank" rel="noopener">arXiv 2603.20147</a>
+    <a class="chip gh" href="https://github.com/nvidia-isaac/WBC-AGILE" target="_blank" rel="noopener">nvidia-isaac/WBC-AGILE</a>
+    <a class="chip" href="https://nvidia-isaac.github.io/WBC-AGILE/" target="_blank" rel="noopener">문서 사이트</a>
+    <span class="simv s4">유사도 4</span>
+    <span class="badge">Apache-2.0 + BSD-3(RSL_RL)</span>
+    <span class="badge lfs" title="agile/data/policy/ 하체 정책 .pt·.onnx 11 개(velocity_height_g1 teacher 포함)와 docs 영상·그림이 Git LFS 포인터만 있음: git lfs pull 필요">LFS</span>
+  </div>
+</header>
+
+<div class="callout blue tldr">새 로봇에서 정책까지 가는 4 단계 작업 흐름 (검증 GUI → 재현 학습 → 결정적 평가 → I/O 기술자 배포) 과 학습 안정화 도구 (보상 정규화, 가치 부트스트랩 종료, L2C2, 가상 하네스, 대칭) 를 묶었다. G1 속도·높이 하체 (다리 12, 높이 0.4–0.72 m) 를 <b>Isaac Lab 행동 항으로 동결</b>하고 그 위에 오른팔·허리 RL 전문가를 20k 반복 학습, 그 시연 100 개로 GR00T N1.5 를 미세조정해 시뮬 100 회 <b>90 %</b>.</div>
+
+<h2 class="ps">우리와 무엇이 같고 다른가</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>이 논문</th><th>우리 (dev10 pelvis_pick)</th></tr></thead>
+  <tbody>
+    <tr><td>하위 제어기</td><td>G1 속도·높이 하체 RL, <b>다리 12 만</b> 출력 (허리·팔은 학습 중 무작위 구동). 명령 vx −0.5–1.5, vy ±0.5, ωz ±1.0 m/s·rad/s, 높이 0.4–0.72 m. 50 Hz. Isaac Lab <code>ActionTerm</code> 안에서 TorchScript 로 고정 실행</td><td>dev12 하체 RL, 다리 12, vx ±0.8, vy ±0.4, ωz ±1.0, 높이 0.335–0.77 m, pitch ±45°, roll ±10°, 상체 11 목표·변화율 관측, 손 하중 0–5 kg</td></tr>
+    <tr><td>상위 출력</td><td>상체 증분 (오른팔·손·허리, 배율 0.05) + 하체 명령 4 [vx, vy, ωz, 높이] 절대값 자르기 (코드)</td><td>상체 11 + 골반 명령 6</td></tr>
+    <tr><td>과제·물체</td><td>탁자 위 캔 같은 작은 물체 (0.2 kg) 오른손 집어 옆에 놓기, <b>리타깃 시연 궤적 추종</b>으로 유도</td><td>바닥·받침대 0–0.3 m 박스 37×40.5×29 cm, 0.5–2 kg, 두 손바닥 조이기, 시연 없음</td></tr>
+    <tr><td>지각·증류</td><td>상체 RL 전문가 (특권) → 시연 100 개 → GR00T N1.5 VLA 미세조정 (RGB + 언어). 하체는 따로 teacher → LSTM·이력 MLP student 증류</td><td>특권 teacher → D436 깊이 student (DAgger)</td></tr>
+    <tr><td>프레임워크</td><td>Isaac Lab + RSL-RL (PhysX). Newton 은 "내부 실험" 언급만</td><td>Isaac Lab + Newton + rsl_rl — 거의 같은 스택</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li><b>가장 닮은 점</b>: 같은 스택 (Isaac Lab + RSL-RL) 에서 "동결 하체 정책 = 행동 항, 상위 RL 의 행동 = 하체 명령 + 상체 관절" 을 실제 코드로 보여 준다. 하체가 다리만 내고 상체를 외부에 맡기는 분할도 dev12 와 같다.</li>
+  <li><b>다른 점</b>: 상위가 시연 궤적을 따라가는 추종형 RL 이고, 높이 범위를 0.65–0.72 m 로 좁게 잘라 쓴다 (쪼그림 없음). 시각 student 대신 VLA 로 넘긴다.</li>
+</ul>
+
+<h2 class="ps">1. 문제와 과제</h2>
+<ul>
+  <li><b>문제 의식</b> (p.1–2): 휴머노이드 RL 의 병목은 시뮬 속도·알고리즘이 아니라 검증·학습·평가·배포를 잇는 체계가 없다는 것. (i) 작업 흐름 격차: 관절 축 반전·보상 오류를 긴 학습 뒤에야 발견, 확률적 롤아웃만으론 관절 한계 위반·고주파 구동을 진단하기 어려움. (ii) 이전 격차: 관절 순서·관측 이력·행동 배율을 손으로 맞추다 생기는 조용한 버그.</li>
+  <li><b>4 단계</b> (p.2, 그림 1): ① 준비 (관절 GUI, 물체 GUI, 보상 시각화) ② 학습 (git 스냅숏·설정 덤프, 스윕) ③ 평가 (결정적 시나리오 + 확률 롤아웃, 동작 품질 지표, HTML 보고서) ④ 배포 (TorchScript + YAML I/O 기술자, MuJoCo sim2sim).</li>
+  <li><b>검증 과제 5 개</b> (p.3, 표 2): 속도 추종 (G1·T1), 속도 + 높이 보행 (G1), 일어서기 (G1·T1), 동작 모방 (G1 춤), 이동 조작 + VLA (G1 집어 놓기).</li>
+</ul>
+
+<h2 class="ps">2. 시스템 구조</h2>
+<div class="fig">
+  <div class="flow">
+    <span class="node">상위 RL 정책 (집어 놓기 전문가)</span><span class="arr">→</span>
+    <span class="node">상체 증분 × 0.05 → 이전 목표에 더하고 관절 한계로 자르기</span><span class="arr">→</span>
+    <span class="node">오른팔·손·허리 PD</span>
+  </div>
+  <div class="flow" style="margin-top:8px">
+    <span class="node">같은 정책의 하체 명령 4 [vx, vy, ωz, 높이]</span><span class="arr">→</span>
+    <span class="node">명령별 clip (집어 놓기: vx −0.2–0.5, vy ±0.4, ωz ±0.5, 높이 0.65–0.72)</span><span class="arr">→</span>
+    <span class="node frozen">AgileBasedLowerBodyAction: TorchScript 속도·높이 teacher (고정)</span><span class="arr">→</span>
+    <span class="node">다리 12 관절 목표 (× 배율 + 기본 자세)</span>
+  </div>
+  <div class="flow" style="margin-top:8px">
+    <span class="node">전문가 성공 궤적 100 개 (타일 렌더, 시각·물리 무작위)</span><span class="arr">→</span>
+    <span class="node">GR00T N1.5 VLA 미세조정 (RGB + 언어)</span><span class="arr">→</span>
+    <span class="node">VLA 가 상체 목표, 동결 하체가 균형</span>
+  </div>
+  <p class="src">점선 = 고정. 50 Hz 제어, 물리 200 Hz (코드 decimation 4, dt 0.005). (p.7 그림 3, p.10–11 4.5절·그림 5; <a href="../reference/agile/code/agile/rl_env/tasks/pick_place/pick_place_tracking_env_cfg.py"><code>pick_place_tracking_env_cfg.py</code></a>)</p>
+</div>
+<h3 class="ps">행동 항 안에서 무슨 일이 일어나나 (코드)</h3>
+<ol>
+  <li>환경의 행동 관리자가 정책 출력 벡터를 행동 항 순서대로 나눈다: <code>upper_body_joint_pos</code> (상체 증분) 다음 <code>lower_body_joint_pos</code> (4 차원).</li>
+  <li><code>AgileBasedLowerBodyAction.process_actions</code> (env 스텝마다 1 회, 50 Hz): 4 명령을 <code>torch.clamp</code> 로 자름 → 하체 정책용 관측 그룹 <code>agile_policy</code> 를 env 의 관측 버퍼에서 꺼냄 → 명령을 이력 길이만큼 반복해 앞에 붙임 → <code>torch.inference_mode()</code> 로 TorchScript 실행 → 관절 행동 × 배율 + 기본 관절 위치.</li>
+  <li><code>apply_actions</code> (물리 하위 스텝마다): 다리 12 관절 목표를 그대로 적용.</li>
+</ol>
+<p class="src">(<a href="../reference/agile/code/agile/rl_env/mdp/actions/policy_actions.py"><code>policy_actions.py</code></a>, 180 행) 하체 관측 그룹은 선속도·각속도·중력·<b>전체 관절</b> 위치·속도·직전 행동 (속도·높이 teacher 관측과 같은 꼴). 자르기 밖으로 나간 양에 대한 벌점은 없다.</p>
+
+<h2 class="ps">3. 관측과 행동</h2>
+<h3 class="ps">하체 (속도 + 높이 보행, G1) — 고정될 정책</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>그룹</th><th>항목</th><th>잡음</th></tr></thead>
+  <tbody>
+    <tr><td rowspan="7">teacher actor (특권)</td><td>명령 [vx, vy, ωz, 높이]</td><td>–</td></tr>
+    <tr><td>기저 선속도</td><td>U(−0.1, 0.1)</td></tr>
+    <tr><td>기저 각속도</td><td>U(−0.2, 0.2)</td></tr>
+    <tr><td>투영 중력</td><td>U(−0.01, 0.01)</td></tr>
+    <tr><td>관절 위치 (전 관절, 기본값 대비)</td><td>U(−0.01, 0.01)</td></tr>
+    <tr><td>관절 속도 × 0.1</td><td>U(−1.5, 1.5)</td></tr>
+    <tr><td>직전 행동 (자르기 ±10)</td><td>–</td></tr>
+    <tr><td>critic 추가</td><td>기저 높이 (명령 대비), 양발 높이 스캔 (±1 자르기)</td><td>없음</td></tr>
+    <tr><td>student</td><td>teacher 에서 기저 선속도를 뺀 것, 이력 5 (이력 MLP) 또는 순환망</td><td>같음</td></tr>
+  </tbody>
+</table></div>
+<p class="src">(<a href="../reference/agile/code/agile/rl_env/tasks/locomotion_height/g1/velocity_height_env_cfg.py"><code>velocity_height_env_cfg.py</code></a> 46–200행; p.8, 표 2 "noisy / + scans")</p>
+<ul>
+  <li>행동: 다리 12 관절 위치 오프셋, 기본 자세 기준, 자르기 ±6 (표 2 "Leg pos (12)").</li>
+  <li>허리·팔: 학습 중 <b>무작위 목표</b>를 사다리꼴 속도 프로파일로 구동. 허리 roll·pitch 0 고정, 허리 yaw ±15°, 팔은 관절 한계 안 균등. 재표본 간격 U(0.1, 2.0) s, 가속 1–10 rad/s², 최대 속도 5–10 rad/s, 관절 동기화. <b>걷는 중에는 무작위 없이 기본 자세로</b> (<code>no_random_when_walking: True</code>, <a href="../reference/agile/code/agile/rl_env/mdp/actions/random_actions.py"><code>random_actions.py</code></a>).</li>
+</ul>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>명령</th><th>최종 범위</th><th>시작 범위 (속도 커리큘럼)</th></tr></thead>
+  <tbody>
+    <tr><td>vx</td><td>−0.5–1.5 m/s</td><td>−0.2–0.5</td></tr>
+    <tr><td>vy</td><td>±0.5 m/s</td><td>±0.2</td></tr>
+    <tr><td>ωz</td><td>±1.0 rad/s</td><td>±0.4</td></tr>
+    <tr><td>골반 높이</td><td>0.4–0.72 m (기본 0.72)</td><td>–</td></tr>
+  </tbody>
+</table></div>
+<p class="src">재표본 7.5–10 s, 서 있는 env 10 %, 명령 EMA 평활 0.5, 걷기 최소 높이 0.5 m, 걷는 중 높이 무작위 없음. 속도 범위는 192,000 스텝 (8k 반복) 에 걸쳐 넓힘. (같은 파일 280–305행, 802–870행)</p>
+
+<h3 class="ps">상위 (집어 놓기 RL 전문가, G1 3손가락 손)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>관측 항 (policy)</th><th>내용</th></tr></thead>
+  <tbody>
+    <tr><td>추종 기준 앵커 위치·자세 (몸 기준)</td><td>리타깃 시연 궤적의 기준 몸 자세</td></tr>
+    <tr><td>추종 관절 오차</td><td>오른팔·손·허리 관절: 기준 − 현재</td></tr>
+    <tr><td>물체 → 손 위치, 물체 위치 오차</td><td>특권 물체 상태</td></tr>
+    <tr><td>궤적 진행률</td><td>0–1</td></tr>
+    <tr><td>기저 선속도·각속도, 관절 위치·속도, 직전 행동</td><td>잡음 U(±0.5), U(±0.2), U(±0.01), U(±0.5)</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>행동 (코드): 오른팔·오른손·허리 <b>증분</b> — 목표<sub>t</sub> = 목표<sub>t−1</sub> + a × 0.05, 관절 한계 (허리 roll·pitch ±0.1 rad, yaw ±0.2 rad 로 덮어씀) 로 자른 뒤 그 값을 다음 기준으로 저장 (누적값이 경계 밖으로 쌓이지 않음). 리셋 때 현재 관절 위치로. 왼팔은 기본 자세 고정 (<a href="../reference/agile/code/agile/rl_env/mdp/actions/delta_actions.py"><code>delta_actions.py</code></a>).</li>
+  <li>여기에 하체 명령 4 가 붙는다. 논문은 "RL 정책이 오른팔과 허리만 제어" 라고 쓰지만 (p.10), 공개 설정에선 정책 출력에 하체 명령 4 차원도 들어 있다.</li>
+  <li>논문 표 2: Pick &amp; Place 행동 "Upper body", 관측 "tracking / –", 보상 10 항, 에피소드 25 s, 평지, 단일 L40 10 시간 (p.8). 코드 에피소드는 8.0 s.</li>
+</ul>
+
+<h2 class="ps">4. 보상 · 종료 · 커리큘럼</h2>
+<h3 class="ps">하체 (속도 + 높이) 보상 — 코드 가중치</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항</th><th>가중치</th><th>항</th><th>가중치</th></tr></thead>
+  <tbody>
+    <tr><td>종료</td><td>−1000</td><td>관절 가속 L2</td><td>−2.5×10<sup>−7</sup></td></tr>
+    <tr><td>xy 속도 추종 exp (std 0.2)</td><td>2.0</td><td>행동 변화율</td><td>−0.01 (75k–125k 스텝에 −1.0 까지)</td></tr>
+    <tr><td>ωz 추종 exp (std 0.2)</td><td>2.0</td><td>행동 변화율의 변화율</td><td>−0.05</td></tr>
+    <tr><td>기저 높이 추종 exp (std 0.2)</td><td>1.0</td><td>기저 가속</td><td>−2×10<sup>−5</sup></td></tr>
+    <tr><td>명령 0 일 때 불필요한 기저 속도 없음 (std 0.1)</td><td>1.0</td><td>발목 관절 한계</td><td>−10.0</td></tr>
+    <tr><td>명령 0 일 때 두 발 힘 균등</td><td>1.0</td><td>명령 0 일 때 이완 (std 0.25)</td><td>1.0</td></tr>
+    <tr><td>명령 0 일 때 두 발로 서기</td><td>1.0</td><td>발 미끄럼</td><td>−0.1</td></tr>
+    <tr><td>다리 관절 위치 한계</td><td>−1.0</td><td>발 roll, 발 yaw 차, 발 yaw 평균</td><td>−1.0, −0.2, −1.0</td></tr>
+    <tr><td>다리 관절 속도 한계 (0.9)</td><td>−1.0</td><td>뜀 (0.1)</td><td>−10.0</td></tr>
+    <tr><td>다리 관절 속도 L2</td><td>−0.001</td><td>착지 충격 속도</td><td>−0.5</td></tr>
+    <tr><td>토크 한계</td><td>−0.01</td><td>몸통 평평함</td><td>−10.0</td></tr>
+    <tr><td></td><td></td><td>쪼그림 무릎, 고관절 이탈</td><td>−0.75, −1.0</td></tr>
+  </tbody>
+</table></div>
+<p class="src">(<a href="../reference/agile/code/agile/rl_env/tasks/locomotion_height/g1/velocity_height_env_cfg.py"><code>velocity_height_env_cfg.py</code></a> 372–552행; 논문 표 2 는 보상 22 항이라고만 적음)</p>
+<ul>
+  <li><b>종료</b>: 시간 초과 30 s, 몸통 기울기 &gt; 40°, 몸통·골반·고관절·무릎의 지면 접촉 (50 N, 높이 0.5 m 아래), 두 발 거리 0.1 m 미만 또는 0.5 m 초과, 두 무릎 거리 0.15 m 미만.</li>
+  <li><b>커리큘럼</b>: 지형 난이도 (4 m 가면 올림, 2 m 못 가면 내림), 가상 하네스 제거 (0–50,000 스텝), 행동 변화율 벌점 강화, 속도 범위 확대.</li>
+</ul>
+
+<h3 class="ps">상위 (집어 놓기) 보상 — 코드 가중치</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항</th><th>가중치</th><th>비고</th></tr></thead>
+  <tbody>
+    <tr><td>종료</td><td>−200</td><td></td></tr>
+    <tr><td>목표 도달 후 정지 (진행률 0.8 이후)</td><td>1.0</td><td></td></tr>
+    <tr><td>앵커 위치·자세 추종 exp (std 0.3)</td><td>1.0 / 0.5</td><td>시연 궤적 추종</td></tr>
+    <tr><td>상체 관절 추종 exp (std 0.3)</td><td>1.0</td><td></td></tr>
+    <tr><td>물체 위치 추종 exp (std 0.3)</td><td>1.0 → 5.0</td><td>50k 스텝부터 50k 스텝에 걸쳐</td></tr>
+    <tr><td>손–물체 거리 추종</td><td>1.0</td><td></td></tr>
+    <tr><td>물체 들림 (최소 높이 = 초기 높이)</td><td>0.5 → 0.0</td><td>50k 스텝부터 꺼 감</td></tr>
+    <tr><td>끝 무렵 기본 자세 (진행률 0.95)</td><td>1.0</td><td></td></tr>
+    <tr><td>기저 가속, 몸통 각속도</td><td>−2×10<sup>−5</sup>, −0.01</td><td></td></tr>
+    <tr><td>행동 변화율, 행동 크기</td><td>−0.001 (100k 스텝부터 −0.01), −0.01</td><td></td></tr>
+    <tr><td>관절 속도, 관절 가속 (오른팔·손·허리)</td><td>−0.01, −2.5×10<sup>−7</sup></td><td></td></tr>
+    <tr><td>관절 위치 한계 (전체)</td><td>−10.0</td><td></td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li><b>종료</b>: 기준 대비 기저 위치·자세 오차 &gt; 0.7, 관절 오차 &gt; 2.0, 로봇 높이 0.5–1.5 m 밖, 물체 높이 0.6–1.5 m 밖.</li>
+  <li><b>리셋</b>: 시연 궤적의 앞 0–100 프레임 중 한 시점으로 로봇을 놓음 (<code>reset_robot_to_trajectory</code>) — 일종의 RSI.</li>
+</ul>
+
+<h3 class="ps">학습 안정화 도구 (논문 3.3.2절)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>도구</th><th>식 · 값</th><th>효과 (절제)</th></tr></thead>
+  <tbody>
+    <tr><td>L2C2</td><td>x̃ = x<sub>t</sub> + α(x<sub>t+1</sub> − x<sub>t</sub>), α ∼ U(0, 1); L = λ<sub>π</sub>‖π(x̃) − π(x<sub>t</sub>)‖² + λ<sub>V</sub>‖V(x̃) − V(x<sub>t</sub>)‖² (식 1). λ<sub>π</sub> 1.0, λ<sub>V</sub> 0.1 (표 4)</td><td>춤 모방에서 RMS 가속·저크·한계 위반·10 Hz 넘는 에너지 비율 모두 감소, 관측 잡음이 클수록 이득 큼. 없으면 실기에서 고주파 진동 소리 (p.11–12, 그림 6)</td></tr>
+    <tr><td>온라인 보상 정규화</td><td>r̂ = r / (σ<sub>r</sub> · φ<sub>γ</sub> · c + ε), φ<sub>γ</sub> = 1/√(1 − γ²), ε 10<sup>−2</sup>, c ← βc + (1 − β)σ<sub>G</sub>c, β 0.999 (식 2, 표 4)</td><td>보상 100 배에서도 원래 성능 회복 (p.11, 그림 7a 는 p.13)</td></tr>
+    <tr><td>가치 부트스트랩 종료</td><td>r̂<sub>T</sub> ← r̂<sub>T</sub> + γV(x<sub>T</sub>) + {−σ 나쁨, +σ 좋음, 0 시간 초과}, σ = 5 (정규화 뒤라 과제 무관). γ 0.99 면 가치 공간에서 500 상당 (식 3)</td><td>T1 일어서기 5 시드: 수동 종료 벌점보다 시간 초과 비율 높고 시드 분산 작음 (p.12, 그림 7b 는 p.13)</td></tr>
+    <tr><td>가상 하네스</td><td>τ<sub>h</sub> = K<sub>p</sub>e<sub>q</sub> − K<sub>d</sub>ω, f<sub>h</sub> = K<sub>p</sub>(h* − h) − K<sub>d</sub>ḣ, 배율 s ∈ [0, 1] 선형·지수·적응 감소. 코드: 토크 강성 300·감쇠 50, 힘 1000·100, 힘 한계 150 N, 토크 500</td><td>높이 보행 5 시드: 처음 2k 반복에 걸쳐 걷어내면 음수 보상 구간을 빨리 벗어나고 최종 보상 높음 (p.12, 그림 7c 는 p.13)</td></tr>
+    <tr><td>속도 프로파일</td><td>EMA, 사다리꼴 (a<sub>max</sub>, v<sub>max</sub>), 선형</td><td>하체 학습 중 상체 무작위 목표의 급변 방지</td></tr>
+    <tr><td>대칭 증강</td><td>관측·행동 좌우 거울, 설정 기반 매핑</td><td>T1 속도: 보상 이득은 작지만 일관, 주된 이득은 좌우 대칭 보행 (p.12, 그림 7d 는 p.13). 집어 놓기에는 끔</td></tr>
+    <tr><td>그 밖</td><td>적응 명령 표본 (저속 균형 쪽 치우침), 상태 캐시 리셋 (넘어진 자세 모음), RSL-RL 식 teacher-student 증류 + 대칭 거울 손실</td><td>–</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">5. 학습 설정 (알고리즘 · 망 · 무작위화)</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>값</th><th>공통 (표 4)</th><th>속도·높이 하체 (코드)</th><th>집어 놓기 상위 (코드)</th></tr></thead>
+  <tbody>
+    <tr><td>actor</td><td>[256, 256, 128]</td><td>[256, 256, 128] ELU</td><td>[256, 128, 64]</td></tr>
+    <tr><td>critic</td><td>[512, 256, 128]</td><td>[512, 256, 128]</td><td>[256, 128, 64]</td></tr>
+    <tr><td>학습률 / 일정</td><td>10<sup>−3</sup></td><td>1e-3 adaptive, KL 0.01</td><td>1e-3 adaptive, KL 0.01</td></tr>
+    <tr><td>γ / λ / clip</td><td>0.99 / 0.95 / 0.2</td><td>같음</td><td>같음</td></tr>
+    <tr><td>미니배치 / 에폭</td><td>4 / 5</td><td>같음</td><td>같음</td></tr>
+    <tr><td>엔트로피</td><td>0.005 (높이 0.01, 일어서기 0.0025)</td><td>0.01, 진행 30 % 이후 성공률 0.8 넘으면 반복마다 ×0.9998, 하한 0.001</td><td>0.005, 진행 10 % 이후 성공률 0.3 넘으면 ×0.9998</td></tr>
+    <tr><td>초기 std</td><td>논문에 없음</td><td>1.0</td><td>1.0</td></tr>
+    <tr><td>env / 롤아웃</td><td>4096</td><td>4096 / 24 스텝</td><td>4096 / 24 스텝</td></tr>
+    <tr><td>반복</td><td>약 20k 까지 연장 (p.8)</td><td>30,000</td><td>20,000</td></tr>
+    <tr><td>대칭</td><td>좌우 거울 (집어 놓기 제외)</td><td>데이터 증강 켬, 거울 손실 끔</td><td>없음</td></tr>
+    <tr><td>학습 시간 (단일 L40)</td><td colspan="3">보행 10 h, 속도 + 높이 10 h, 일어서기 G1 25 h·T1 15 h, 모방 6 h, 집어 놓기 10 h (p.8, 표 2)</td></tr>
+  </tbody>
+</table></div>
+<p class="src">(p.18, 표 4; <a href="../reference/agile/code/agile/rl_env/tasks/locomotion_height/g1/agents/rsl_rl_ppo_cfg.py">locomotion_height ppo cfg</a>, <a href="../reference/agile/code/agile/rl_env/tasks/pick_place/g1/agents/rsl_rl_ppo_cfg.py">pick_place ppo cfg</a>)</p>
+
+<h3 class="ps">하체 무작위화 (코드)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>범위</th></tr></thead>
+  <tbody>
+    <tr><td>지면 마찰 정지 / 동</td><td>0.4–1.5 / 0.4–0.8, 반발 0–0.1</td></tr>
+    <tr><td>다리 PD</td><td>kp × 0.9–1.1, kd × 0.8–1.2</td></tr>
+    <tr><td>팔·허리 PD</td><td>kp·kd × 0.5–2.0</td></tr>
+    <tr><td>관절 마찰 / armature</td><td>0–0.005 / × 0.4–1.6</td></tr>
+    <tr><td>몸체 질량</td><td>× 0.95–1.05, 몸통 +(−1.0–3.0) kg</td></tr>
+    <tr><td>COM</td><td>몸체 ±0.01 m, 몸통 x·z ±0.15, y ±0.05 m</td></tr>
+    <tr><td>외력 (2–10 s 간격)</td><td>몸통 힘 ±5 N·토크 ±2 N·m, <b>손목 힘 ±5 N·토크 ±0.5 N·m</b></td></tr>
+    <tr><td>밀기 (2–5 s 간격)</td><td>속도 x·y ±0.2 m/s, roll·pitch·yaw ±0.05 rad/s</td></tr>
+  </tbody>
+</table></div>
+<p class="src">(<code>velocity_height_env_cfg.py</code> 631–800행) 집어 놓기 상위는 로봇 마찰 0.8–1.0, 물체 질량 0.2 kg 고정, 조명·바닥 텍스처 무작위 (시연 기록용).</p>
+
+<h2 class="ps">6. teacher → student / 증류</h2>
+<ul>
+  <li><b>하체</b>: 특권 teacher (기저 선속도 + 발 높이 스캔 critic) → 순환망 student 와 이력 MLP student 로 증류 (p.9). 코드: <code>RslRlDistillationAlgorithmCfg</code>, MSE, 에폭 5, gradient_length 15, lr 1e-3, 최대 5,000 반복, student [256, 256, 128], 이력판은 대칭 거울 손실 켬.</li>
+  <li><b>상위</b>: 특권 RL 전문가가 성공 궤적 100 개를 타일 병렬 렌더로 생성 (물리·시각 무작위) → RGB + 고유감각 + 행동 쌍 → GR00T N1.5 를 언어 과제 설명과 함께 미세조정. 배포 때 VLA 가 상체 목표, 동결 하체가 균형 (p.10–11).</li>
+  <li>집어 놓기 시연 수집 시 하체에 쓰는 것은 <b>teacher TorchScript</b> (<code>unitree_g1_velocity_height_teacher_torchscript.pt</code>) 로, 기저 선속도 같은 특권 관측을 그대로 받는다.</li>
+</ul>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>MuJoCo 추종 오차 (G1 속도 + 높이)</th><th>teacher 결정 50 s</th><th>teacher 무작위 50 s</th><th>무작위 200 s</th><th>무작위 500 s</th><th>RNN student</th><th>이력 student</th></tr></thead>
+  <tbody>
+    <tr><td>vx (m/s)</td><td>0.070</td><td>0.142 ± 0.019</td><td>0.136 ± 0.010</td><td>0.136 ± 0.003</td><td>0.116</td><td>0.097</td></tr>
+    <tr><td>vy (m/s)</td><td>0.083</td><td>0.118 ± 0.013</td><td>0.110 ± 0.006</td><td>0.110 ± 0.002</td><td>0.110</td><td>0.087</td></tr>
+    <tr><td>ωz (rad/s)</td><td>0.074</td><td>0.116 ± 0.013</td><td>0.113 ± 0.007</td><td>0.112 ± 0.003</td><td>0.117</td><td>0.079</td></tr>
+    <tr><td>높이 h (m)</td><td>0.035</td><td>0.046 ± 0.007</td><td>0.039 ± 0.003</td><td>0.036 ± 0.001</td><td>0.037</td><td>0.037</td></tr>
+  </tbody>
+</table></div>
+<p class="src">(p.10, 표 3) 결정적 훑기 (50 s) 는 짧아도 분산이 작고, 무작위 명령 (2 s 재표본, 10 회) 은 500 s 는 돌려야 수렴. student 는 결정적 훑기로 비교.</p>
+
+<h2 class="ps">7. 결과</h2>
+<ul>
+  <li><b>집어 놓기 VLA</b>: 무작위 초기 로봇 상태 100 회 시뮬 폐루프에서 90 % 성공 (p.11). RL 전문가 자체의 성공률은 논문에 없음.</li>
+  <li><b>높이 추종</b> (그림 4, MuJoCo): 높이 0.4–0.7 m 계단 훑기를 따라감, 높이 오차 0.035–0.046 m (표 3).</li>
+  <li><b>평가 파이프라인 관찰</b>: Isaac Lab 에서 관절 한계를 계속 어기는 정책은 sim2sim 이 거의 항상 실패 → 그 신호로 미세조정 후 MuJoCo 로 넘김 (p.9).</li>
+  <li><b>절제 요약</b> (그림 6, 7, 5 시드): 보상 정규화는 1 배에선 작은 이득·100 배에선 회복, 가치 부트스트랩은 분산 감소, 하네스는 빠른 수렴, 대칭은 작은 보상 이득 + 행동 대칭, L2C2 는 네 지표 모두 감소.</li>
+</ul>
+
+<h2 class="ps">8. 실기 · sim2real</h2>
+<ul>
+  <li>다섯 과제 모두 실기 이전 (안정 실행·제어기 불안정 없음·과제 완료 기준). 단 이동 조작 과제는 VLA 파이프라인으로 <b>시뮬에서만</b> 검증 (p.13).</li>
+  <li>모캡이 없어 실기는 정성 시연만, 정량 지표는 MuJoCo 로 대신 (p.13).</li>
+  <li><b>주된 실패 원인</b>: 구동기 모형·접촉 동역학의 sim2real 격차, 실제 구동기가 못 따라가는 과격한 동작. 무작위화와 정책 정규화로 해결 (p.13).</li>
+  <li>동작 모방: 기본 BeyondMimic 설정은 시뮬 이전부터 실패 → 무작위화 + L2C2 추가 (p.10).</li>
+  <li>배포: TorchScript + 자동 생성 YAML (관절 이름·관측 순서·이력 버퍼·행동 배율) 로 MuJoCo 와 실기가 같은 추론 코드를 쓴다 (p.8).</li>
+</ul>
+
+<h2 class="ps">9. 코드에서 확인한 것</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>주제</th><th>확인 내용</th><th>파일</th></tr></thead>
+  <tbody>
+    <tr><td>동결 하체 행동 항</td><td><code>AgileBasedLowerBodyAction</code>: 행동 차원 4, 명령별 clip 사전, 관측 그룹 이름으로 하체 입력 구성, 이력 길이만큼 명령 반복, 출력 × 배율 + 기본 자세. 벌점 없음</td><td><a href="../reference/agile/code/agile/rl_env/mdp/actions/policy_actions.py"><code>policy_actions.py</code></a></td></tr>
+    <tr><td>상체 증분 행동</td><td>이전 목표 + a × scale, 한계로 자른 값을 다음 기준으로 (누적 포화 없음)</td><td><a href="../reference/agile/code/agile/rl_env/mdp/actions/delta_actions.py"><code>delta_actions.py</code></a></td></tr>
+    <tr><td>상체 무작위 구동</td><td>사다리꼴·EMA·선형 프로파일, 걷는 중엔 기본 자세</td><td><a href="../reference/agile/code/agile/rl_env/mdp/actions/random_actions.py"><code>random_actions.py</code></a>, <a href="../reference/agile/code/agile/rl_env/mdp/actions/velocity_profiles/">velocity_profiles/</a></td></tr>
+    <tr><td>가상 하네스</td><td>골반 PD 힘·토크, 커리큘럼으로 제거</td><td><a href="../reference/agile/code/agile/rl_env/mdp/actions/harness_action.py"><code>harness_action.py</code></a></td></tr>
+    <tr><td>보상 정규화·L2C2·부트스트랩</td><td>RSL-RL 패치 설정</td><td><a href="../reference/agile/code/agile/rl_env/rsl_rl/">rl_env/rsl_rl/</a></td></tr>
+    <tr><td>MuJoCo sim2sim</td><td>I/O 기술자로 관측·행동 재구성</td><td><a href="../reference/agile/code/agile/sim2mujoco/">sim2mujoco/</a></td></tr>
+    <tr><td>경험 문서</td><td>아래 표</td><td><a href="../reference/agile/code/LESSONS_LEARNED.md">LESSONS_LEARNED.md</a>, <a href="../reference/agile/code/OFFICE_HOUR_FAQ.md">OFFICE_HOUR_FAQ.md</a></td></tr>
+    <tr><td>Newton</td><td>코드에 Newton 사용 흔적 없음 (PhysX). FAQ: "PhysX 와 Newton 둘 다 내부 실험, Newton 이 Isaac Lab 에 정식 통합되면 쉬워질 것"</td><td>FAQ</td></tr>
+    <tr><td>LFS</td><td><code>agile/data/policy/</code> 11 개 (G1 속도, G1 속도·높이 teacher·history 의 TorchScript·state_dict·ONNX, T1) 가 131–132 바이트 포인터. LEAPP YAML 기술자는 실제 파일</td><td><a href="../reference/agile/code/agile/data/policy/">data/policy/</a></td></tr>
+  </tbody>
+</table></div>
+<details class="more">
+  <summary>LESSONS_LEARNED · FAQ 에서 우리에게 걸리는 것 <span class="cnt">9 항</span></summary>
+  <div class="body">
+  <ul>
+    <li><b>정책 noise std 가 계속 커지면</b> 엔트로피 보너스가 과제 경사를 이기고 있다는 신호: 먼저 보상을 고치고, 그다음 엔트로피 계수를 낮추고, 일부 env 는 무작위화 없이 돌려 깨끗한 경사를 확보 (논문 부록 A.1-7, p.17).</li>
+    <li>가치 손실은 1.0 보다 충분히 작게. 크면 보상 크기를 줄이거나 보상 정규화.</li>
+    <li>에피소드 길이가 0 근처로 무너지면 "자살" 정책: 종료 벌점을 키우거나 가치 부트스트랩 종료 (σ 줄이기도 고려).</li>
+    <li>보상은 과제 + 스타일 + 정규화 순서로, 처음엔 과제 + 기본 정규화만.</li>
+    <li>시드 5 개 이상에서 확인. 시드 분산이 크면 보상·커리큘럼이 약하다는 뜻.</li>
+    <li>"가짜 부드러움": 시뮬 감쇠·마찰이 과격한 정책을 가린다 → 정책 출력 자체를 정규화 (행동 크기·변화율·가속, L2C2).</li>
+    <li>실기가 시뮬과 크게 다르면 시뮬이 틀린 것: 보상으로 보정하지 말고 모형을 고칠 것.</li>
+    <li>하체·상체를 함께 학습하지 않고, 보행을 먼저 학습 → 고정 → API 로 쓰며 상체 학습 (VIRAL 과 같은 접근, FAQ).</li>
+    <li>armature·PD 이득 범위 무작위화가 sim2sim 에 특히 중요 (FAQ).</li>
+  </ul>
+  </div>
+</details>
+
+<h2 class="ps">10. 한계</h2>
+<ul>
+  <li>저자 언급 (p.13): G1·T1 두 로봇만, Isaac Lab API 의존, 과제가 주로 고유감각 기반 (지각 조작·달리기·계단 없음).</li>
+  <li>이동 조작은 실기 검증 없이 시뮬 VLA 90 % 만. RL 전문가 성공률·실패 양상 없음.</li>
+  <li>집어 놓기는 시연 궤적 추종으로 유도된 단일 물체 (0.2 kg) 과제이고, 하체 높이를 0.65–0.72 m 로 좁게 써서 쪼그림 이동 조작의 근거가 되지 못한다.</li>
+  <li>하체 학습에서 걷는 중엔 상체 무작위가 없어, 걸으며 팔을 크게 쓰는 상황은 학습 밖일 수 있다 (코드 기준, 추론).</li>
+  <li>논문 수치와 공개 설정이 다른 곳: 집어 놓기 에피소드 25 s 대 8 s, "오른팔·허리만" 대 하체 명령 4 포함.</li>
+</ul>
+
+<h2 class="ps">11. 우리에게 가져올 것</h2>
+<div class="take"><ol>
+  <li><b>dev12 를 행동 항으로 감싸는 코드 꼴</b>: <code>AgileBasedLowerBodyAction</code> 처럼 (a) TorchScript/ONNX 를 env device 에 올리고 (b) dev12 학습 때와 똑같은 관측 그룹을 별도 그룹으로 만들어 이력·배율까지 재현하고 (c) env 스텝마다 1 회 추론해 다리 12 목표를 내는 구조. 다만 dev12 는 상체 11 목표의 저역 통과 값과 변화율을 보므로, 그 필터 상태를 행동 항 안에 두고 상위의 상체 출력이 그 필터를 거쳐 PD 와 dev12 관측 양쪽에 같은 값으로 들어가게 해야 한다 (추론).</li>
+  <li><b>자르기만 하는 설계는 그대로 쓰지 않는다</b>: AGILE 행동 항은 명령을 <code>torch.clamp</code> 만 하고 벌점이 없다 — v2 에서 std 발산을 부른 바로 그 꼴. 범위 밖 양에 L2 벌점 (VIRAL·DoorMan 식) 을 더하거나, 상체처럼 증분 누적 + 누적값 자체 자르기로 바꾼다.</li>
+  <li><b>상체 증분 누적 구현</b>: 목표<sub>t</sub> = clamp(목표<sub>t−1</sub> + a × 0.05, 한계), 자른 값을 다음 기준으로, 리셋 때 현재 관절로. 50 Hz 에서 a = 1 이 2.5 rad/s. K1 팔 (kp 22.3) 에도 바로 쓸 수 있는 크기. 허리는 roll·pitch ±0.1, yaw ±0.2 rad 로 따로 좁혔다 → K1 허리 yaw 도 처음엔 ±0.2 rad 로 (v2 의 허리 추종 실패 대책).</li>
+  <li><b>엔트로피 계수 자동 감쇠</b>: 진행 10 % 이후 성공률 0.3 넘으면 반복마다 × 0.9998 (하체는 0.8 기준, 하한 0.001). std 발산 방지책으로 그대로 시도할 만하다.</li>
+  <li><b>가치 부트스트랩 종료 σ 5 + 보상 정규화 (β 0.999, ε 0.01)</b>: 박스 떨어뜨림·넘어짐을 −σ, 성공을 +σ, 시간 초과 0. 과제별 종료 벌점 손질이 줄어든다. 가치 손실이 오르면 σ 를 줄일 것.</li>
+  <li><b>L2C2 (λ<sub>π</sub> 1.0, λ<sub>V</sub> 0.1)</b>: 상위 출력의 고주파 떨림을 줄이는 값싼 정규화. 깊이 student 에도 적용 가능.</li>
+  <li><b>결정적 평가 시나리오</b>: 고정 박스 위치·높이·질량 격자 시나리오를 Isaac 과 MuJoCo 에서 같은 코드로 돌리고 관절 한계 위반·저크를 함께 기록. "Isaac 에서 한계를 계속 어기면 sim2sim 실패" 라는 관찰은 v2 의 체크포인트 비단조 성공률 진단에도 쓸 수 있다.</li>
+  <li><b>하체 학습 쪽 점검 목록</b> (dev12 와 비교): AGILE 은 상체 무작위를 0.1–2.0 s 마다, 가속 1–10 rad/s², 최대 5–10 rad/s 사다리꼴로 줬고 걷는 중엔 끄고, 손목에 ±5 N 외력을 줬다. dev10 이 걸으며 박스를 들고 팔을 움직일 계획이라면 dev12 가 걷는 중 상체 변화를 봤는지 확인한다.</li>
+</ol></div>
+<h3 class="ps">가져오지 말 것</h3>
+<ul>
+  <li><b>시연 궤적 추종형 상위 보상</b>: 리타깃 시연이 필요하고, 받침대 높이·박스 자세가 바뀌는 우리 과제엔 기준 궤적이 하나로 정해지지 않는다. RSI 용 시작 상태 정도만 참고.</li>
+  <li><b>하체 명령 범위를 좁게 잘라 쓰기</b> (높이 0.65–0.72 m): 우리는 0.335–0.77 m 와 pitch 가 핵심이다.</li>
+  <li><b>VLA 경로</b>: 우리 student 는 깊이 + DAgger. 시연 100 개 + GR00T 미세조정은 목적이 다르다.</li>
+  <li><b>PhysX 전제 값</b> (마찰 결합 방식, 접촉 설정): 우리는 Newton 이고 마찰·외력 버그가 따로 있으므로 숫자를 그대로 옮기지 않는다.</li>
+  <li><b>집어 놓기의 대칭 끄기</b>: 한 손 과제라 끈 것. 우리 두 손 조이기는 좌우 거울 증강이 오히려 맞다 (박스 yaw ±40° 도 거울 변환 가능).</li>
+</ul>
+
+<p class="src">출처 표기: (p.N) 은 PDF 쪽 (표 2 = p.8, 표 3 = p.10, 그림 6 = p.12, 그림 7 = p.13, 부록 A.1 = p.17, 표 4 = p.18), (표 N), (그림 N), (식 N), 코드는 파일 경로. 논문에 없는 값은 "논문에 없음". "추론" 은 이 페이지 작성자의 판단.</p>
+</main>
+</body>
+</html>

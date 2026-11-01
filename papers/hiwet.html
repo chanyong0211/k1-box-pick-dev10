@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HiWET — 논문 상세</title>
+<link rel="stylesheet" href="paper.css">
+</head>
+<body>
+<main class="wrap">
+<a class="back" href="../index.html#catalog">← 자료 목록으로</a>
+
+<header class="ph">
+  <h1>HiWET: 세계 좌표 손 끝 추종을 위한 2단 계층 RL (동결 전신 추종기 위 PPO 명령 정책)</h1>
+  <p class="orig">HiWET: Hierarchical World-Frame End-Effector Tracking for Long-Horizon Humanoid Loco-Manipulation</p>
+  <p class="meta">Zhanxiang Cao, Liyun Yan, Yang Zhang et al. (교신 Yue Gao) · Shanghai Jiao Tong University, Shanghai Innovation Institute, Tongji University, Tsinghua University · 프리프린트 2026-02 (arXiv v1, 2026-02-06) · Unitree G1 29 DoF · Isaac Lab (학습), MuJoCo (sim2sim 그림)</p>
+  <div class="chips">
+    <a class="chip loc" href="../reference/hiwet/paper.pdf">로컬 PDF</a>
+    <a class="chip" href="https://arxiv.org/abs/2602.06341" target="_blank" rel="noopener">arXiv 2602.06341</a>
+    <span class="simv s4">유사도 2–4</span>
+    <span class="badge">코드 미공개</span>
+  </div>
+</header>
+
+<div class="callout blue tldr">G1 전신 추종기(골반 vx·vy·ωz·높이 + 기저 좌표 두 손 자세 + 허리 가중 α)를 먼저 PPO 로 학습하고 동결한 뒤, 그 위에서 같은 명령을 내는 PPO 상위가 세계 좌표 손 목표를 쫓는다. 하위 손 오차 12.4 mm(신경 IK 기준 KMP 를 빼면 25.2 mm), 실기 한 팔 원·사각 RMSE 12·15 mm. 물체 접촉·집기는 다루지 않는다.</div>
+
+<div class="callout">이 PDF(arXiv v1, 10 쪽)는 보상 가중치·전체 보상식·부록 절제 실험을 "부록에 있다"고 7 번 말하지만 <b>부록이 들어 있지 않다</b>(p.4–7, 참고문헌으로 p.10 끝). 그래서 보상 가중치, 종료 조건, PPO 하이퍼파라미터, 망 크기(KMP 제외), 무작위화, env 수·반복 수·학습 시간은 모두 "논문에 없음"이다.</div>
+
+<h2 class="ps">우리와 무엇이 같고 다른가</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>이 논문</th><th>우리 (dev10 pelvis_pick)</th></tr></thead>
+  <tbody>
+    <tr><td>하위 제어기</td><td>1단계 전신 추종 RL. 명령 u = [vx, vy, ωz, 높이 h, 기저 좌표 왼·오 손 자세, 허리 가중 α]. 다리 12 는 절대 관절 목표, 상체 17(팔 14 + 허리 3)은 신경 IK(KMP) 기준 + 잔차. 2단계에서 <b>동결</b>(p.3, p.5)</td><td>dev12 하체 RL, 골반 vx·vy·ωz·높이·pitch·roll 추종, 상체 11 외부 PD(하위가 저역 통과 목표와 변화율을 관측), 손 하중 0–5 kg 학습, 스모크만</td></tr>
+    <tr><td>상위 출력</td><td>하위 명령 u 그대로: 기저 속도 3 + 높이 1 + 두 손 자세(기저 좌표) + α(식 16, p.5). 관절 목표는 내지 않음</td><td>상체 11 관절 목표 + 골반 명령</td></tr>
+    <tr><td>과제·물체</td><td>세계 좌표 손 끝 궤적 추종(별·하트·원·나선·사각형, 시작점 ±5 m), 기저 재배치 5 m. 물체·접촉 없음, 상위 실험은 한 팔만(p.7, p.9)</td><td>바닥·받침대 0–0.3 m 박스 37×40.5×29 cm, 0.5–2 kg, 두 손 옆면 조이기</td></tr>
+    <tr><td>지각·증류</td><td>증류 없음. 하위 actor 안 CNN 상태 추정기가 기저 선속도·손 자세를 MSE 로 추정(p.4). 상위는 실기에서 Livox Mid-360 + Fast-LIO2 세계 위치 사용(p.8)</td><td>특권 teacher → D436 깊이 student (DAgger), 깊이 26×64 × 6 프레임 + 고유감각</td></tr>
+    <tr><td>학습 방식</td><td>두 단계 모두 PPO, 둘 다 비대칭 actor-critic(식 9, 식 15)</td><td>rsl_rl PPO teacher → DAgger student</td></tr>
+    <tr><td>하위 명령 범위</td><td>평가 표본 범위: v ±1 m/s, ωz ±3 rad/s, h 0.3–0.78 m, 손 자세는 최대 도달 부피(p.6). 학습 범위는 논문에 없음</td><td>vx ±0.8, vy ±0.4 m/s, ωz ±1.0 rad/s, 높이 서기 0.335–0.77 m / 걷기 0.42–0.77 m, pitch −45°–45°, roll ±10°(서기)</td></tr>
+    <tr><td>주기</td><td>하위 50 Hz(실기, p.8). 상위는 K 스텝마다 명령 갱신(p.2), K 는 논문에 없음. 실기 기저 위치 10 Hz(p.8)</td><td>dev12 하위 고정, 상위 주기 설계 중</td></tr>
+    <tr><td>로봇</td><td>Unitree G1 29 DoF(다리 12, 팔 14, 허리 3)(p.6)</td><td>ROBOTIS K1 35.7 kg, 23 DoF(다리 12, 허리 yaw 1, 팔 2×5), 손가락 없는 고무 공 손</td></tr>
+    <tr><td>실기 결과</td><td>하위 zero-shot 50 Hz 보행 + 팔 동작, 상위 한 팔 원·사각 RMSE 12·15 mm(10 회)(표 2, p.8)</td><td>아직 없음(dev10 v2: teacher 90 %, student Isaac 69 %, MuJoCo 50 %)</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">1. 문제와 과제</h2>
+<ul>
+  <li><b>문제의식</b>: 기존 명령 기반 방법은 손 목표를 몸 기준 좌표로 준다. 다리로 걸으면 기저가 누적해 흘러가고 고주파로 흔들려, 세계 좌표에서 손 정밀도가 떨어진다(p.1–2).</li>
+  <li><b>재정의</b>: 과제를 "세계 좌표 손 끝 추종"으로 놓으면, 목표가 정적 도달 범위 밖일 때 기저를 옮기고 높이를 바꿔 작업 공간을 다시 만드는 일이 정책 안으로 들어온다(p.2).</li>
+  <li><b>계층</b>: "어디로 갈지"(상위, 세계 좌표)와 "어떻게 움직일지"(하위, 동역학 안정)를 나눈다. Semi-MDP 로 정식화, M = ⟨S, A<sub>H</sub>, A<sub>L</sub>, P, R, γ⟩(식 1). 상위 π<sub>H</sub> 는 K 스텝마다, 하위 π<sub>L</sub> 는 매 제어 스텝 실행(p.2).</li>
+  <li><b>평가 과제</b>: 하위 단독 명령 추종(표 1), 상위의 기하 궤적 5 종 추종, 8 방향 5 m 기저 재배치, KMP 대 최적화 IK 비교, 실기(p.6–8).</li>
+  <li><b>다루지 않는 것</b>: 접촉이 많은 조작(쥐기 등)은 미탐구, 상위 실험은 한 팔만(p.9).</li>
+</ul>
+
+<h2 class="ps">2. 시스템 구조</h2>
+<div class="fig">
+  <p><b>2단계(Commander) — 실행 시 흐름</b></p>
+  <div class="flow">
+    <span class="node">과제 명령 c: 세계 좌표 손 목표 L·R + 마스크 m</span>
+    <span class="node">세계 기저 자세 <sup>w</sup>T<sub>b</sub> (실기: LiDAR + Fast-LIO2, 10 Hz)</span>
+    <span class="node">고유감각 s</span>
+    <span class="arr">→</span>
+    <span class="node">명령 정책 π<sub>H</sub> (PPO, 학습)</span>
+    <span class="arr">→</span>
+    <span class="node">u = [vx, vy, ωz, h, <sup>b</sup>T<sub>L</sub>, <sup>b</sup>T<sub>R</sub>, α]</span>
+  </div>
+  <p><b>1단계(Tracker) — 2단계 학습 중 통째로 동결</b></p>
+  <div class="flow">
+    <span class="node">u 의 손 자세 + α</span>
+    <span class="arr">→</span>
+    <span class="node frozen">KMP 신경 IK (사전학습, 동결) → q̂<sub>up</sub></span>
+    <span class="arr">→</span>
+    <span class="node frozen">Actor (입력: s, u, p̂, e, q̂<sub>up</sub>)</span>
+    <span class="arr">→</span>
+    <span class="node frozen">상체 17: q̂<sub>up</sub> + Δq<sub>up</sub> / 다리 12: 절대 q</span>
+    <span class="arr">→</span>
+    <span class="node">PD → G1 (50 Hz)</span>
+  </div>
+  <div class="flow">
+    <span class="node frozen">관측 이력 H = 5 의 (s, u)</span>
+    <span class="arr">→</span>
+    <span class="node frozen">History Encoder (CNN) → e<sub>t</sub></span>
+    <span class="node frozen">State Estimator (CNN) → p̂: 기저 선속도, <sup>b</sup>T<sub>L</sub>, <sup>b</sup>T<sub>R</sub></span>
+    <span class="arr">→</span>
+    <span class="node frozen">Actor 입력</span>
+  </div>
+  <p>점선 = 2단계에서 동결. 1단계 학습 때도 KMP 는 이미 동결(p.4). 출처: 그림 2(p.3), 식 2–9(p.3–4), p.5.</p>
+</div>
+
+<div class="tbl-wrap"><table>
+  <thead><tr><th>부품</th><th>언제 학습</th><th>무엇으로</th><th>이후 상태</th></tr></thead>
+  <tbody>
+    <tr><td>KMP (신경 IK)</td><td>0단계, 오프라인</td><td>PyRoki IK 해 약 1천만 개 지도학습(p.4)</td><td>1·2단계 내내 동결</td></tr>
+    <tr><td>추종기 actor + History Encoder + State Estimator</td><td>1단계</td><td>PPO + 추정기 MSE 보조 손실(p.4)</td><td>2단계에서 동결(p.5)</td></tr>
+    <tr><td>명령 정책 π<sub>H</sub></td><td>2단계</td><td>PPO, 비대칭 critic, 공간 커리큘럼(p.5)</td><td>배포</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">3. 관측과 행동</h2>
+<h3 class="ps">하위 추종 정책 π<sub>L</sub></h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>입력·출력</th><th>내용</th><th>크기</th><th>출처</th></tr></thead>
+  <tbody>
+    <tr><td>고유감각 s<sub>t</sub></td><td>기저 각속도 ω, 기저 좌표 중력 g, 관절 위치 q, 관절 속도 q̇, 직전 행동 a<sub>t−1</sub></td><td>3 + 3 + 29 + 29 + 29 = 93 (G1 29 관절로 계산, 논문엔 합계 없음)</td><td>식 2, p.3</td></tr>
+    <tr><td>명령 u<sub>t</sub></td><td>v<sub>b</sub> = (vx, vy, ωz), 목표 높이 h, 기저 좌표 왼·오 손 자세, 허리 가중 α</td><td>3 + 1 + 손 자세 2 개 + 1. 자세 표현 차원은 논문에 없음</td><td>식 3, p.3</td></tr>
+    <tr><td>α (허리 정규화 가중)</td><td>KMP 가 허리를 얼마나 쓸지. 작으면 허리로 도달 범위 확장, 크면 CoM 안정 우선. 다른 상체 관절 가중은 0.2 고정</td><td>학습 시 균등 [0.1, 10]</td><td>p.3–4</td></tr>
+    <tr><td>History</td><td>(s, u) 이력</td><td>H = 5</td><td>p.4</td></tr>
+    <tr><td>actor 입력</td><td>[s, u, p̂, e, q̂<sub>up</sub>]: 원 관측, 명령, 추정 특권량, 이력 잠재, KMP 기준</td><td>잠재 e 크기 논문에 없음</td><td>식 8, p.4</td></tr>
+    <tr><td>critic 입력</td><td>[s, u, p, h<sub>map</sub>, q̂<sub>up</sub>]: p = 참 기저 선속도 + 참 손 자세, h<sub>map</sub> = 높이맵 지형 고도</td><td>높이맵 크기 논문에 없음</td><td>식 9, p.4</td></tr>
+    <tr><td>행동</td><td>모든 관절 목표 위치. 상체 q<sup>des</sup><sub>up</sub> = q̂<sub>up</sub> + Δq<sub>up</sub>(잔차), 다리 q<sup>des</sup><sub>low</sub> 는 절대값</td><td>상체 17 + 다리 12 = 29. 잔차 범위·행동 스케일 논문에 없음</td><td>식 4–5, p.3</td></tr>
+  </tbody>
+</table></div>
+
+<h3 class="ps">상위 명령 정책 π<sub>H</sub></h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>입력·출력</th><th>내용</th><th>출처</th></tr></thead>
+  <tbody>
+    <tr><td>actor 관측 s<sup>H</sup></td><td>[s<sub>t</sub>, <sup>w</sup>T<sub>b</sub>, c<sub>t</sub>]: 하위와 같은 고유감각 + 세계 좌표 기저 자세(SE(3)) + 과제 명령</td><td>식 13, p.5</td></tr>
+    <tr><td>과제 명령 c<sub>t</sub></td><td>[<sup>w</sup>T*<sub>L</sub>, <sup>w</sup>T*<sub>R</sub>, m<sub>t</sub>]: 세계 좌표 손 목표 자세 2 개 + 활성 손 마스크 m ∈ {[1,0], [0,1], [1,1]}</td><td>식 14, p.5</td></tr>
+    <tr><td>critic 관측</td><td>actor 관측 + 참 기저 선속도 <sup>w</sup>v<sub>b</sub> + 현재 세계 좌표 손 자세 L·R</td><td>식 15, p.5</td></tr>
+    <tr><td>행동</td><td>a<sup>H</sup> = u = [v<sub>b</sub>, h, <sup>b</sup>T<sub>L</sub>, <sup>b</sup>T<sub>R</sub>, α] — 하위 명령 공간 그대로. α 를 넣어 상위가 자세·CoM 안정을 조절</td><td>식 16, p.5</td></tr>
+    <tr><td>행동 범위·스케일</td><td>논문에 없음</td><td>–</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">4. 보상 · 종료 · 커리큘럼</h2>
+<h3 class="ps">하위(1단계) 보상</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항</th><th>식·설명</th><th>가중치</th><th>출처</th></tr></thead>
+  <tbody>
+    <tr><td>기저 선속도·각속도·몸 높이·손 자세 추종</td><td>"표준 추종 항"이라고만 적음, 식 없음</td><td>논문에 없음</td><td>p.4</td></tr>
+    <tr><td>KMP 기준 추종</td><td>r<sub>kmp</sub> = exp(−‖q<sub>up</sub> − q̂<sub>up</sub>‖² / (N<sub>up</sub> σ<sub>kmp</sub>²)). 명령을 다시 뽑은 직후엔 시간 의존 스케일로 약하게(초기 과도 응답을 묶지 않으려고)</td><td>논문에 없음 (σ<sub>kmp</sub> 도 없음)</td><td>식 11, p.5</td></tr>
+    <tr><td>무릎 인지 높이 추종</td><td>e<sub>h</sub> = (h − h<sup>des</sup>)·w̄<sup>flex</sup><sub>knee</sub> (h &gt; h<sup>des</sup> 일 때), (h − h<sup>des</sup>)·w̄<sup>ext</sup><sub>knee</sub> (h &lt; h<sup>des</sup> 일 때). w̄ = 무릎 굽힘·폄 여유 평균. <b>속도 명령 0 일 때만</b> 켬</td><td>논문에 없음</td><td>식 12, p.5</td></tr>
+    <tr><td>정규화</td><td>과도한 관절 속도, 행동 변화율, 토크 변화 벌점</td><td>논문에 없음</td><td>p.5</td></tr>
+  </tbody>
+</table></div>
+
+<h3 class="ps">상위(2단계) 보상</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항</th><th>설명</th><th>가중치</th><th>출처</th></tr></thead>
+  <tbody>
+    <tr><td>작업 공간 최적화</td><td>기저와 활성 손 목표 사이 평면 거리 벌점 + 기저 heading 과 명령 속도 v<sub>b</sub> 가 목표 중심을 향하도록 정렬 보상</td><td>논문에 없음</td><td>p.5</td></tr>
+    <tr><td>정밀 손 추종</td><td>세계 좌표 손 자세 오차 <sup>w</sup>T − <sup>w</sup>T* 최소화</td><td>논문에 없음</td><td>p.5</td></tr>
+    <tr><td>안정·정규화</td><td>행동 변화율, 손 고주파 떨림 벌점. 비활성 팔(m<sub>t</sub> = 0)이 기본 중립 자세에서 벗어나게 명령하면 벌점</td><td>논문에 없음</td><td>p.6</td></tr>
+  </tbody>
+</table></div>
+
+<h3 class="ps">종료</h3>
+<p>논문에 없음(넘어짐 등 종료 조건을 적지 않음).</p>
+
+<h3 class="ps">커리큘럼·명령 분포</h3>
+<ul>
+  <li><b>상위 공간 커리큘럼</b>(식 17, p.5): 처음엔 현재 기저 근처에서 세계 목표를 뽑고, 손 오차 e<sub>ee</sub> = ‖<sup>w</sup>T − <sup>w</sup>T*‖ 가 문턱 ε<sub>th</sub> 아래면 평면 범위를 R<sub>k+1</sub> = R<sub>k</sub> + ΔR·𝟙[e<sub>ee</sub> &lt; ε<sub>th</sub>] 로 넓힌다. 초기 R, ΔR, ε<sub>th</sub> 는 논문에 없음. 최종 평가 범위는 ±5 m(p.7).</li>
+  <li><b>하위 명령 중요도 표집</b>(식 10, p.4): c ∼ β·p<sub>uniform</sub> + (1 − β)·p<sub>prior</sub>. p<sub>prior</sub> = IK 실패(재구성 오차 큼)로 걸러내고 manipulability 로 가중한 손 자세 데이터셋 + 작은 섭동, p<sub>uniform</sub> = 전체 직교 부피 균등. β 값은 논문에 없음.</li>
+  <li><b>α</b>: 학습 내내 균등 [0.1, 10](p.3).</li>
+</ul>
+
+<h2 class="ps">5. 학습 설정 (알고리즘 · 망 · 무작위화)</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>값</th><th>출처</th></tr></thead>
+  <tbody>
+    <tr><td>시뮬레이터</td><td>Isaac Lab, 두 단계 모두</td><td>p.6</td></tr>
+    <tr><td>알고리즘</td><td>PPO(Schulman 2017, Rudin 2022 인용), 두 단계 모두 비대칭 actor-critic</td><td>p.4, p.5</td></tr>
+    <tr><td>추종기 보조 망</td><td>History Encoder = CNN, State Estimator = CNN(기저 선속도 + 손 자세 2 개 예측, 정책과 함께 MSE 학습). 층·폭 논문에 없음</td><td>p.4</td></tr>
+    <tr><td>actor·critic 크기</td><td>논문에 없음</td><td>–</td></tr>
+    <tr><td>KMP 구조</td><td>대칭 encoder-decoder, 잔차 연결, ResNet 바탕, LayerNorm·dropout·GELU. KMP-S = 4 층 1.39M 매개변수, KMP-L = 5 층 7.38M. 정책에 어느 쪽을 썼는지 명시 없음(KMP-L 을 "충분"하다고 결론)</td><td>p.4, p.7, 그림 6</td></tr>
+    <tr><td>KMP 데이터</td><td>PyRoki 제약 IK 로 생성. 직교 자세 오차 최소화 + 관절 한계 + α 가중 허리 정규화(α 균등 [0.1, 10]). 몸통 중심 주위 대칭 직교 부피 2 개 × SO(3) 전 방향. 5 배 과표집 후 IK 오차·manipulability 로 걸러 약 1천만 개</td><td>p.4</td></tr>
+    <tr><td>env 수 · 반복 수 · 학습 시간 · GPU</td><td>논문에 없음</td><td>–</td></tr>
+    <tr><td>PPO 하이퍼파라미터</td><td>논문에 없음</td><td>–</td></tr>
+    <tr><td>도메인 무작위화</td><td>논문에 없음(critic 에 높이맵이 있어 지형이 있었다는 것만 알 수 있음)</td><td>식 9, p.4</td></tr>
+    <tr><td>제어 주기</td><td>하위 50 Hz(실기), 상위 K 스텝마다(K 논문에 없음)</td><td>p.2, p.8</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">6. teacher → student / 증류</h2>
+<p>해당 없음 — teacher→student 증류가 없다. 하위 actor 안의 CNN 상태 추정기가 특권량(기저 선속도·두 손 자세)을 MSE 로 함께 배워 추정하고(p.4), 상위는 실기에서 LiDAR 위치를 그대로 쓴다(p.8).</p>
+
+<h2 class="ps">7. 결과</h2>
+<h3 class="ps">하위 명령 추종 (표 1, p.6)</h3>
+<p>명령 균등 표집: v ∈ [−1, 1] m/s, ωz ∈ [−3, 3] rad/s, h ∈ [0.3, 0.78] m, 손 자세는 최대 도달 부피 안(p.6). 시행 수는 논문에 없음.</p>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>방법</th><th>선속도 오차 (m/s)</th><th>각속도 오차 (rad/s)</th><th>높이 오차 (m)</th><th>손 위치 오차 (mm)</th></tr></thead>
+  <tbody>
+    <tr><td><b>HiWET</b></td><td>0.157 ± 0.003</td><td>0.461 ± 0.006</td><td>0.018 ± 0.012</td><td><b>12.4 ± 2.4</b></td></tr>
+    <tr><td>w/o IS (균등 명령)</td><td>0.165 ± 0.005</td><td>0.472 ± 0.006</td><td>0.018 ± 0.014</td><td>16.1 ± 5.3</td></tr>
+    <tr><td>w/o State Est.</td><td>0.169 ± 0.003</td><td>0.459 ± 0.004</td><td>0.018 ± 0.016</td><td>23.0 ± 7.2</td></tr>
+    <tr><td>w/o KMP</td><td>0.149 ± 0.004</td><td>0.423 ± 0.005</td><td>0.015 ± 0.010</td><td>25.2 ± 12.8</td></tr>
+    <tr><td>HOMIE</td><td>0.194 ± 0.003</td><td>0.451 ± 0.006</td><td>0.022 ± 0.019</td><td>– (관절 명령이라 비교 불가)</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>KMP 를 빼면 손 오차가 두 배(25.2 mm), 분산 5 배(p.6).</li>
+  <li>상태 추정기를 빼면 손 오차 약 +10 mm(23.0 mm)(p.6).</li>
+  <li><b>눈여겨볼 점</b>: w/o KMP 가 기저 추종(선속도 0.149, 각속도 0.423, 높이 0.015)은 오히려 가장 좋다. 강한 팔 기준은 손 정밀도를 사고 기저 추종을 조금 내준다(표 1).</li>
+  <li>HOMIE 대비 선속도 RMSE 약 20 % 감소(0.194 → 0.157)(p.6).</li>
+</ul>
+
+<h3 class="ps">상위 세계 좌표 궤적 추종 (그림 3–4, p.6–7)</h3>
+<ul>
+  <li>궤적 5 종(별·하트·원·나선·사각형)을 로봇 시작점 기준 x·y ±5 m 안 임의 위치에 둠. 먼저 걸어가서 손으로 그려야 함(p.7).</li>
+  <li>성공 = 궤적 전체에서 평균 손 오차 20 mm 미만(p.7).</li>
+  <li>그림 3 은 레이더 차트만 있고 숫자 표가 없다. 하트·별에서 HiWET 은 대부분 구간 5 mm 미만(그림 4).</li>
+  <li>절제: α 고정 1.0 은 큰 도달 동작에서 나빠짐(허리로 CoM 조절 못 함), w/o KMP 는 궤적이 크게 일그러짐(상위가 팔을 나쁜 조건 영역으로 몬다), w/o State Est. 는 진동 증가(p.7).</li>
+</ul>
+
+<h3 class="ps">기저 재배치 (그림 5, p.7)</h3>
+<p>로봇 주위 8 방향 5 m 목표. 도착 시 기저–목표 평면 거리(그림 5 막대 라벨):</p>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>방법</th><th>최종 위치 오차 평균 (m)</th></tr></thead>
+  <tbody>
+    <tr><td><b>HiWET</b></td><td>0.101</td></tr>
+    <tr><td>w/ Fixed α (1.0)</td><td>0.106</td></tr>
+    <tr><td>w/o State Est.</td><td>0.133</td></tr>
+    <tr><td>w/o KMP</td><td>0.110</td></tr>
+  </tbody>
+</table></div>
+<p>절제 변형은 경로가 "갈지자"로 흔들림 — 상위가 기저 목표와 팔 목표 사이 충돌을 못 푼다(p.7).</p>
+
+<h3 class="ps">KMP 대 최적화 IK (그림 6, p.7–8)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>모형</th><th>매개변수</th><th>위치 오차 중앙값</th><th>방향 오차 중앙값</th><th>지연</th></tr></thead>
+  <tbody>
+    <tr><td>KMP-S (4 층)</td><td>1.39M</td><td>약 37 mm (그림 읽기)</td><td>약 11° (그림 읽기)</td><td>가장 빠름</td></tr>
+    <tr><td>KMP-L (5 층, IS 데이터)</td><td>7.38M</td><td>15 mm 미만</td><td>5° 미만</td><td>단일 표본에서 PyRoki 대비 5 배 이상 빠름, 배치 4000 에서도 ms 수준(그림상 약 2 ms vs PyRoki 약 13 ms)</td></tr>
+    <tr><td>KMP-L w/o IS (균등 데이터)</td><td>7.38M</td><td>KMP-L 보다 나쁨</td><td>KMP-L 보다 나쁨</td><td>KMP-L 과 같음</td></tr>
+    <tr><td>PyRoki (최대 5 반복)</td><td>–</td><td>거의 0</td><td>거의 0</td><td>가장 느림</td></tr>
+  </tbody>
+</table></div>
+<p>시험 데이터 = AMASS 를 G1 에 리타겟한 손 자세(사람 손 사용 분포)(p.8).</p>
+
+<h2 class="ps">8. 실기 · sim2real</h2>
+<ul>
+  <li><b>하위</b>: 시뮬만으로 학습, G1 탑재 컴퓨터에서 zero-shot, 50 Hz(p.8). 오른팔을 높이 뻗은 채 걷기, 걸으면서 오른손으로 원 그리기(그림 7). 그림 1(a)–(c): 가장 낮고 먼 도달, 가장 높은 도달, 반쯤 쪼그린 자세에서 가장 바깥 도달(시뮬·실기).</li>
+  <li><b>상위</b>: 머리 Livox Mid-360 LiDAR + IMU 로 Fast-LIO2 위치 추정, 기저 위치는 정기구학으로 10 Hz 갱신(p.8). 원·사각 궤적 10 회 반복, 손에 LED 를 달아 장노출 사진(그림 1e–f).</li>
+  <li>sim2real 기법(무작위화·지연·잡음)은 논문에 없음.</li>
+</ul>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>방법 (실기, 10 회)</th><th>원 RMSE (m)</th><th>사각 RMSE (m)</th></tr></thead>
+  <tbody>
+    <tr><td><b>HiWET</b></td><td>0.012 ± 0.005</td><td>0.015 ± 0.007</td></tr>
+    <tr><td>w/ Fixed α</td><td>0.018 ± 0.008</td><td>0.019 ± 0.009</td></tr>
+    <tr><td>w/o State Est.</td><td>0.024 ± 0.011</td><td>0.028 ± 0.011</td></tr>
+    <tr><td>w/o KMP</td><td>0.032 ± 0.013</td><td>0.039 ± 0.015</td></tr>
+  </tbody>
+</table></div>
+<p>실패 사례·넘어짐 횟수는 보고하지 않았다. 초록은 "하위 정책의 sim2real 검증"만 주장하지만 본문엔 상위 실기 표 2 가 있다(p.1, p.8).</p>
+
+<h2 class="ps">9. 코드에서 확인한 것</h2>
+<p>해당 없음 — 로컬 code/ 없음(코드 미공개).</p>
+
+<h2 class="ps">10. 한계</h2>
+<ul>
+  <li>저자가 적은 한계(p.9): (1) 세계 좌표 정밀도가 LiDAR 위치 추정에 묶임, (2) 평가 궤적이 작음, (3) 두 손 세계 추종은 목표 가능성에 달렸고 상위 실험은 한 팔만, (4) 쥐기 같은 접촉 조작 미탐구.</li>
+  <li>부록이 PDF 에 없어 보상 가중치·하이퍼파라미터·무작위화를 확인할 수 없다(p.4–7 의 "부록 참조").</li>
+  <li>대표 숫자 12.4 mm 는 <b>하위 추종기</b>가 기저 좌표 명령을 따른 오차(표 1)다. 기여 목록(p.2)은 이것을 "세계 좌표 추종 오차"라고 부르지만, 상위의 시뮬 세계 좌표 결과는 레이더 차트(그림 3)뿐이다.</li>
+  <li>손에 하중·물체가 없다. 짐을 든 채 CoM 이 바뀌는 상황은 평가 밖.</li>
+  <li>상위 주기 K, 행동 범위, 시행 수가 없어 재현이 어렵다.</li>
+</ul>
+
+<h2 class="ps">11. 우리에게 가져올 것</h2>
+<div class="take"><ol>
+  <li><b>상위 학습 내내 dev12 를 완전 동결하고, 상위 행동 = 하위 명령 공간 그대로</b>. HiWET 은 이 꼴로 PPO 상위가 학습됨을 보였다(p.5). 우리 행동: 골반 vx·vy·ωz·높이·pitch·roll + 상체 11. 범위는 dev12 학습 범위 안으로 자르되, 자른 만큼 원 행동 L2 벌점을 같이 둘 것(dev10 v2 의 std 폭주 교훈).</li>
+  <li><b>비대칭 critic 에 참값 넣기</b>(식 15): HiWET critic = 참 기저 속도 + 세계 손 자세. 우리 teacher critic 에는 참 골반 속도, 박스 자세·속도, 손–박스 접촉력, dev12 추종 오차를 넣고, actor 에는 student 가 깊이·고유감각으로 재구성할 수 있는 것만 둔다.</li>
+  <li><b>팔 기준 + 잔차 행동</b>(식 5, 표 1: KMP 없으면 손 오차 12.4 → 25.2 mm, 분산 5 배): teacher 상체 행동을 "박스 옆면 두 손바닥 IK 기준 + 작은 잔차"로. 기준은 박스 자세(특권)로 손바닥 목표를 옆면 중심 ± 조임 여유로 두고 K1 5 자유도 팔 IK(위치 + 손바닥 법선만)로 푼다. 한 손 밀기 국소 최적과 on/off 포화 출력을 줄이는 쪽. 단, student 는 기준을 못 계산하므로 <b>최종 관절 목표</b>를 증류 대상으로 할 것.</li>
+  <li><b>기준 추종 보상은 exp 꼴 + 명령 바뀐 직후 약하게</b>(식 11): r = exp(−‖q<sub>up</sub> − q̂<sub>up</sub>‖² / (N σ²)), 단계(접근→조이기→들기)가 바뀐 직후 몇 스텝은 스케일을 낮춰 과도 응답을 묶지 않는다. σ 는 우리가 정할 값(논문에 없음).</li>
+  <li><b>공간 커리큘럼</b>(식 17): 성공 기준을 넘으면 범위를 한 칸씩 넓힌다. 우리 축: 받침대 0.3 → 0.2 → 0.1 → 0 m, 발끝 앞 거리 0.04–0.30 m, 옆 ±0.15 m, yaw ±40°. 쉬운 0.3 m 받침대·정면·yaw 0 에서 시작. 문턱은 고정 평가셋 성공률로(값은 우리가 정함).</li>
+  <li><b>가능 영역 중요도 표집</b>(식 10): 박스 배치를 β·균등 + (1 − β)·"K1 이 실제로 닿는 배치"로 섞는다. dev10 v2 에서 본 바닥 박스 도달 한계처럼 불가능한 배치는 미리 IK 로 걸러, teacher 가 불가능 과제에 탐색을 낭비하지 않게 한다. 균등 몫은 남겨 경계 사례를 본다.</li>
+  <li><b>평가 표 꼴</b>(표 1): 상위 학습 전후로 dev12 의 선속도·각속도·높이 오차를 같은 표로 잰다. 참고 수준: G1 HiWET 0.157 m/s, 0.461 rad/s, 0.018 m. "팔 기준을 세게 걸면 기저 추종이 조금 나빠지는" 맞바꿈(w/o KMP 쪽이 기저 오차가 더 작음)도 같이 본다.</li>
+  <li><b>나중 접근 단계용 보상</b>(p.5): 골반–박스 평면 거리 벌점 + 골반 heading 과 명령 속도가 박스 중심을 향하는 정렬 보상. 집기 과제에는 쓰지 않고, 다가가 집기·운반 단계에서.</li>
+</ol></div>
+<h3 class="ps">가져오지 말 것</h3>
+<ul>
+  <li><b>손 SE(3) 자세 명령 인터페이스로 바꾸기</b>: dev12 는 상체 관절 목표를 관측하도록 학습돼 인터페이스를 바꾸면 하위를 다시 학습해야 한다. 또 K1 팔은 5 자유도라 임의 6 자유도 손 자세를 못 만든다.</li>
+  <li><b>세계 좌표 목표 + LiDAR 위치</b>: K1 에 LiDAR 가 없고, 집기는 몸 기준 박스 위치(깊이)로 충분하다. 세계 좌표는 긴 운반 경로에서나 의미가 있다.</li>
+  <li><b>허리 가중 α</b>: G1 허리 3 자유도로 CoM 을 옮기는 장치다. K1 허리는 yaw 1 개뿐이고 앞뒤 CoM 은 dev12 골반 pitch 명령이 맡는다.</li>
+  <li><b>12.4 mm 정밀도를 목표치로 삼기</b>: 물체·하중·접촉 없는 자유 공간 추종 수치다. 우리 성공은 조이기 접촉과 들기 유지로 재야 한다.</li>
+  <li><b>보상 가중치</b>: 논문에 없어 가져올 값이 없다. 무릎 인지 높이 항(식 12)은 하위 보상이라 동결 dev12 에는 해당 없음.</li>
+  <li><b>비활성 팔 중립 벌점</b>: 우리는 두 손을 항상 쓴다.</li>
+</ul>
+
+<p class="src">출처 표기: (p.N) = PDF 쪽, (표 N), (그림 N), (식 N). 논문에 없는 값은 "논문에 없음". "그림 읽기"는 그래프에서 눈으로 읽은 근삿값.</p>
+</main>
+</body>
+</html>

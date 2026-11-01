@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MaskedMimic — 논문 상세</title>
+<link rel="stylesheet" href="paper.css">
+</head>
+<body>
+<main class="wrap">
+<a class="back" href="../index.html#catalog">← 자료 목록으로</a>
+
+<header class="ph">
+  <h1>MaskedMimic: 가려진 동작 채우기로 통합한 물리 캐릭터 제어</h1>
+  <p class="orig">MaskedMimic: Unified Physics-Based Character Control Through Masked Motion Inpainting</p>
+  <p class="meta">Chen Tessler, Yunrong Guo, Ofir Nabati, Gal Chechik, Xue Bin Peng · NVIDIA · Bar-Ilan University · Simon Fraser University · SIGGRAPH Asia 2024 (ACM TOG 43(6), Article 209) · SMPL 휴머노이드 24 몸체·69 자유도(실기 없음) · Isaac Gym</p>
+  <div class="chips">
+    <a class="chip loc" href="../reference/maskedmimic/paper.pdf">로컬 PDF</a>
+    <a class="chip loc" href="../reference/maskedmimic/code/">로컬 코드</a>
+    <a class="chip" href="https://arxiv.org/abs/2409.14393" target="_blank" rel="noopener">arXiv 2409.14393</a>
+    <a class="chip gh" href="https://github.com/NVlabs/ProtoMotions" target="_blank" rel="noopener">NVlabs/ProtoMotions</a>
+    <a class="chip" href="https://research.nvidia.com/labs/par/maskedmimic/" target="_blank" rel="noopener">프로젝트 페이지</a>
+    <span class="simv s3">유사도 3</span>
+    <span class="badge">Apache-2.0</span>
+    <span class="badge lfs" title="Git LFS 포인터만 있음: git lfs pull 필요">LFS</span>
+  </div>
+</header>
+
+<div class="callout blue tldr">미래 전신 자세를 다 보는 특권 추적기(teacher)를 RL 로 만들고, 일부 관절·시점·텍스트·물체만 보는 C-VAE student 에 DAgger 로 증류한다. student 의 prior 는 가려진 목표만, 인코더는 전체 목표를 보고 prior 평균에 더하는 잔차를 낸다. 학습 없이 FSM 으로 목표만 바꿔 경로·조향·도달·앉기를 푼다: 시험 동작 추적 99.2 %, VR 3 점 98.1 %(PULSE 93.4 %), 앉기 96.9 % — 잔차 prior 를 빼면 21.1 %, 시간 구조 가리기를 빼면 0 %.</div>
+
+<h2 class="ps">우리와 무엇이 같고 다른가</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>이 논문</th><th>우리 (dev10 pelvis_pick)</th></tr></thead>
+  <tbody>
+    <tr><td>하위 제어기</td><td>따로 없음. teacher·student 모두 전신 69 PD 목표를 직접 낸다. "목표 조건 단일 제어기"이고, 과제는 손으로 짠 FSM 이 목표를 바꿔 푼다</td><td>dev12 하체 RL, 골반 vx·vy·ωz·높이·pitch·roll 추종, 상체 11 외부 PD</td></tr>
+    <tr><td>상위 출력</td><td>학습된 상위 없음. FSM 이 부분 목표(골반 위치·회전 1 s 뒤, 오른손 목표점, 머리 경로, 텍스트, 물체 상자)를 넣는다</td><td>상체 11 + 골반 명령</td></tr>
+    <tr><td>과제·물체</td><td>동작 추적, VR 3 점, 경로 따라가기, 조향, 손 도달, 의자·소파 앉기. 물체 들기·조작은 없음(향후 과제)</td><td>바닥·받침대 0–0.3 m 박스 37×40×29 cm, 0.5–2 kg, 두 손 옆면 조이기</td></tr>
+    <tr><td>지각·증류</td><td>특권 teacher(전체 미래 자세 + 높이맵) → 부분 관측 student(가려진 목표 + 과거 자세 + 높이맵), DAgger. 시각 입력 없음</td><td>특권 teacher → D436 깊이 student (DAgger)</td></tr>
+    <tr><td>정보 비대칭</td><td>teacher 가 student 보다 많이 본다 — 우리 teacher·student 와 같은 꼴. 이를 잔차 posterior + KL 로 다룬다</td><td>teacher 는 접촉·상자 정확 자세를 보고 student 는 깊이만. v2 student 격차의 원인으로 지목</td></tr>
+    <tr><td>로봇·손</td><td>SMPL 평균 체형, 손가락 없음</td><td>K1 35.7 kg, 23 자유도, 공 손, 팔 kp 22.3 / kd 1.42</td></tr>
+    <tr><td>제어 주기</td><td>정책 30 Hz, 시뮬 120 Hz(p.9)</td><td>dev12 50 Hz, 상위 미정</td></tr>
+    <tr><td>실기</td><td>없음</td><td>K1 실기 목표</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">1. 문제와 과제</h2>
+<ul>
+  <li><strong>문제</strong>: 기존 물리 캐릭터 제어는 과제마다 따로 학습하거나(보행·앉기·VR), 잠재 기술 공간 위에 과제별 상위 정책을 다시 학습해야 한다. 보상 설계도 매번 필요하다(p.2).</li>
+  <li><strong>아이디어</strong>: 제어를 "부분 동작 설명에서 전신 동작 채우기(inpainting)"로 본다. 동작 데이터에서 무작위로 가린 목표(관절·키프레임·텍스트·물체)를 만들어, 가려지지 않은 원래 동작을 재현하도록 학습한다(p.2).</li>
+  <li><strong>goal-engineering</strong>: 학습 뒤에는 프롬프트 공학처럼 FSM 이 목표를 바꿔 넣어 새 과제를 학습 없이 푼다(p.2, p.12).</li>
+</ul>
+<h3 class="ps">평가 과제 (p.10, p.12–14)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>과제</th><th>student 에 넣는 목표</th><th>실패 기준 / 지표</th></tr></thead>
+  <tbody>
+    <tr><td>전신 추적</td><td>미래 자세 전체</td><td>어느 프레임이든 관절 평균 오차 &gt; 0.5 m 면 실패, MPJPE mm</td></tr>
+    <tr><td>VR 추적</td><td>머리 위치·회전 + 두 손 위치</td><td>같음 + 관측 관절 오차 MPOJPE</td></tr>
+    <tr><td>경로 따라가기</td><td>머리 3D 경로: 다음 5 스텝 목표 + 0.8 s 뒤 목표. 경로에서 0.4 m 넘게 벗어나면 0.8 s 목표만</td><td>2 m 넘게 벗어나면 실패, 에피소드 30 s, 위치 오차 cm</td></tr>
+    <tr><td>조향</td><td>골반 회전·위치를 1 s 뒤로: (θ̂<sup>root</sup>, p̂<sup>root</sup> = [p<sub>x</sub> + v<sub>x</sub>, p<sub>y</sub> + v<sub>y</sub>, 0.9])</td><td>방향 45° 넘게 어긋나면 실패, 목표 방향 속도 오차 cm/s, 명령 변경 후 2 s 유예</td></tr>
+    <tr><td>도달</td><td>오른손 목표 위치 + 남은 시간(최대 1/6 s 로 자름)</td><td>목표 시점에 손이 0.5 m 넘게 벗어나면 실패, 유지 구간 평균 거리 cm</td></tr>
+    <tr><td>앉기</td><td>물체에서 2 m 밖: 1 m/s 이동 방향 + 텍스트 "the person walks normally" → 2 m 안: 물체 상자만</td><td>골반이 유효 앉을 자리 20 cm 안에 들면 성공. 시험용 미학습 물체, 2–10 m 밖에서 시작</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">2. 시스템 구조</h2>
+<p>두 단계다. 1) 전체 미래 자세를 보는 추적기 π<sup>FC</sup> 를 RL 로 학습, 2) π<sup>FC</sup> 를 교사로 부분 관측 C-VAE π<sup>PC</sup>(MaskedMimic)를 행동 복제(DAgger)로 증류. 추론 때는 인코더를 버리고 prior 에서만 잠재를 뽑는다(p.4–5 그림 3, p.7–8 그림 5).</p>
+<div class="fig">
+  <p><strong>1 단계: 특권 추적기 (RL)</strong></p>
+  <div class="flow">
+    <span class="node">AMASS(+거울) · SAMP 물체<br>평지·요철·물체 놀이터</span><span class="arr">→</span>
+    <span class="node">π<sup>FC</sup>: 현재 상태 + 미래 K 자세 + 높이맵<br>트랜스포머, A2C, σ = e<sup>−2.9</sup> 고정</span><span class="arr">→</span>
+    <span class="node">69 PD 목표, 30 Hz</span>
+  </div>
+  <p style="margin-top:12px"><strong>2 단계: 증류 (행동 복제, DAgger)</strong></p>
+  <div class="flow">
+    <span class="node">동작 데이터 → 무작위 가리기 M</span><span class="arr">→</span>
+    <span class="node">prior ρ(z|s, g<sup>partial</sup>)<br>트랜스포머, 가린 목표만</span><span class="arr">+</span>
+    <span class="node">인코더 E(z|s, g<sup>full</sup>)<br>MLP, prior 평균에 더할 잔차</span><span class="arr">→</span>
+    <span class="node">디코더 D(a|s, z, 높이맵)<br>MLP</span><span class="arr">→</span>
+    <span class="node">student 가 굴림</span><span class="arr">→</span>
+    <span class="node frozen">π<sup>FC</sup> (고정)<br>같은 상태에 행동 라벨</span>
+  </div>
+  <p style="margin-top:12px"><strong>추론</strong></p>
+  <div class="flow">
+    <span class="node">FSM: 상황 따라 목표 교체</span><span class="arr">→</span>
+    <span class="node frozen">prior ρ (고정)<br>평균 잠재</span><span class="arr">→</span>
+    <span class="node frozen">디코더 D (고정)</span><span class="arr">→</span>
+    <span class="node">69 PD 목표 → 시뮬 120 Hz</span>
+  </div>
+</div>
+
+<h2 class="ps">3. 관측과 행동</h2>
+<h3 class="ps">teacher π<sup>FC</sup> (p.5, 식 3–4)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>신호</th><th>내용</th></tr></thead>
+  <tbody>
+    <tr><td>현재 상태 s<sub>t</sub></td><td>몸 자세·속도를 뿌리 기준으로 정규화: (θ ⊖ θ<sup>root</sup>, (p − p<sup>root</sup>) ⊖ θ<sup>root</sup>, v ⊖ θ<sup>root</sup>). 부록: 뿌리 높이·회전, 관절 회전·속도, 손·발 위치 → 358 차원(p.18 §A)</td></tr>
+    <tr><td>미래 목표</td><td>다음 K 개 참조 자세. 관절마다 (θ̂ ⊖ θ<sup>j</sup>, θ̂ ⊖ θ<sup>root</sup>, (p̂ − p<sup>j</sup>) ⊖ θ<sup>root</sup>, (p̂ − p<sup>root</sup>) ⊖ θ<sup>root</sup>) + 그 자세까지 남은 시간 τ</td></tr>
+    <tr><td>높이맵</td><td>16 × 16 격자, 10 cm 간격, 몸 방향으로 회전(p.18 §B). 지형 높이로 자세를 정규화</td></tr>
+    <tr><td>행동</td><td>69 차원 PD 목표, 구 관절은 3D 지수 사상. 잔차 힘·잔차 제어 없음. 가우시안 σ = exp(−2.9) ≈ 0.055 고정(p.5)</td></tr>
+  </tbody>
+</table></div>
+<h3 class="ps">student π<sup>PC</sup> 입력 (p.9 §6.4, p.18 §B)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>모달</th><th>표현</th></tr></thead>
+  <tbody>
+    <tr><td>임의 관절·임의 시점 제약</td><td>조건 가능 관절 6 개(골반, 머리, 두 손, 두 발목, p.9). 제약 하나 = 12 차원: 현재 몸 좌표 기준 6 + 해당 관절 기준 6. 위치는 3 → 6 영 채움, 회전은 6D. 안 보이는 관절은 0 + 마스크 + 목표까지 시간 τ</td></tr>
+    <tr><td>미래 자세 개수</td><td>K = 11: 가까운 10 프레임 + 무작위 먼 목표 1 개(p.20 §B.2)</td></tr>
+    <tr><td>물체</td><td>경계 상자 꼭짓점 8 × 3 + 방향 6D + 종류 1(몸 좌표 기준)</td></tr>
+    <tr><td>텍스트</td><td>XCLIP 문장 임베딩 512 차원(HumanML3D 라벨)</td></tr>
+    <tr><td>과거 자세</td><td>지난 40 스텝 중 8 스텝마다 1 개 → 5 토큰, 각 토큰에 "얼마 전" 시간 덧붙임. 에피소드 시작에서 없으면 가림</td></tr>
+    <tr><td>현재 자세·높이맵</td><td>항상 제공</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">4. 보상 · 종료 · 커리큘럼</h2>
+<h3 class="ps">teacher 추적 보상 (식 5, 부록 식 10–11)</h3>
+<p>r = w<sub>gp</sub>r<sup>gp</sup> + w<sub>gr</sub>r<sup>gr</sup> + w<sub>rh</sub>r<sup>rh</sup> + w<sub>jv</sub>r<sup>jv</sup> + w<sub>jav</sub>r<sup>jav</sup> + w<sub>eg</sub>r<sup>eg</sup>. 각 항의 식은 논문에 없고 가중 w 와 계수 c 만 있다. 코드는 exp(−c · 평균 제곱 오차) 꼴이다(<a href="../reference/maskedmimic/code/protomotions/envs/rewards/tracking.py"><code>tracking.py</code></a>).</p>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항</th><th>뜻</th><th>가중 w (논문)</th><th>계수 c (논문)</th><th>로컬 코드 추적기 <code>mimic/mlp.py</code></th></tr></thead>
+  <tbody>
+    <tr><td>gt (gp)</td><td>전역 관절 위치</td><td>0.5</td><td>100</td><td>0.5 / 25</td></tr>
+    <tr><td>gr</td><td>전역 관절 회전</td><td>0.3</td><td>2</td><td>0.3 / 5</td></tr>
+    <tr><td>rh</td><td>뿌리 높이</td><td>0.2</td><td>100</td><td>0.2 / 100</td></tr>
+    <tr><td>jv</td><td>관절 속도</td><td>0.1</td><td>0.5</td><td>0.1 / 0.5</td></tr>
+    <tr><td>jav</td><td>관절 각속도</td><td>0.1</td><td>0.1</td><td>0.2 / 0.1</td></tr>
+    <tr><td>eg</td><td>에너지 벌점(떨림 억제)</td><td>0.0005</td><td>—</td><td>—</td></tr>
+  </tbody>
+</table></div>
+<h3 class="ps">종료 · 표본 추출 · 학습장</h3>
+<ul>
+  <li><strong>조기 종료</strong>: 평지에서 어느 관절이든 0.25 m 넘게 벗어나면, 요철 지형에서는 0.5 m(원 동작을 지형에 맞게 바꿀 여유)(p.6 §5.5).</li>
+  <li><strong>우선 표본</strong>: 동작 m<sub>i</sub> 를 실패 확률에 비례해 뽑고 최소 가중 3 × 10<sup>−3</sup>. 계단 위 공중제비처럼 원래 불가능한 경우를 빼려고 평지 실패만 센다(p.6–7).</li>
+  <li><strong>학습장</strong>: 평지 · 요철(계단·자갈·완만/거친 경사) · 물체 놀이터(의자·탁자·소파) 세 구역. 물체 동작일 때만 놀이터에서 시작(p.6 그림 4).</li>
+  <li><strong>데이터</strong>: AMASS(PHC 필터, 좌우 거울 증강, 텍스트도 좌↔우 바꿈) + HumanML3D 텍스트 + SAMP 물체(같은 범주의 다른 의자 메시로 무작위 교체)(p.9).</li>
+</ul>
+<h3 class="ps">student 가리기 일정 (p.8, p.20 §B.2)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>값</th></tr></thead>
+  <tbody>
+    <tr><td>가까운 10 프레임 마스크</td><td>98 % 는 직전 패턴 유지, 2 % 는 관절 부분집합·제약 종류(위치/회전/둘 다) 새로 뽑음</td></tr>
+    <tr><td>시간 공백</td><td>1 % 확률로 1–9 스텝 완전히 가림(최소 1 개 미래 자세는 보임). 먼 목표·텍스트·물체가 있으면 공백 × 4</td></tr>
+    <tr><td>관절 수</td><td>90 % 는 6 개 중 1–6 개, 10 % 는 1–3 개(코드 조각)</td></tr>
+    <tr><td>물체·텍스트·먼 목표</td><td>물체는 에피소드당 20 % 가림, 텍스트 80 % 가림, 먼 목표 자세 20 % 제공</td></tr>
+    <tr><td>KL 계수</td><td>0.0001 에서 0.01 로 선형 증가(본문 p.8), epoch 3,000 부터 6,000 epoch 동안(부록 p.19)</td></tr>
+    <tr><td>잠재 잡음</td><td>재매개화 잡음 ε 을 에피소드 내내 고정(p.8, 식 9)</td></tr>
+  </tbody>
+</table></div>
+<p>매 스텝 마스크를 새로 뽑으면 여러 프레임에 걸쳐 다른 관절이 보여 모호성이 줄어든다 — 그래서 학습이 쉬워지는 대신 일반화가 나빠진다. 일부 관절을 여러 프레임 연속으로 보이고 나머지는 계속 숨기도록 시간 구조를 준다(p.8).</p>
+
+<h2 class="ps">5. 학습 설정 (알고리즘 · 망 · 무작위화)</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>teacher π<sup>FC</sup></th><th>student π<sup>PC</sup></th></tr></thead>
+  <tbody>
+    <tr><td>알고리즘</td><td>A2C(PPO 아님, "더 안정적"), γ 0.99, GAE τ 0.95, 롤아웃 32 스텝, 에폭 전체 기울기 누적</td><td>행동 복제(DAgger), 미니배치 8,192, 1 에폭, 기울기 누적 없음</td></tr>
+    <tr><td>학습률</td><td>actor 2 × 10<sup>−5</sup>, critic 1 × 10<sup>−4</sup>, Adam(0.9, 0.999)</td><td>논문에 없음(코드 2 × 10<sup>−5</sup>)</td></tr>
+    <tr><td>미니배치</td><td>GPU 당 16,384</td><td>8,192</td></tr>
+    <tr><td>망</td><td>트랜스포머 actor + 완전연결 critic(p.6)</td><td>prior: 모달별 인코더 [256, 256] → 트랜스포머(토큰 512, FF 1024, 4 층, 4 헤드, 드롭아웃 없음) → 첫 출력 → 헤드 512 → 256 → 128 → 64(μ, log σ). 인코더 MLP [1024, 1024, 1024] → 1024 → 512 → μ, σ. 디코더 MLP [1024, 1024, 1024] → 69</td></tr>
+    <tr><td>잠재</td><td>—</td><td>64 차원</td></tr>
+    <tr><td>규모</td><td colspan="2">16,384 env, A100 4 대, 약 14 일. π<sup>FC</sup> 약 300 억 스텝, π<sup>PC</sup> 약 100 억 스텝. 정책 30 Hz, 시뮬 120 Hz(p.9, p.19)</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>관측 정규화: 이동 평균·표준편차(p.19). 활성화 ReLU.</li>
+  <li>도메인 무작위화·관측 잡음·지연: 논문에 없음. 지형·물체 메시 다양화가 유일한 환경 변화다.</li>
+</ul>
+
+<h2 class="ps">6. teacher → student / 증류</h2>
+<p>이 논문은 "특권 teacher 가 student 보다 많이 보는" 증류를 정면으로 다룬다. 핵심은 student 를 결정적 모방기가 아니라 <strong>잔차 posterior 를 가진 C-VAE</strong> 로 만든 것이다(p.7 §6.2).</p>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>구성</th><th>입력</th><th>역할</th></tr></thead>
+  <tbody>
+    <tr><td>prior ρ</td><td>현재 상태 + 가린 목표 g<sup>partial</sup> + 과거 자세</td><td>N(μ<sub>ρ</sub>, σ<sub>ρ</sub>) (식 6). 배포 때 쓰는 유일한 잠재 원천</td></tr>
+    <tr><td>인코더 E</td><td>현재 상태 + 전체 목표 g<sup>full</sup> + 높이맵 + 마스크</td><td>N(μ<sub>ρ</sub> + μ<sub>E</sub>, σ<sub>E</sub>) (식 7): prior 평균에 "정확한 동작 쪽으로의 보정"만 더함. 학습에만 사용</td></tr>
+    <tr><td>디코더 D</td><td>현재 상태 + z + 높이맵</td><td>결정적 행동</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li><strong>목적함수</strong>(식 8): E[log D(a<sup>FC</sup>|s, z) − α KL(E(·|s, g<sup>full</sup>) ‖ ρ(·|s, g<sup>partial</sup>))], z ∼ E. KL 이 "특권 정보로 얻은 잠재가 부분 정보로 추정 가능한 범위에서 멀어지지 않게" 묶는다.</li>
+  <li><strong>DAgger</strong>: π<sup>PC</sup> 가 환경을 굴리고 π<sup>FC</sup> 가 매 스텝 행동을 붙인다(식 2, p.7). 수집 때 teacher·student 모두 결정적 행동을 쓴다.</li>
+  <li><strong>증류 중 조기 종료</strong>: π<sup>FC</sup> 도 조기 종료로 학습돼 그 밖 상태에선 라벨이 엉터리일 수 있으므로, student 가 teacher 가 본 적 없는 상태로 들어가지 않게 끊는다(p.7).</li>
+  <li><strong>평가</strong>: prior 의 평균 잠재로 조건(무작위 표본은 더 다양하지만 덜 그럴듯한 해를 내 성능이 조금 떨어짐)(p.10).</li>
+</ul>
+<h3 class="ps">구조 제거 실험 — 앉기 과제 (표 6, p.14)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>변형</th><th>성공</th><th>오차 cm</th><th>해석(저자)</th></tr></thead>
+  <tbody>
+    <tr class="ours"><td>MaskedMimic</td><td>96.9 %</td><td>10.5</td><td></td></tr>
+    <tr><td>과거 자세 없음</td><td>94.9 %</td><td>12.7</td><td>정지 상태에서 시작할 때 제자리에 갇히기 쉬움</td></tr>
+    <tr><td>VAE 없음(결정적)</td><td>93.2 %</td><td>12.2</td><td>해의 다양성을 담는 쪽이 더 견고</td></tr>
+    <tr><td>잔차 아닌 prior</td><td>21.1 %</td><td>57.4</td><td>prior 가 잠재 공간을 제대로 통제 못 함</td></tr>
+    <tr><td>시간 구조 가리기 없음</td><td>0 %</td><td>274.4</td><td>같은 관절이 반복해 보이는 경우·고수준 명령만 있는 경우를 못 겪음</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">7. 결과</h2>
+<h3 class="ps">전신 추적, 평지 (표 1, p.11)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>모델</th><th>훈련 성공</th><th>훈련 MPJPE</th><th>시험 성공</th><th>시험 MPJPE</th></tr></thead>
+  <tbody>
+    <tr><td>FC(teacher)</td><td>99.96 %</td><td>30.4</td><td>99.9 %</td><td>31.3</td></tr>
+    <tr><td>PHC+</td><td>100 %</td><td>26.6</td><td>99.2 %</td><td>36.1</td></tr>
+    <tr class="ours"><td>MaskedMimic(student)</td><td>99.4 %</td><td>32.9</td><td>99.2 %</td><td>35.1</td></tr>
+    <tr><td>PULSE</td><td>99.8 %</td><td>39.2</td><td>97.1 %</td><td>54.1</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>FC 는 PHC+ 대비 시험 실패율을 62.5 % 줄였다. 전문가 혼합(PHC 의 원시 정책 + 합성기) 대신 단일 망이 DAgger 증류에도 다루기 쉽다고 주장(p.11).</li>
+  <li>PULSE 는 훈련셋에 더 과적합, MaskedMimic 은 시험셋 일반화가 낫다. 저자 해석: 일반화가 좋은 teacher + 다과제·다환경 학습(p.11). PULSE 수치는 PULSE 논문 보고값을 그대로 옮긴 것이고 학습량(300 억 + 100 억 스텝)도 같지 않다.</li>
+</ul>
+<h3 class="ps">VR 추적 (표 2) · 관절 희소성 (표 3), 평지</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>모델</th><th>훈련 성공</th><th>훈련 MPJPE</th><th>시험 성공</th><th>시험 MPJPE</th></tr></thead>
+  <tbody>
+    <tr class="ours"><td>MaskedMimic(VR 전용 학습 없음)</td><td>98.6 %</td><td>50</td><td>98.1 %</td><td>58.1</td></tr>
+    <tr><td>PULSE</td><td>99.5 %</td><td>57.8</td><td>93.4 %</td><td>88.6</td></tr>
+    <tr><td>ASE</td><td>79.8 %</td><td>103</td><td>37.6 %</td><td>120.5</td></tr>
+    <tr><td>CALM</td><td>16.6 %</td><td>130.7</td><td>10.1 %</td><td>122.4</td></tr>
+  </tbody>
+</table></div>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>조건 관절</th><th>훈련 성공</th><th>훈련 MPOJPE</th><th>시험 성공</th><th>시험 MPOJPE</th></tr></thead>
+  <tbody>
+    <tr><td>전신</td><td>99.4 %</td><td>32.9</td><td>99.1 %</td><td>35.1</td></tr>
+    <tr class="ours"><td>골반만</td><td>98.4 %</td><td>31.4</td><td>98.4 %</td><td>33.4</td></tr>
+    <tr><td>VR(머리 + 두 손)</td><td>98.6 %</td><td>39.5</td><td>98.1 %</td><td>45.8</td></tr>
+    <tr><td>머리</td><td>97.7 %</td><td>42.6</td><td>97.9 %</td><td>45.6</td></tr>
+    <tr><td>두 손</td><td>95.2 %</td><td>60.2</td><td>93.4 %</td><td>69.6</td></tr>
+    <tr><td>두 발</td><td>92.7 %</td><td>88</td><td>91.8 %</td><td>94.3</td></tr>
+  </tbody>
+</table></div>
+<p>난이도: 발 &gt; 손 &gt; 머리 &gt; 골반. 골반만 조건으로 줘도 머리·손보다 쉽다(p.12).</p>
+<h3 class="ps">요철 지형 (표 4) · 과제 (표 5, 과제당 5,000 에피소드)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>모델</th><th>분할</th><th>전신 성공</th><th>MPJPE</th><th>VR 성공</th><th>VR MPOJPE</th></tr></thead>
+  <tbody>
+    <tr><td>FC</td><td>훈련 / 시험</td><td>98 % / 98.2 %</td><td>51.5 / 51</td><td>—</td><td>—</td></tr>
+    <tr><td>MaskedMimic</td><td>훈련 / 시험</td><td>94.7 % / 95.4 %</td><td>61.3 / 62.9</td><td>94.4 % / 93.6 %</td><td>62.7 / 69.4</td></tr>
+  </tbody>
+</table></div>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>과제</th><th>평지 성공 · 오차</th><th>요철 성공 · 오차</th></tr></thead>
+  <tbody>
+    <tr><td>경로 따라가기</td><td>96.3 % · 11.2 cm</td><td>96.3 % · 12.5 cm</td></tr>
+    <tr><td>조향</td><td>97.8 % · 8.4 cm/s</td><td>93.8 % · 8.4 cm/s</td></tr>
+    <tr><td>도달(오른손)</td><td>88.7 % · 20.3 cm</td><td>87.3 % · 21.7 cm</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>목표를 촘촘히 강제할수록 사용자 통제는 늘지만 성공률은 떨어진다. 경로·도달 모두 "조금 먼 미래 목표"를 줄 때 넘어짐 회복이 쉬워졌다(p.13).</li>
+  <li>텍스트: 짧은 단일 동작('kick', 경례)은 되지만 "네 걸음 걷고 손 들기" 같은 긴 추론은 못 한다(짧은 이력 탓으로 추정, p.14–15).</li>
+  <li>앉기: 미학습 의자·소파, 요철 위 소파에서도 성공(그림 8).</li>
+</ul>
+
+<h2 class="ps">8. 실기 · sim2real</h2>
+<ul>
+  <li>실기 없음. 애니메이션 캐릭터 연구이며 무작위화·지연·잡음 모형이 없다.</li>
+  <li>로컬 ProtoMotions 3 에는 <a href="../reference/maskedmimic/code/deployment/"><code>deployment/</code></a>(G1 추적기 ONNX 내보내기·MuJoCo 시험)가 있지만 MaskedMimic 이 아니라 추적기용이다.</li>
+</ul>
+
+<h2 class="ps">9. 코드에서 확인한 것</h2>
+<p>로컬 사본은 논문 당시 코드가 아니라 <strong>ProtoMotions 3</strong>(마지막 커밋 2026-10-16, Isaac Lab·Newton·MuJoCo·Isaac Gym 지원, G1·SOMA 로봇)이다. 값이 논문과 다른 곳이 많다. 실행·설치하지 않고 읽기만 했다.</p>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>논문</th><th>로컬 코드(ProtoMotions 3)</th><th>파일</th></tr></thead>
+  <tbody>
+    <tr><td>가중치</td><td>—</td><td><code>last.ckpt</code>·<code>resolved_configs.pt</code> 모두 Git LFS 포인터(130–135 바이트). <code>resolved_configs.yaml</code>·<code>experiment_config.py</code>·MODEL_CARD 는 평문. 가중치 라이선스는 Apache 가 아니라 NVIDIA Open Model License</td><td><a href="../reference/maskedmimic/code/data/pretrained_models/masked_mimic/smpl/MODEL_CARD.md"><code>masked_mimic/smpl/MODEL_CARD.md</code></a></td></tr>
+    <tr><td>공개 SMPL MaskedMimic</td><td>텍스트·물체·지형 포함</td><td>평지 전용, 텍스트·물체 없음, Isaac Lab 학습, 2,048 env, 120 Hz · decimation 4(30 Hz)</td><td><a href="../reference/maskedmimic/code/data/pretrained_models/masked_mimic/smpl/resolved_configs.yaml"><code>resolved_configs.yaml</code></a></td></tr>
+    <tr><td>미래 목표 수</td><td>K = 11(10 + 먼 목표 1)</td><td><code>NUM_FUTURE_STEPS = 5</code>, 각 목표 시점은 남은 동작 시간 × 베타(2, 5) 표본으로 띄엄띄엄 잡음(가까운 연속 10 프레임 아님)</td><td><a href="../reference/maskedmimic/code/examples/experiments/masked_mimic/transformer.py"><code>masked_mimic/transformer.py</code></a></td></tr>
+    <tr><td>과거 자세</td><td>40 스텝 중 5 개</td><td>저장 5, 조건 5</td><td>같은 파일</td></tr>
+    <tr><td>마스크 반복 확률</td><td>98 %</td><td>0.8, 전 관절 강제 0.1, 소수 관절 0.1, 목표 자세 보임 0.8, 완전 숨김 0.1</td><td><a href="../reference/maskedmimic/code/protomotions/envs/control/masked_mimic_control.py"><code>masked_mimic_control.py</code></a></td></tr>
+    <tr><td>조건 관절</td><td>골반·머리·두 손·두 발목</td><td>같음(<code>trackable_bodies_subset</code>)</td><td><a href="../reference/maskedmimic/code/protomotions/robot_configs/smpl.py"><code>robot_configs/smpl.py</code></a></td></tr>
+    <tr><td>KL 일정</td><td>0.0001 → 0.01, epoch 3,000–9,000</td><td>기본값 3,000–6,000, 예제·공개 모델은 500–2,000</td><td><a href="../reference/maskedmimic/code/protomotions/agents/supervised/masked_mimic_config.py"><code>masked_mimic_config.py</code></a></td></tr>
+    <tr><td>증류 손실</td><td>log D 최대화</td><td>MSE(privileged_action, expert_actions) + KL × 계수, 미니에폭 6, 기울기 자르기 50, 학습률 2 × 10<sup>−5</sup></td><td><a href="../reference/maskedmimic/code/protomotions/agents/supervised/agent.py"><code>supervised/agent.py</code></a></td></tr>
+    <tr><td>롤아웃 행동</td><td>"π<sup>PC</sup> 가 굴림"</td><td>학습 중에는 <strong>인코더 경로 행동(privileged_action = 디코더(μ<sub>ρ</sub> + μ<sub>E</sub> + 잡음))</strong>으로 굴리고, 평가 때만 prior 행동. 즉 배포용 prior 경로 자체의 표류는 수집되지 않음</td><td><code>supervised/agent.py</code> <code>collect_rollout_step</code>, <a href="../reference/maskedmimic/code/protomotions/agents/supervised/masked_mimic_model.py"><code>masked_mimic_model.py</code></a></td></tr>
+    <tr><td>디코더 입력</td><td>상태 + z + 높이맵</td><td>상태 + 직전 행동 + z(MLP 3 × 1024)</td><td><code>transformer.py</code></td></tr>
+    <tr><td>student 인코더</td><td>MLP [1024 × 3]</td><td>MLP 5 × 1024 → 512 → 헤드 [256, 128] → 64</td><td><code>transformer.py</code></td></tr>
+    <tr><td>추적기(teacher) 예제</td><td>트랜스포머, A2C, 위치 계수 100</td><td>MLP actor 6 × 1024 · critic 4 × 1024, PPO, log σ −2.9, 위치 계수 25, 각속도 가중 0.2, 종료 0.5 m</td><td><a href="../reference/maskedmimic/code/examples/experiments/mimic/mlp.py"><code>mimic/mlp.py</code></a></td></tr>
+    <tr><td>조기 종료(student 환경)</td><td>평지 0.25 m</td><td>0.5 m("0.25 m 설정은 실제로 적용된 적 없음" 주석). 행동 평활 벌점 −0.02 추가</td><td><code>transformer.py</code></td></tr>
+    <tr><td>다른 알고리즘</td><td>—</td><td>AMP, ASE, ADD, GPC prior(PEFT) 구현 있음. CALM·PULSE 구현은 이 사본에 없음</td><td><a href="../reference/maskedmimic/code/examples/experiments/"><code>examples/experiments/</code></a></td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">10. 한계</h2>
+<ul>
+  <li>떨림 같은 비자연스러운 동작이 남는다(판별기 보상으로 미세조정 제안). 공중제비·브레이크댄스 같은 어려운 동작은 재현 못 함(p.15).</li>
+  <li>요철 지형에서 발 디딤을 계획하지 않고 평지 걸음을 흉내 낸다(뿌리–바닥 거리 정규화의 한계로 추정).</li>
+  <li>goal-engineering(FSM)을 사람이 짜야 하고, 군중처럼 복잡해지면 손이 많이 간다.</li>
+  <li>물체를 옮기거나 도구를 쓰는 동적 상호작용은 없다(향후 과제). 앉기는 SAMP 데이터에 "걸어가 앉기"가 있어서 물체 상자만 주면 됐다.</li>
+  <li>14 일 × A100 4 대, 400 억 스텝 규모. 실기·무작위화 없음.</li>
+  <li>로컬 코드는 후속 판이라 논문 수치 재현용이 아니다(9 절).</li>
+</ul>
+
+<h2 class="ps">11. 우리에게 가져올 것</h2>
+<div class="take"><ol>
+  <li><strong>증류 중 조기 종료로 "teacher 가 모르는 상태"를 끊기</strong> — student 가 teacher 학습 분포 밖으로 가면 라벨이 엉터리가 된다(p.7). 우리 DAgger 도 상자를 놓쳤거나 밀어냈거나(예: 처음 자리에서 수평 10 cm 이상), 넘어졌거나, teacher 학습 때 종료 조건에 걸릴 상태면 그 env 를 끝내고 다시 시작한다. teacher 의 종료 조건을 그대로 student 환경에 둔다.</li>
+  <li><strong>깊이 가림은 시간 구조로</strong> — 마스크를 매 스텝 새로 뽑으면 앉기 성공 0 %(표 6). 우리 깊이 student 증강(손이 상자를 가림, 상자가 시야 밖, 프레임 누락)도 프레임마다 독립이 아니라 여러 스텝 이어지게(예: 시작 확률 1–2 %, 지속 1–9 스텝 — 논문 값) 넣는다. 접근 중 쪼그리며 상자가 화면 아래로 빠지는 구간이 실제로 연속이기 때문.</li>
+  <li><strong>잔차 posterior 로 정보 비대칭 묶기(선택)</strong> — student 를 "깊이 prior + 특권 인코더 잔차 + 공유 디코더"로 두고 KL 0.0001 → 0.01 을 올리면, 특권 정보(접촉·정확한 상자 자세)로만 가능한 행동 성분이 깊이로 추정 가능한 범위 밖으로 커지지 못한다. 비잔차 prior 는 21.1 %, VAE 를 아예 빼면 93.2 % — 결정적 DAgger 도 크게 나쁘지 않으니 먼저 순수 DAgger, 접촉 격차가 남을 때 이 구조를 시험한다(추론).</li>
+  <li><strong>롤아웃은 배포 경로로</strong> — 로컬 코드는 학습 중 특권 인코더 경로 행동으로 env 를 굴린다. 우리 DAgger 는 반드시 깊이 student 자신의 행동(필요하면 초기에 teacher 와 섞고 비율을 줄여)으로 굴려야 student 고유의 표류가 데이터에 들어간다. v2 의 Isaac 69 % → MuJoCo 50 % 하락도 배포 분포 차이 계열이다.</li>
+  <li><strong>수집 때 teacher·student 모두 결정적 행동</strong>(p.7) — 잡음 없는 라벨과 덜 흔들리는 상태 분포. teacher σ 도 exp(−2.9) ≈ 0.055 고정이었다(v2 σ 폭주와 대비되는 또 하나의 고정 σ 사례).</li>
+  <li><strong>짧은 이력은 정지 출발에 필요</strong> — 과거 자세를 빼면 정지 상태에서 갇히기 쉬웠다(96.9 → 94.9 %). 박스 집기도 정지 서기에서 시작하므로 student 에 고유감각 이력(예: 40 스텝 중 8 스텝 간격 5 개)과 깊이 6 프레임을 유지한다.</li>
+  <li><strong>실패 비례 표본 + 최소 가중 3 × 10<sup>−3</sup></strong> — 원래 불가능한 조건은 실패 집계에서 뺀 점까지 가져온다. 우리: 손이 물리적으로 안 닿는 조합(예: 바닥 + 가장 먼 0.30 m + yaw 40° 가 dev12 도달 한계 밖이면)은 재표본 가중에서 빼고 따로 기록 — 바닥 도달 한계를 보상으로 풀려다 학습을 망치지 않게.</li>
+  <li><strong>골반 조건 인터페이스의 근거</strong> — 골반만 조건으로 줘도 전신 복원 98.4 %(머리 97.9 %, 손 93.4 %). 사람 동작 추적 결과지만 "골반 명령 + 손은 따로"라는 우리 분할이 하위에 무리한 요구가 아니라는 방증이다.</li>
+  <li><strong>목표는 조금 먼 미래로</strong> — 경로·도달 모두 바로 다음 프레임 목표보다 0.8 s·수백 ms 앞 목표가 넘어짐 회복과 성공률에 좋았다. 상위가 dev12 에 주는 골반 높이·pitch 를 계단식으로 바꾸지 말고 목표까지 시간을 두고 보간한다.</li>
+  <li><strong>가져오지 말 것</strong> — 마스크 동작 기반 모델 전체(AMASS 급 K1 동작 데이터, A100 4 대 × 14 일, 400 억 스텝), 텍스트·XCLIP·물체 상자 토큰·트랜스포머 prior(상자 하나·과제 하나엔 과함), FSM 만으로 과제 풀기(물체 조작은 이 논문도 못 함), 무작위화 없는 학습 환경. 코드는 Apache-2.0 이라 복사 가능하나 가중치는 NVIDIA Open Model License·LFS 포인터뿐이다.</li>
+</ol></div>
+
+<p class="src">출처 표기: (p.N), (표 N), (그림 N), (식 N), 코드는 파일 경로. 논문에 없는 값은 "논문에 없음".</p>
+</main>
+</body>
+</html>

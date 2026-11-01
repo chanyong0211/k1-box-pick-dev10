@@ -1,0 +1,457 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PRISM — 논문 상세</title>
+<link rel="stylesheet" href="paper.css">
+</head>
+<body>
+<main class="wrap">
+<a class="back" href="../index.html#catalog">← 자료 목록으로</a>
+
+<header class="ph">
+  <h1>PRISM: 반사실 영상 생성으로 늘린 사람 시연으로 배우는 휴머노이드 집기·운반</h1>
+  <p class="orig">PRISM — Counterfactual Video Generation Enables Scalable Humanoid Loco-Manipulation</p>
+  <p class="meta">Zihan Wang, Zhen Wu, Pieter Abbeel, Rocky Duan, Jitendra Malik, Carmelo Sferrazza, C. Karen Liu, Guanya Shi, Angjoo Kanazawa · Amazon FAR, UC Berkeley, CMU, Stanford · CoRL 2026 (PDF 1쪽 머리말; arXiv 2026-09-29 공개) · Unitree G1 29 DoF, 고무 손 · Isaac Sim 5.1 (HoloSoma) 학습, MuJoCo sim2sim 평가</p>
+  <div class="chips">
+    <a class="chip loc" href="../reference/prism/paper.pdf">로컬 PDF</a>
+    <a class="chip loc" href="../reference/prism/code/">로컬 코드</a>
+    <a class="chip" href="https://arxiv.org/abs/2609.38172" target="_blank" rel="noopener">arXiv 2609.38172</a>
+    <a class="chip gh" href="https://github.com/amazon-far/PRISM" target="_blank" rel="noopener">amazon-far/PRISM</a>
+    <a class="chip" href="https://prism-real2sim2real.github.io/" target="_blank" rel="noopener">프로젝트 페이지</a>
+    <span class="simv s5">유사도 5</span>
+    <span class="badge">Apache-2.0</span>
+    <span class="badge wt" title="_ckpts/ 에 실제 torch 체크포인트 3 개 (2.4–2.7 MB)">가중치</span>
+  </div>
+</header>
+
+<div class="callout blue tldr">실영상 4 개를 영상 생성(V2V)으로 256 개로 불리고, 접촉점을 고정해 재구성·리타게팅한 137 궤적으로 G1 특권 co-tracking teacher 를 PPO 로 학습한 뒤, DAgger + PPO 를 λ 로 섞어 깊이 58×87 student 로 증류했다. 실기에서 상자 15/15, 학습 범주 합계 55/60, 처음 보는 범주 32/40 을 집어 3 m 이상 옮겼다.</div>
+
+<h2 class="ps">우리와 무엇이 같고 다른가</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>이 논문</th><th>우리 (dev10 pelvis_pick)</th></tr></thead>
+  <tbody>
+    <tr><td>하위 제어기</td><td><b>없음</b>. 단일 전신 정책이 29 관절 PD 목표를 직접 낸다. teacher 자체가 BeyondMimic 식 동작 추종기(참조 동작 + 물체 궤적을 같이 추종) <span class="src">(p.5–6, p.8)</span></td><td class="ours">dev12 하체 RL 고정, 골반 vx ±0.8 m/s · vy ±0.4 m/s · ωz ±1.0 rad/s · 높이 0.335–0.77 m · pitch ±45° · roll ±10° 추종, 상체 11 은 외부 목표를 하위가 관측</td></tr>
+    <tr><td>상위 출력</td><td>29 관절 위치 목표 (다리 12 + 허리 3 + 팔 2×7), 50 Hz <span class="src">(표 4, 코드)</span></td><td class="ours">상체 11 관절 목표 + 골반 명령</td></tr>
+    <tr><td>과제·물체</td><td>바닥의 상자·통·원통·공을 다가가 두 손으로 집고, 조이스틱 명령대로 운반한 뒤 버튼으로 내려놓기. 물체 명목 질량 0.5–1.5 kg, 학습 0.165–4.5 kg <span class="src">(표 7)</span>. 크기 다양, 큰 상자는 손바닥 사이에 끼움 <span class="src">(그림 3)</span></td><td class="ours">바닥·받침대 0/0.1/0.2/0.3 m 위 상자 37×40.5×29 cm, 0.5–2 kg, 발끝 앞 0.04–0.30 m, 옆 ±0.15 m, yaw ±40°, 두 손바닥 옆면 조이기 후 서서 유지</td></tr>
+    <tr><td>지각·증류</td><td>특권 teacher → 머리 D435i 스테레오를 외부 PC 의 Fast-FoundationStereo 로 깊이화, 106×60 → 58×87 한 장(이력 없음) + 고유감각, DAgger + PPO λ 혼합 <span class="src">(p.7, 표 6)</span></td><td class="ours">특권 teacher → 머리 D436 깊이 자르기 26×64, 6 프레임 + 고유감각, DAgger</td></tr>
+    <tr><td>로봇·손</td><td>G1 29 DoF, 고무 손(<code>combined_*_wrist_rubberhand.STL</code>), 팔 kp 14.25 / kd 0.91, 팔 토크 한계 25 N·m <span class="src">(코드 체크포인트 설정)</span></td><td class="ours">K1 35.7 kg, 23 DoF, 손가락 없는 공 손, 팔 kp 22.3 / kd 1.42, 허리 76.45 / 4.87</td></tr>
+    <tr><td>시뮬레이터</td><td>Isaac Sim 5.1 (PhysX, 200 Hz, decimation 4), 평가는 MuJoCo sim2sim <span class="src">(p.7, 코드)</span></td><td class="ours">Isaac Lab + Newton, sim2sim MuJoCo</td></tr>
+    <tr><td>student 명령 입력</td><td>들기 전에는 0, 들고 나서 전진 dx 또는 회전 dyaw 중 하나 + 내려놓기 버튼 1 비트 <span class="src">(p.7, 코드)</span></td><td class="ours">아직 없음 (나중에 접근·운반 단계에서 필요)</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">1. 문제와 과제</h2>
+<ul>
+  <li><b>병목</b>: 전신·물체가 다 보이는 사람–물체 상호작용 영상은 인터넷에 드물다 <span class="src">(p.2–3)</span>.</li>
+  <li><b>해법</b>: 실영상 몇 개를 영상 생성 모델로 "다른 물체였다면" 영상(counterfactual)으로 늘린다. 물체가 바뀌면 사람 동작도 따라 바뀐다(더 숙이기, 손 간격 조정) <span class="src">(p.4)</span>.</li>
+  <li><b>핵심 아이디어</b>: <b>접촉점</b>을 재구성·리타게팅·보상 세 단계가 공유하는 제약으로 쓴다 <span class="src">(p.2)</span>.</li>
+  <li><b>최종 산출물</b>: 한 개의 깊이 기반 정책. 입력은 깊이 + 고유감각 + 조이스틱, 참조 동작·모캡 없이 집기–운반–내려놓기 <span class="src">(p.7)</span>.</li>
+</ul>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>정의</th><th>내용</th></tr></thead>
+  <tbody>
+    <tr><td>시뮬 성공</td><td>pick–carry–drop 을 끝내고 물체를 목표 위치에 놓음 (MuJoCo, 명령은 참조에서 유도, 깊이는 렌더) <span class="src">(p.7, 부록 C p.13)</span></td></tr>
+    <tr><td>실기 성공</td><td>다가가 잡고, 떨어뜨리거나 넘어지지 않고 3 m 이상 운반 (내려놓기 위치는 안 봄) <span class="src">(p.8, 부록 B p.12)</span></td></tr>
+    <tr><td>실기 시행</td><td>물체마다 5 회, 자세·거리 바꿔 배치 <span class="src">(p.8)</span></td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">2. 시스템 구조</h2>
+<div class="fig">
+  <p><b>① 데이터 (오프라인)</b></p>
+  <div class="flow">
+    <span class="node">실영상 4 개 (사람이 상자 운반)</span><span class="arr">→</span>
+    <span class="node">SeedDance 2.0 V2V, 범주 4 × 16 샘플 → 256 영상</span><span class="arr">→</span>
+    <span class="node">CRISP + SAM 2 + SAM3D 재구성, 접촉 구간에 물체를 손바닥에 고정</span><span class="arr">→</span>
+    <span class="node">접촉 고정 리타게팅 (OmniRetarget + 앵커 항) → 137 궤적</span>
+  </div>
+  <p><b>② teacher (PPO 학습)</b></p>
+  <div class="flow">
+    <span class="node">참조 동작 58 + 참조 자세 6 + 물체·목표 자세·크기 21 + 고유감각 93 = 178</span><span class="arr">→</span>
+    <span class="node">teacher MLP [512, 256, 128] → 29</span><span class="arr">→</span>
+    <span class="node">PD (200 Hz 물리, 50 Hz 정책)</span><span class="arr">→</span>
+    <span class="node">성공 롤아웃 129 개 + 접촉 sidecar (손목 접촉점·구간)</span>
+  </div>
+  <p><b>③ student (DAgger + PPO) → 실기</b></p>
+  <div class="flow">
+    <span class="node">깊이 58×87 → 작은 CNN → 32</span><span class="arr">+</span>
+    <span class="node">고유감각 90 + 명령 3 + 버튼 1</span><span class="arr">→</span>
+    <span class="node">student MLP [512, 256, 128] → 29</span><span class="arr">→</span>
+    <span class="node">G1 PD</span>
+    <span class="node frozen">teacher (고정, 행동 라벨만)</span>
+    <span class="node">특권 critic 377</span>
+  </div>
+</div>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>부품</th><th>학습/고정</th><th>주기·규모</th></tr></thead>
+  <tbody>
+    <tr><td>V2V 생성 (SeedDance 2.0 웹)</td><td>외부 모델, 학습 없음</td><td>클립당 평균 191.76 s <span class="src">(표 10, p.16)</span></td></tr>
+    <tr><td>재구성 (CRISP 백엔드 + SAM 2 마스크 + SAM3D 형상)</td><td>최적화</td><td>클립당 414.5 s, L40S 1 장 <span class="src">(표 10)</span></td></tr>
+    <tr><td>리타게팅 (식 1)</td><td>제약 IK</td><td>클립당 71.6 s <span class="src">(표 10)</span></td></tr>
+    <tr><td>co-tracking teacher</td><td>PPO 로 학습, 40K 반복</td><td>정책 50 Hz, 물리 200 Hz (코드 <code>sim.fps 200</code>, <code>control_decimation 4</code>)</td></tr>
+    <tr><td>teacher 롤아웃</td><td>teacher 고정</td><td>137 중 129 성공 → student 참조 <span class="src">(부록 C p.13)</span></td></tr>
+    <tr><td>student</td><td>DAgger + PPO, 28K 반복 (상자 전용 23K actor 로 시작)</td><td>정책 50 Hz, 카메라 30 Hz <span class="src">(부록 D p.13)</span></td></tr>
+    <tr><td>실기 깊이</td><td>Fast-FoundationStereo (외부 PC, 이더넷)</td><td>D435i 스테레오 30 Hz <span class="src">(p.8)</span></td></tr>
+  </tbody>
+</table></div>
+
+<h3 class="ps">2-1. 데이터 파이프라인 세부</h3>
+<ul>
+  <li><b>V2V 프롬프트</b> <span class="src">(그림 6, p.12)</span>: "실제 연속 촬영. 원 영상의 배경·조명·카메라 시점 유지. 상자를 &lt;CLS&gt; 로 바꾸고, 두 손으로 집어 운반." &lt;CLS&gt; = box, bin, barrel, ball. 개체의 형상·크기·자세는 지정하지 않음.</li>
+  <li><b>물체 고정 (Stage 1)</b> <span class="src">(p.5)</span>: 접촉 구간 [t1, t2] 동안 <code>T_o(t) = T_palm(t) · T_palm(t1)⁻¹ · T_o(t1)</code>. 사람 동작이 물체 궤적을 끌고, 물체 접촉이 사람 관절 추정을 바로잡는다. 접촉은 사람 동작 단서로 자동 검출 (수작업 표시 없음).</li>
+  <li><b>접촉 앵커</b> <span class="src">(p.5, 부록 G.1 p.16)</span>: SMPL-X 왼·오른 손바닥 중심을 잇는 선분과 물체 메시의 교점 = 물체 좌표계 앵커. 두 손 운반 전제.</li>
+  <li><b>리타게팅 (식 1)</b> <span class="src">(p.5)</span>: <code>dq* = argmin E_base(q, dq) + w_c ‖x_eef(q) + J_eef(q)·dq − c‖²</code>, dq 는 제약 집합 C(q) 안. E_base = OmniRetarget 상호작용 메시 정합. 매 프레임 q ← q + dq*, 다음 프레임 시작값으로 사용. w_c 값은 논문에 없음.</li>
+  <li><b>수율</b> <span class="src">(부록 C p.13, 7절 p.9)</span>: 256 → 137 (실패는 주로 심한 충돌, 일부 물체는 G1 이 몸에 안 닿게 들기엔 너무 큼) → teacher 성공 롤아웃 129. 공개 데이터: 129 = 상자 35, bin 32, barrel 34, ball 28 (<a href="../reference/prism/code/docs/data.md"><code>docs/data.md</code></a>).</li>
+  <li><b>초기 물체 배치</b> <span class="src">(그림 4, p.9)</span>: 생성 클립 137 개에서 로봇 기준 전방 약 0–2 m, 옆 약 −0.6–0.4 m, 초기 yaw 30° 구간별 13–35 개. 원 영상 4 개는 모두 똑바로 선 물체.</li>
+</ul>
+
+<h2 class="ps">3. 관측과 행동</h2>
+<h3 class="ps">3-1. 관측 (표 4, p.14)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>입력</th><th>차원</th><th>T-A</th><th>T-C</th><th>S-A</th><th>S-C</th></tr></thead>
+  <tbody>
+    <tr><td>동작 명령 m_t (참조 관절 위치·속도)</td><td>58</td><td>✓</td><td>✓</td><td>–</td><td>✓</td></tr>
+    <tr><td>참조 루트 위치</td><td>3</td><td>–</td><td>✓</td><td>–</td><td>✓</td></tr>
+    <tr><td>참조 루트 자세 (6D)</td><td>6</td><td>✓</td><td>✓</td><td>–</td><td>✓</td></tr>
+    <tr><td>추종 몸체 위치 (14 개)</td><td>42</td><td>–</td><td>✓</td><td>–</td><td>✓</td></tr>
+    <tr><td>추종 몸체 자세 (14 개 × 6D)</td><td>84</td><td>–</td><td>✓</td><td>–</td><td>✓</td></tr>
+    <tr><td>성긴 루트 명령 c_t = [Δx, Δy, Δyaw]</td><td>3</td><td>–</td><td>–</td><td>✓</td><td>–</td></tr>
+    <tr><td>내려놓기 버튼 b_drop</td><td>1</td><td>–</td><td>–</td><td>✓</td><td>–</td></tr>
+    <tr><td>베이스 선속도</td><td>3</td><td>– (코드는 ✓)</td><td>✓</td><td>–</td><td>✓</td></tr>
+    <tr><td>베이스 각속도</td><td>3</td><td>✓</td><td>✓</td><td>✓</td><td>✓</td></tr>
+    <tr><td>관절 위치 / 속도 / 이전 행동</td><td>29 / 29 / 29</td><td>✓</td><td>✓</td><td>✓</td><td>✓</td></tr>
+    <tr><td>물체 자세 (위치 3 + 6D 자세)</td><td>9</td><td>✓</td><td>✓</td><td>–</td><td>✓</td></tr>
+    <tr><td>목표 물체 자세 (참조상 현재 시점 물체 자세)</td><td>9</td><td>✓</td><td>✓</td><td>–</td><td>✓</td></tr>
+    <tr><td>물체 크기 (3D 상자)</td><td>3</td><td>✓</td><td>✓</td><td>–</td><td>✓</td></tr>
+    <tr><td>물체 선속도 / 각속도</td><td>3 / 3</td><td>–</td><td>✓ / –</td><td>–</td><td>✓</td></tr>
+    <tr><td>깊이 → CNN 잠재</td><td>58×87 → 32</td><td>–</td><td>–</td><td>✓</td><td>–</td></tr>
+    <tr><td><b>합계 (논문)</b></td><td></td><td>175</td><td>310</td><td>94 + 32 = 126</td><td>313</td></tr>
+    <tr><td><b>합계 (릴리스 체크포인트)</b></td><td></td><td>178</td><td>310</td><td>94 + 5046 픽셀</td><td>377</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>체크포인트 첫 층 모양: teacher actor (512, 178), teacher critic (512, 310), student actor MLP (512, 126), student critic (512, 377) — <a href="../reference/prism/code/_ckpts/teacher_40000.pt"><code>_ckpts/*.pt</code></a> 를 실행 없이 파싱. teacher 의 +3 은 <code>base_lin_vel</code> (실험 이름 <code>…-teacher-linvel</code>, <a href="../reference/prism/code/tests/unit/test_teacher_linvel_observation.py"><code>test_teacher_linvel_observation.py</code></a>). student critic 의 +64 는 고유감각 묶음 <code>critic_proprio_history</code> (선속 3 + 각속 3 + 관절 58) 중복.</li>
+  <li>student actor 관측 묶음은 <code>actor_obs_root_contact_aware</code> 3, <code>actor_obs_drop_button</code> 1, <code>actor_obs_proprio_with_actions_no_linvel</code> 90 (<a href="../reference/prism/code/tests/unit/test_release_checkpoints.py"><code>test_release_checkpoints.py</code></a>). <b>세 묶음 모두 관측 잡음 끔</b> (<code>enable_noise = false</code>, 체크포인트 설정). teacher actor 는 잡음 켬: 각속 0.2, 관절 위치 0.01, 관절 속도 0.5, 참조 자세 0.05.</li>
+  <li>이력 쌓기 없음: 모든 묶음 <code>history_length = 1</code> <span class="src">(표 6, 코드)</span>.</li>
+</ul>
+
+<h3 class="ps">3-2. student 명령의 실제 의미 (코드)</h3>
+<p>논문은 "[Δx, Δy, Δyaw] 상대 루트 명령"이라고만 쓴다 <span class="src">(p.7)</span>. 공개 student 는 <code>precomputed_turn_then_forward</code> 모드다 (<a href="../reference/prism/code/scripts/_student.py"><code>scripts/_student.py</code></a>, <a href="../reference/prism/code/scripts/export_heading_path_commands.py"><code>export_heading_path_commands.py</code></a>, <a href="../reference/prism/code/scripts/build_decoupled_root_command_bank.py"><code>build_decoupled_root_command_bank.py</code></a>).</p>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>구간</th><th>명령 [dx, dy, dyaw]</th><th>규칙</th></tr></thead>
+  <tbody>
+    <tr><td>들기 전</td><td>[0, 0, 0]</td><td>들림 래치 전엔 0. 다가가기·잡기는 깊이만 보고 스스로 함</td></tr>
+    <tr><td>들림 래치</td><td>–</td><td>물체 z − 골반 z ≥ 최소 + max(0.10 m, 0.35 × 변동폭) 가 5 스텝 연속. 한 번 켜지면 안 꺼짐</td></tr>
+    <tr><td>전진 구간</td><td>[min(0.15 m, 남은 거리), 0, 0]</td><td>참조 경로를 5 스텝 평활 → RDP 단순화 (ε 0.06 m, 최소 다리 0.10 m)</td></tr>
+    <tr><td>회전 구간</td><td>[0, 0, 회전각]</td><td>꺾임 ≥ 25° 일 때만, 창 길이 = round(|각|/π × 30), 8–30 스텝. 회전 사이 전진 최소 5 스텝</td></tr>
+    <tr><td>내려놓기</td><td>[0, 0, 0], 버튼 1</td><td>버튼 켜지면 명령 세 성분 모두 0 (<code>zero_root_command_when_drop_active</code>)</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>dy 는 항상 0, dx 와 dyaw 는 동시에 0 이 아닐 수 없다 (<code>dx_and_dyaw_never_overlap</code>).</li>
+  <li>내려놓기 버튼: 물체 높이 궤적의 최고점 기준 α 0.91, 평활 5 스텝 (<code>peak_height</code> 모드)으로 운반 구간을 정하고 그 끝부터 1 (<a href="../reference/prism/code/tests/unit/test_peak_height_button_window.py"><code>test_peak_height_button_window.py</code></a> 기준 추정).</li>
+</ul>
+
+<h3 class="ps">3-3. 행동과 PD</h3>
+<ul>
+  <li>행동 29 차원, 관절 위치 목표. <code>action_scale 0.25</code> + <code>action_scales_by_effort_limit_over_p_gain = true</code> → 관절별 크기 0.25 × τ_max / kp 로 보임 (플래그 이름으로 추정). 예: 어깨·팔꿈치 0.25 × 25 / 14.25 ≈ 0.44 rad.</li>
+  <li>행동 자르기 사실상 없음: <code>action_clip_value 100</code>. 토크는 자름 (<code>clip_torques true</code>).</li>
+  <li>최종 행동 표준편차 (체크포인트 <code>std</code> 원시값): teacher 0.29–0.59, student 0.26–0.58, 상자 23K 0.31–0.70. 손목 pitch·yaw 가 가장 큼.</li>
+</ul>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>관절 묶음</th><th>kp</th><th>kd</th><th>토크 한계 (N·m)</th><th>기본 자세 (rad)</th></tr></thead>
+  <tbody>
+    <tr><td>고관절 pitch / yaw</td><td>40.18</td><td>2.56</td><td>88</td><td>pitch −0.312</td></tr>
+    <tr><td>고관절 roll, 무릎</td><td>99.10</td><td>6.31</td><td>139</td><td>무릎 0.669</td></tr>
+    <tr><td>발목 pitch·roll</td><td>28.50</td><td>1.81</td><td>50</td><td>pitch −0.363</td></tr>
+    <tr><td>허리 yaw / roll·pitch</td><td>40.18 / 28.50</td><td>2.56 / 1.81</td><td>88 / 50</td><td>0</td></tr>
+    <tr><td>어깨 3, 팔꿈치, 손목 roll</td><td>14.25</td><td>0.91</td><td>25</td><td>어깨 pitch 0.2, roll ±0.2, 팔꿈치 0.6</td></tr>
+    <tr><td>손목 pitch·yaw</td><td>16.78</td><td>1.07</td><td>5</td><td>0</td></tr>
+  </tbody>
+</table></div>
+<p class="src">출처: <code>_ckpts/student_28000.pt</code> 내장 <code>robot.control</code>·<code>robot.dof_effort_limit_list</code>. 논문은 "PD gains following [29] (BeyondMimic)" 한 줄 <span class="src">(p.8)</span>.</p>
+
+<h3 class="ps">3-4. 깊이 입력 (student)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>값</th><th>출처</th></tr></thead>
+  <tbody>
+    <tr><td>원 해상도 → 입력</td><td>106×60 → 위 2 px·좌우 4 px 자르기 → 58×87 로 리사이즈, 정규화</td><td>표 6, <code>_student.py</code></td></tr>
+    <tr><td>시야각</td><td>수직 58.6°, 수평 89.5°</td><td>체크포인트 설정</td></tr>
+    <tr><td>거리 범위</td><td>0.3–3.0 m, 유효 최소 0.15 m</td><td>표 6, 체크포인트 설정</td></tr>
+    <tr><td>장착</td><td>torso_link 기준 오프셋 (0.01, 0.01, 0.44) m, 장착 쿼터니언 pitch ≈ 27.0° + <code>camera_pitch_deg 10</code> = 공칭 37°</td><td>p.7 "37°", 코드 (각도 합은 쿼터니언에서 계산)</td></tr>
+    <tr><td>갱신·지연</td><td>30 Hz, 버퍼 6 장, 지연 3–4 프레임</td><td><code>_student.py</code> (논문 본문엔 지연 언급 없음)</td></tr>
+    <tr><td>인코더</td><td><code>far_tracking_cnn_small</code>: conv 5×5 1→16, conv 3×3 16→32, conv 3×3 32→64, 풀링 후 선형 64→32, ELU</td><td>p.13 "small CNN 32-D", 체크포인트 가중치 모양</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">4. 보상 · 종료 · 커리큘럼</h2>
+<h3 class="ps">4-1. 보상 (표 5, p.14 + 체크포인트 설정)</h3>
+<p>추종 항은 모두 <code>exp(−오차/σ)</code> 형. student 도 PPO 항이 있으므로 같은 보상을 받는다 (참조 = teacher 성공 롤아웃).</p>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항</th><th>논문 가중치</th><th>σ·매개변수</th><th>코드 teacher</th><th>코드 student</th></tr></thead>
+  <tbody>
+    <tr><td>루트 위치 추종</td><td>0.5</td><td>σ 0.3</td><td>0.5</td><td>0.5</td></tr>
+    <tr><td>루트 자세 추종</td><td>0.5</td><td>σ 0.4</td><td>0.5</td><td>0.5</td></tr>
+    <tr><td>전신 몸체 위치 추종 (14 몸체)</td><td>1.0</td><td>σ 0.3</td><td>1.0</td><td>1.0</td></tr>
+    <tr><td>전신 몸체 자세 추종</td><td>1.0</td><td>σ 0.4</td><td>1.0</td><td>1.0</td></tr>
+    <tr><td>몸체 선속도 추종</td><td>1.0</td><td>σ 1.0</td><td>1.0</td><td>1.0</td></tr>
+    <tr><td>몸체 각속도 추종</td><td>1.0</td><td>σ 3.14</td><td>1.0</td><td>1.0</td></tr>
+    <tr><td>물체 위치 추종</td><td>1.0</td><td>σ 0.3</td><td>1.0</td><td>1.0</td></tr>
+    <tr><td>물체 자세 추종</td><td>1.0</td><td>σ 0.4</td><td>1.0</td><td>1.0</td></tr>
+    <tr><td>오프라인 손목 목표 유도</td><td>5.0</td><td>물체 좌표 접촉점, σ 0.08</td><td rowspan="2">묶음 항 가중치 <b>0.0</b> (내부 5.0 / 10.0)</td><td rowspan="2">묶음 항 1.0 (내부 1.0 / 1.0)</td></tr>
+    <tr><td>오프라인 힘 게이트 접촉 유도</td><td>10.0</td><td>힘 문턱 1.0 N, 힘 σ 10.0, 접촉 일정 완화 5 스텝</td></tr>
+    <tr><td>행동 변화율</td><td>−0.1</td><td>행동 차 제곱합</td><td>−0.1</td><td>−0.1</td></tr>
+    <tr><td>관절 한계</td><td>−10.0</td><td>소프트 한계 0.9</td><td>−10.0</td><td>−10.0</td></tr>
+    <tr><td>발·발목–물체 접촉</td><td>−0.5</td><td>문턱 1.0</td><td>−0.5</td><td>−0.5</td></tr>
+    <tr><td>하체 원치 않는 접촉 (몸통·골반·다리)</td><td>−0.1</td><td>문턱 1.0</td><td>−0.1</td><td>−0.1</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li><b>접촉 보상 식 (식 2, p.6)</b>: <code>R_contact,i = exp(−‖p_eef,i − p_target,i‖₂ / σ_pos) · min(exp((‖F_contact,i‖₂ − F_thres) / σ_frc), 1)</code>. 위치 커널 × 힘 게이트. 힘이 문턱을 넘으면 게이트 = 1.</li>
+  <li>코드의 힘 게이트는 <code>force_gate_mode = "binary"</code> (문턱 아래면 0). 식 2 의 부드러운 형태는 <code>"soft"</code> 모드 (<a href="../reference/prism/code/tests/unit/test_offline_contact_guidance.py"><code>test_offline_contact_guidance.py</code></a>).</li>
+  <li>접촉 부위: 손목 2 + 팔꿈치 2 + 손목 roll·pitch 링크 4 + 몸통 1. 손목 위치 항은 왼·오른 손목만 (<code>_student.py</code>).</li>
+  <li>접촉 목표·일정은 <b>teacher 롤아웃에서 뽑은 sidecar</b>: 최소 접촉 10 프레임, 힘 문턱 1.0 N, 복셀 0.01 m, 최종 물체 위치 오차 0.5 m 이내 성공, 클립 20–80 % 구간에 발–물체 접촉 없음 (<a href="../reference/prism/code/scripts/_rollout.py"><code>scripts/_rollout.py</code></a>).</li>
+  <li>그 밖에 몸체별 관절·하체·상체 추종 항, 접촉 이진/tanh 항이 설정에 있지만 가중치 0.</li>
+</ul>
+
+<h3 class="ps">4-2. 종료</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>조건</th><th>teacher</th><th>student</th></tr></thead>
+  <tbody>
+    <tr><td>참조 루트 위치 오차</td><td>1.0 m</td><td>1.5 m</td></tr>
+    <tr><td>참조 루트 자세 오차</td><td>1.1 rad</td><td>1.65 rad</td></tr>
+    <tr><td>발목·손목 몸체 위치 오차</td><td>0.5 m</td><td>0.75 m</td></tr>
+    <tr><td>물체 위치 / 자세 오차</td><td>0.5 m / 1.1 rad</td><td>0.75 m / 1.65 rad</td></tr>
+    <tr><td>판정 방식</td><td><code>BadTracking</code></td><td><code>BadTrackingZOnly</code> (높이 성분만으로 보임)</td></tr>
+    <tr><td>그 밖</td><td colspan="2">시간 초과 (에피소드 최대 10 s), 참조 동작 끝</td></tr>
+  </tbody>
+</table></div>
+<p class="src">출처: 체크포인트 설정 <code>termination.*</code>, <code>_student.py</code>. 논문은 "early termination following [6] (OmniRetarget)" 한 줄 <span class="src">(p.6)</span>.</p>
+
+<h3 class="ps">4-3. 커리큘럼·초기화</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>논문 (표 6)</th><th>코드 teacher</th><th>코드 student (릴리스)</th></tr></thead>
+  <tbody>
+    <tr><td>클립 표집</td><td>teacher 성공률 적응 가중</td><td colspan="2"><code>uniform_clip</code>, 적응 표집 끔</td></tr>
+    <tr><td>시간 표집</td><td>student 적응 시간 표집</td><td colspan="2"><code>use_adaptive_timesteps_sampler = False</code></td></tr>
+    <tr><td>t = 0 시작 확률</td><td>student 0.2 → 1.0</td><td>0.2 고정 (나머지는 클립 중간 무작위)</td><td>0.0 → 1.0 (학습 전체 선형)</td></tr>
+    <tr><td>기본 자세 앞붙임</td><td>teacher 0.2 s, student 안 씀</td><td colspan="2">앞 0.2 s + 뒤 2.0 s</td></tr>
+    <tr><td>초기 자세 잡음</td><td>논문에 없음</td><td>관절 0.20, 관절속 0.35, 루트 위치 (0.08, 0.08, 0.025), 루트 자세 (0.15, 0.15, 0.30), 루트 선속 (0.20, 0.20, 0.10), 각속 (0.25, 0.25, 0.35), 물체 xy 0.08</td><td>관절 0.1, 관절속 0, 나머지 같음</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">5. 학습 설정 (알고리즘 · 망 · 무작위화)</h2>
+<h3 class="ps">5-1. PPO·망 (표 6 p.15 대 체크포인트 설정)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>논문 teacher</th><th>논문 student</th><th>코드 teacher_40000</th><th>코드 student_28000</th><th>코드 box_23000</th></tr></thead>
+  <tbody>
+    <tr><td>환경 수</td><td>4096 × 8</td><td>4096 × 8</td><td colspan="2">런처 기본 GPU 당 2,048 (<code>docs/training.md</code>)</td><td>4096</td></tr>
+    <tr><td>롤아웃 / 미니배치</td><td>24 / 4</td><td>24 / 4</td><td>24 / 4</td><td>24 / 4</td><td>24 / 4</td></tr>
+    <tr><td>학습 epoch</td><td>7</td><td>5</td><td>7</td><td>7</td><td>5</td></tr>
+    <tr><td>학습률 (actor / critic)</td><td>1e-5 / 1e-5</td><td>7e-5 / 7e-5</td><td>1e-3 적응 (KL 0.01, 1e-5–1e-2)</td><td>1e-3 적응 (같음)</td><td>7e-5 적응</td></tr>
+    <tr><td>γ / GAE λ / clip</td><td colspan="5">0.99 / 0.95 / 0.2 (모두 같음)</td></tr>
+    <tr><td>가치 손실 / 기울기 노름</td><td colspan="5">1.0 / 1.0</td></tr>
+    <tr><td>엔트로피</td><td>0.005</td><td>0</td><td>0.005</td><td>0.005</td><td>0.0</td></tr>
+    <tr><td>weight decay</td><td>1e-3</td><td>안 씀</td><td>0.0</td><td>0.0</td><td>0.0</td></tr>
+    <tr><td>초기 표준편차</td><td>1.0</td><td>0.01</td><td>1.0 (최소 0.01)</td><td>1.0 (최소 0.01), 상자 actor 로 시작</td><td>0.01</td></tr>
+    <tr><td>최적화기</td><td colspan="5">AdamW</td></tr>
+    <tr><td>actor</td><td>MLP [512, 256, 128], ELU</td><td>3 층 MLP + 깊이 잠재</td><td colspan="3">MLP [512, 256, 128], ELU (student 는 CNN 32 결합)</td></tr>
+    <tr><td>critic</td><td>MLP [512, 256, 128]</td><td>특권 상태 MLP</td><td colspan="3">MLP [512, 256, 128]</td></tr>
+    <tr><td>반복</td><td>40,000</td><td>28,000</td><td>39,999 (저장 iter)</td><td>27,999</td><td>23,000</td></tr>
+    <tr><td>에피소드 길이</td><td>동작 길이</td><td>8.0 s</td><td colspan="2">최대 10 s</td><td>8.0 s</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>논문 표 6 의 student 열은 <b>상자 전용 warm-start 단계(box_23000) 설정과 일치</b>하고, 129 클립 최종 student 설정과는 다르다 (9 절 참고).</li>
+  <li>하드웨어: NVIDIA L40S 8 장 <span class="src">(p.7)</span>. 벽시계 학습 시간은 논문에 없음.</li>
+  <li>물리: PhysX, TGS 계열 solver_type 1, 위치 반복 8, 속도 반복 4, 물체 충돌체는 볼록 분해 (<code>HOLOSOMA_OBJECT_COLLIDER_TYPE convex_decomposition</code>).</li>
+</ul>
+
+<h3 class="ps">5-2. 영역 무작위화</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>대상</th><th>논문</th><th>코드 teacher</th><th>코드 student</th></tr></thead>
+  <tbody>
+    <tr><td>물체 질량·관성 배율 s</td><td>U(0.33, 3.0), 질량·관성 같이 <span class="src">(부록 E p.15)</span></td><td>log-uniform 0.2–5.0</td><td>log-uniform 0.25–4.0</td></tr>
+    <tr><td>물체 명목 질량</td><td>공 0.5, bin 1.0, 상자 1.0, barrel 1.5 kg <span class="src">(표 7)</span></td><td colspan="2">–</td></tr>
+    <tr><td>물체 정지 마찰 μs / 동마찰 비 r</td><td>U(0.1, 0.7) / U(0.7, 0.99)</td><td>0.08–0.8 / 0.65–0.99</td><td>0.1–0.7 / 0.7–0.99</td></tr>
+    <tr><td>물체 반발</td><td>있음 (범위 없음)</td><td colspan="2">0.0–1.0</td></tr>
+    <tr><td>로봇 마찰 정지 / 동 / 반발</td><td>논문에 없음</td><td>0.25–1.7 / 0.25–1.3 / 0–0.6</td><td>0.3–1.6 / 0.3–1.2 / 0–0.5</td></tr>
+    <tr><td>베이스 COM x / y / z</td><td>"COM" 만</td><td>±0.065 / ±0.095 / ±0.12 m</td><td>±0.055 / ±0.08 / ±0.10 m</td></tr>
+    <tr><td>링크 질량 배율 / 추가 질량</td><td>논문에 없음</td><td>0.85–1.25 / −1.5–3.5 kg</td><td>0.9–1.2 / −1.0–3.0 kg</td></tr>
+    <tr><td>kp·kd 배율</td><td>논문에 없음</td><td>없음</td><td>0.9–1.1</td></tr>
+    <tr><td>관절 위치 편향</td><td>"joint bias"</td><td>설정 있음</td><td>±0.01 rad</td></tr>
+    <tr><td>밀기 간격 / 최대 속도 (x, y, z, roll, pitch, yaw)</td><td>[0.5, 2.0] s / [0.7, 0.7, 0.25, 0.7, 0.7, 1.0] (둘 다)</td><td>[0.4, 2.2] s / [0.8, 0.8, 0.3, 0.8, 0.8, 1.1]</td><td>논문과 같음</td></tr>
+    <tr><td>행동 지연</td><td>논문에 없음</td><td colspan="2">끔 (0 스텝)</td></tr>
+    <tr><td>카메라 자세 (리셋마다)</td><td>"randomize camera pose"</td><td>–</td><td>이동 ±0.035 m (축마다), roll·pitch·yaw ±3.5°</td></tr>
+    <tr><td>깊이 손상</td><td>구멍 확률 0.2, 잡음 표준편차 0.03 m, 오프셋 표준편차 0.03 m, 드롭아웃·가장자리 <span class="src">(표 6)</span></td><td>–</td><td>같음 + 가장자리 폭 3 px·섞기 0.9·비우기 0.7, 레이 잡음 배율 0–0.05, 드롭 0–0.025, 구멍은 Perlin 잡음</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">6. teacher → student / 증류</h2>
+<ul>
+  <li><b>손실 (식 3, p.7)</b>: <code>L = λ·L_PPO + (1 − λ)·L_D</code>. L_D = DAgger 모방 손실 (MSE 행동 복제). λ 를 점점 키운다 [Perceptive Humanoid Parkour 를 따름].</li>
+  <li><b>누가 움직이나</b>: 항상 student 가 행동 (<code>take_teacher_actions False</code>, teacher 행동 섞기 0). teacher 는 고정, 같은 환경의 특권 관측 178 로 결정적 행동 라벨만 낸다. DAgger 리플레이 없음.</li>
+  <li><b>std 맞추기</b>: <code>dagger_match_std = True</code> — student 표준편차도 teacher 에 맞춤 (이름으로 추정). 최종 student std 0.26–0.58 로 teacher 0.29–0.59 와 비슷.</li>
+  <li><b>참조</b>: 원 운동학 궤적 대신 <b>teacher 성공 롤아웃 129 개</b>를 참조 동작으로 씀 → student PPO 보상의 추종 항과 critic 입력이 실제 실행 가능한 궤적 기준 <span class="src">(p.7, 부록 C)</span>.</li>
+  <li><b>student critic</b>: 참조·로봇·물체 상태 (이력 없음) <span class="src">(p.7)</span>. actor 는 물체 상태를 전혀 안 본다 <span class="src">(표 6 "no explicit object state")</span>.</li>
+  <li><b>warm start</b>: 같은 방법으로 상자만 23K 반복 학습 → <b>actor 가중치만</b> 복원, critic·최적화기는 새로 → 네 범주 28K 반복. 처음부터 학습해도 되지만 수렴이 빨라짐 <span class="src">(p.7, 부록 D)</span>.</li>
+</ul>
+<h3 class="ps">6-1. λ 일정 — 세 가지 기록</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>출처</th><th>시작</th><th>목표</th><th>올리는 간격</th><th>0.9 도달</th><th>0.9 유지</th></tr></thead>
+  <tbody>
+    <tr><td>논문 표 6</td><td>0.1</td><td>0.9</td><td>500 반복마다 +0.1</td><td>약 4,000</td><td>(28K 기준 약 24K)</td></tr>
+    <tr><td>논문 본문 p.7 / 부록 D</td><td colspan="4">"점점 증가"</td><td>마지막 20K</td></tr>
+    <tr><td>코드 box_23000</td><td>0.1</td><td>0.9</td><td>500 epoch</td><td><code>dagger_end_epoch 4000</code></td><td>나머지</td></tr>
+    <tr><td>코드 student_28000 (공개 런처)</td><td>0.01</td><td>0.9</td><td>700 epoch</td><td><code>dagger_end_epoch 6300</code></td><td>약 21.7K (본문 "마지막 20K" 와 맞음)</td></tr>
+  </tbody>
+</table></div>
+<p>정확한 증가 폭과 <code>dagger_end_epoch</code> 이후 DAgger 항 처리 방식은 HoloSoma 안에 있어 로컬로 확인 불가.</p>
+
+<h2 class="ps">7. 결과</h2>
+<p>주의: 표 1·3·8·9 는 <b>예전 student</b>(teacher 20K 체크포인트의 성공 롤아웃 80 개로 증류)의 MuJoCo 수치다. 최종 129 롤아웃 student 의 시뮬 수치는 없다 <span class="src">(부록 C p.13)</span>.</p>
+<h3 class="ps">7-1. 데이터 출처 교차 평가 (표 1, p.7)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>학습 데이터</th><th>OMOMO Train</th><th>OMOMO Test</th><th>PRISM ID</th><th>PRISM OOD</th></tr></thead>
+  <tbody>
+    <tr><td>OMOMO (90)</td><td>94.44 %</td><td>91.67 %</td><td>23.75 %</td><td>12.50 %</td></tr>
+    <tr><td>PRISM ID (80)</td><td>98.89 %</td><td>100 %</td><td>96.25 %</td><td>72.92 %</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>OMOMO: 63 개 + 물체 크기 변형 = 126, 학습 90 / 시험 36. PRISM-OOD: 의자·탁자·램프·모니터 각 12 = 48 <span class="src">(부록 C)</span>.</li>
+  <li>OMOMO 학습 정책 실패 3 가지: 처음 보는 깊이에 약함, 가까운 상호작용에 과적합해 먼 물체에 다가가기 전 잡으려 함, 새 형상에서 운반 불안정 <span class="src">(p.8)</span>.</li>
+</ul>
+<h3 class="ps">7-2. 절제 (표 3, p.8)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>구성</th><th>성공 ID</th><th>성공 OOD</th></tr></thead>
+  <tbody>
+    <tr><td>기준선 (SAM3D 초기화 + FoundationPose 추적 + OmniRetarget)</td><td>22.50 %</td><td>12.50 %</td></tr>
+    <tr><td>+ 접촉 고정 물체 자세</td><td>58.75 %</td><td>29.17 %</td></tr>
+    <tr><td>+ 접촉 앵커 리타게팅</td><td>86.25 %</td><td>68.75 %</td></tr>
+    <tr><td>+ 접촉 보상 (PRISM 전체)</td><td>96.25 %</td><td>72.92 %</td></tr>
+  </tbody>
+</table></div>
+<p>접촉 보상 하나로 ID +10.0 %p, OOD +4.17 %p. 저자는 "teacher·student 학습에서 안정적이고 과제에 맞는 접촉을 유도"한 효과라고 본다 <span class="src">(p.8)</span>.</p>
+<h3 class="ps">7-3. 영상 생성 대 기하 증강 (표 9, p.16)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>학습 \ 평가</th><th>Seed-1X</th><th>Seed-17X</th><th>PRISM-ID</th><th>PRISM-OOD</th></tr></thead>
+  <tbody>
+    <tr><td>Seed-1X (8)</td><td>100.00</td><td>58.25</td><td>17.50</td><td>6.25</td></tr>
+    <tr><td>Seed-17X (103)</td><td>100.00</td><td>98.06</td><td>36.25</td><td>22.92</td></tr>
+    <tr><td>V2V (80)</td><td>100.00</td><td>100.00</td><td>96.25</td><td>72.92</td></tr>
+  </tbody>
+</table></div>
+<p>Seed-17X = 원 영상 8 개마다 yaw·xy·크기 변형 16 개 (136 → 깊이 시야 필터 후 103). 기하 증강만으로는 새 물체에 일반화가 안 된다 <span class="src">(부록 F)</span>.</p>
+<h3 class="ps">7-4. 하중 민감도 (표 8, p.16)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>하중 (kg)</th><th>0.1–1.0</th><th>1.0–2.0</th><th>2.0–3.0</th><th>3.0–4.0</th><th>4.0–5.0</th></tr></thead>
+  <tbody>
+    <tr><td>PRISM-ID</td><td>98.75</td><td>97.50</td><td>96.25</td><td>93.75</td><td>91.25</td></tr>
+    <tr><td>PRISM-OOD</td><td>77.08</td><td>72.92</td><td>68.75</td><td>62.50</td><td>64.58</td></tr>
+  </tbody>
+</table></div>
+<h3 class="ps">7-5. 높은 곳·경사 (그림 5, p.9)</h3>
+<ul>
+  <li>평지만 학습했는데 35° 경사 위 상자, 0.43 m 받침대 위 상자는 집음. 45°, 0.45 m 에서는 실패.</li>
+  <li>저자 해석: 키 큰 학습 물체와 잡는 높이가 겹쳐서 (추정). 높은 곳 V2V 데이터로 넓힐 수 있다고 봄.</li>
+</ul>
+
+<h2 class="ps">8. 실기 · sim2real</h2>
+<ul>
+  <li>Unitree G1 29 DoF, 정책 50 Hz, PD 는 BeyondMimic 설정 <span class="src">(p.8)</span>.</li>
+  <li>머리 D435i 스테레오 30 Hz → 이더넷으로 외부 PC → Fast-FoundationStereo 깊이. 이것이 깊이 sim2real 격차를 "크게 줄였다" <span class="src">(p.7–8)</span>. 실기 배포 코드는 별도 <code>sim2real</code> 브랜치 (로컬 사본엔 <code>main</code> 만).</li>
+  <li>조이스틱은 사람이 조작. 실물 물체 스캔·재구성은 학습에 안 씀 (zero-shot), 실기 미세조정 없음 <span class="src">(p.8)</span>.</li>
+  <li>목을 기본 위치보다 약 10° 위로 손으로 올려 둠. 보정이 부정확한 것은 카메라 자세 무작위화로 버팀 <span class="src">(p.8)</span>.</li>
+</ul>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>범주</th><th>성공 / 시행</th><th>성공률</th></tr></thead>
+  <tbody>
+    <tr><td>공 (학습 범주, 3 개 × 5)</td><td>12 / 15</td><td>80 %</td></tr>
+    <tr><td>bin</td><td>14 / 15</td><td>93 %</td></tr>
+    <tr><td>barrel</td><td>14 / 15</td><td>93 %</td></tr>
+    <tr><td><b>상자</b></td><td><b>15 / 15</b></td><td><b>100 %</b></td></tr>
+    <tr><td>키친타월 (새 범주)</td><td>5 / 5</td><td>100 %</td></tr>
+    <tr><td>헬멧</td><td>3 / 5</td><td>60 %</td></tr>
+    <tr><td>탁자</td><td>5 / 5</td><td>100 %</td></tr>
+    <tr><td>배낭</td><td>5 / 5</td><td>100 %</td></tr>
+    <tr><td>램프</td><td>3 / 5</td><td>60 %</td></tr>
+    <tr><td>의자</td><td>4 / 5</td><td>80 %</td></tr>
+    <tr><td>주전자</td><td>4 / 5</td><td>80 %</td></tr>
+    <tr><td>병아리 장난감</td><td>3 / 5</td><td>60 %</td></tr>
+    <tr><td>합계 (직접 더함)</td><td>학습 범주 55 / 60, 새 범주 32 / 40</td><td>92 %, 80 %</td></tr>
+  </tbody>
+</table></div>
+<p class="src">표 2 (p.8). 실물 질량 0.11 kg (상자) – 4.99 kg (의자) <span class="src">(부록 E p.16)</span>. 정책은 물체까지 1.31 m (4.3 ft) 떨어진 곳에서 스스로 다가가 집기도 함 <span class="src">(그림 3)</span>.</p>
+<h3 class="ps">실패 양상</h3>
+<ul>
+  <li><b>목 각도</b>: 숙이는 동안 목이 기본 위치로 돌아가거나 목표 각도에서 벗어나 분포 밖 깊이가 들어옴 <span class="src">(p.8)</span>.</li>
+  <li><b>관절·변형 물체</b>: 강체로만 모델링 → 접이식 의자가 내부 관절로 움직여 잡기 불안정 <span class="src">(p.9)</span>.</li>
+  <li><b>물체 물리</b>: 개체별 표면·질량 분포 미식별 → 접촉 불일치 가능 <span class="src">(p.9)</span>.</li>
+  <li><b>높이 한계</b>: 경사 45°, 받침대 0.45 m 실패 <span class="src">(p.9)</span>.</li>
+</ul>
+
+<h2 class="ps">9. 코드에서 확인한 것</h2>
+<ul>
+  <li><b>구조</b>: 저장소는 얇은 런처. 환경·보상·PPO 는 고정 커밋 HoloSoma (<code>Z1hanW/holosoma@a6ae0a6…</code>, <a href="../reference/prism/code/requirements.txt"><code>requirements.txt</code></a>) 에 있고 로컬 사본에 없다. 시뮬레이터는 <code>isaacsim[all,extscache]==5.1.0</code>, torch 2.7.0 (<a href="../reference/prism/code/requirements/simulation.txt"><code>requirements/simulation.txt</code></a>).</li>
+  <li><b>핵심 파일</b>: <a href="../reference/prism/code/scripts/_teacher.py"><code>scripts/_teacher.py</code></a> (teacher CLI), <a href="../reference/prism/code/scripts/_student.py"><code>scripts/_student.py</code></a> (증류 CLI: λ 일정, 깊이 설정, 접촉 보상), <a href="../reference/prism/code/scripts/_rollout.py"><code>scripts/_rollout.py</code></a> (teacher 롤아웃 + 접촉 sidecar), <a href="../reference/prism/code/scripts/_training.py"><code>scripts/_training.py</code></a> (GPU·환경 수, 기본 반복 40,000), <a href="../reference/prism/code/docs/training.md"><code>docs/training.md</code></a>.</li>
+  <li><b>가중치</b>: 실제 파일 (LFS 포인터 아님). <a href="../reference/prism/code/_ckpts/README.md"><code>_ckpts/</code></a> teacher_40000.pt 2.40 MB, student_28000.pt 2.68 MB, box_23000.pt 2.53 MB. 각 파일에 <code>experiment_config</code> 전체가 들어 있어 보상·DR·PD 값을 그대로 읽을 수 있다 (이 페이지의 코드 수치 대부분이 여기서 옴; pickle 은 클래스 import 없이 구조만 파싱). 학습 재개용 최적화기 상태는 없음.</li>
+  <li><b>데이터</b>: student 학습용 129 클립 (495 MB, Hugging Face) 은 로컬에 없음. <b>teacher 학습 데이터·원 영상은 "검토 중"으로 비공개</b> → teacher 재학습은 공개 자료만으로 불가 (<a href="../reference/prism/code/README.md"><code>README.md</code></a>).</li>
+</ul>
+<h3 class="ps">논문과 코드가 다른 곳</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>논문</th><th>코드 (공개 런처·체크포인트)</th></tr></thead>
+  <tbody>
+    <tr><td>teacher 접촉 보상</td><td>가중치 5.0 / 10.0 으로 사용 (표 5, 부록 D)</td><td>묶음 항 가중치 0.0 (내부 5.0 / 10.0 은 남음), 보상 이름 <code>…-tracking-no-contact</code></td></tr>
+    <tr><td>teacher actor 입력</td><td>175, 선속도 없음</td><td>178, <code>base_lin_vel</code> 포함</td></tr>
+    <tr><td>student critic 입력</td><td>313</td><td>377 (고유감각 64 중복)</td></tr>
+    <tr><td>student λ 일정·epoch·엔트로피·lr·초기 std</td><td>0.1 → 0.9 / 500, 5, 0, 7e-5, 0.01</td><td>0.01 → 0.9 / 700, 7, 0.005, 1e-3 적응, 1.0 (값은 box_23000 단계와 일치)</td></tr>
+    <tr><td>teacher 행동 자르기</td><td>8.0</td><td>box 단계 8.0, 최종 student 끔 (100)</td></tr>
+    <tr><td>적응 표집</td><td>teacher 클립 가중, student 시간 표집</td><td>둘 다 끔</td></tr>
+    <tr><td>명령</td><td>[Δx, Δy, Δyaw]</td><td>dy 항상 0, dx·dyaw 배타, 들기 전 0</td></tr>
+    <tr><td>환경 수</td><td>GPU 당 4096</td><td>런처 기본 2048 (box 체크포인트는 4096)</td></tr>
+    <tr><td>물체 질량 배율</td><td>U(0.33, 3.0)</td><td>student log-uniform 0.25–4.0, teacher 0.2–5.0</td></tr>
+    <tr><td>힘 게이트</td><td>식 2 의 부드러운 min(exp, 1)</td><td><code>binary</code></td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">10. 한계</h2>
+<ul>
+  <li><b>계층 구조 아님</b>: 하위 제어기를 고정해 그 위에 얹는 구조가 아니다. 정책이 다리까지 직접 낸다.</li>
+  <li><b>데이터 규모</b>: 원 영상 4 → 생성 256 → 실행 가능 137 → teacher 성공 129. 규모 효과를 말하기엔 작다 <span class="src">(p.9)</span>.</li>
+  <li><b>재구성·리타게팅이 병목</b>: 단안 4D 복원 오차가 그대로 전파, 접촉·실행 가능성 보장 없음 <span class="src">(p.9, 부록 G.1)</span>.</li>
+  <li><b>시뮬 처리량</b>: Isaac Lab 에서 이질 물체 자산이 많으면 학습 처리량이 떨어짐 <span class="src">(p.8)</span>.</li>
+  <li><b>평가 불일치</b>: 시뮬 표는 예전 80 롤아웃 student 기준, 최종 student 시뮬 수치 없음. 실기 성공 기준(3 m 운반)과 시뮬 기준(목표 위치에 놓기)이 다름.</li>
+  <li><b>teacher 성공률</b>: 따로 표로 보고되지 않음. 137 중 129 성공 롤아웃 (94 %) 이 사실상 유일한 수치.</li>
+  <li><b>재현성</b>: teacher 데이터 비공개, 핵심 구현은 외부 HoloSoma 커밋, 실기 깊이는 외부 GPU PC 필요.</li>
+</ul>
+
+<h2 class="ps">11. 우리에게 가져올 것</h2>
+<div class="take"><ol>
+  <li><b>student 를 DAgger + PPO λ 혼합으로</b>: <code>L = λ·L_PPO + (1 − λ)·L_MSE</code>, λ 0.1 → 0.9 를 500 반복마다 +0.1 (또는 공개 런처처럼 0.01 → 0.9, 700 반복 간격) 후 0.9 유지. 항상 student 가 행동, teacher 는 결정적 라벨. 우리 student 69 % (teacher 90 %) 격차, 특히 "접촉 정보가 없어서 생기는 격차"를 student 자신의 보상으로 메울 수 있는 가장 단순한 방법. 필요한 것: student 환경에서도 teacher 와 같은 과제 보상 계산 + 특권 critic (물체 자세·접촉력 포함).</li>
+  <li><b>두 손바닥 접촉 보상을 위치 × 힘 게이트로</b>: 손바닥 목표점 = 상자 옆면 중앙 (물체 좌표계, 37×40.5×29 cm 상자면 고정 계산), 위치 커널 σ 0.08 m, 힘 문턱 1 N 이진 게이트 (식 2). 우리 공 손은 G1 고무 손처럼 손바닥 사이에 끼우는 방식이라 그대로 맞는다. 한 손 밀기 국소 최적을 막으려면 두 손 항을 <b>곱</b>(또는 min)으로 묶는 쪽을 권장 — PRISM 이 합인지 곱인지는 로컬 코드로 확인 불가 (추론).</li>
+  <li><b>student 보상에 teacher 롤아웃의 접촉 일정</b>: teacher 성공 에피소드에서 손바닥 접촉 시작 시각·위치를 기록 (최소 접촉 10 스텝, 1 N 문턱) 해 student 접촉 보상의 시간 창으로 쓰기 (± 5 스텝 완화). 클립 기반이 아닌 우리 환경에선 "같은 초기 상태에서 teacher 가 잡은 시각"을 저장하는 형태가 됨.</li>
+  <li><b>깊이 손상 수치를 출발점으로</b>: 구멍 확률 0.2 (Perlin), 가산 잡음 0.03 m, 오프셋 0.03 m, 가장자리 잡음 (폭 3 px, 섞기 0.9, 비우기 0.7), 유효 최소 0.15 m, 지연 3–4 프레임 (버퍼 6). D436 은 우리 기록상 가장 최근 프레임 나이 14–45 ms 라 지연은 우리 실측으로 다시 정할 것.</li>
+  <li><b>카메라 자세 무작위화는 실측 오차 이상</b>: PRISM 은 리셋마다 ±3.5 cm, ±3.5° 였는데도 목이 기본 위치 (약 10° 차이) 로 돌아가면 분포 밖이 됐다. K1 목은 손으로 0° / 47° 두 위치만 고정하므로, 집기에 쓸 위치 하나를 정해 실측 pitch 를 공칭값으로 넣고 폭은 측정 오차 이상으로.</li>
+  <li><b>actor 만 warm start</b>: 쉬운 분포 (예: 바닥 상자, 정면, yaw 0) student 를 먼저 학습 → actor 가중치만 가져와 critic·최적화기 새로 시작해 전체 분포로. 체크포인트마다 성공률이 출렁이는 문제와는 별개지만 수렴을 당긴다.</li>
+  <li><b>환경 안에서 행동을 자르지 않음</b>: PRISM 은 <code>action_clip_value 100</code> (사실상 없음), 토크만 자르고 최종 std 가 teacher 0.29–0.59, student 0.26–0.58 로 안정. 우리 PPO std 폭주 원인 (잘린 행동에 벌점 없음) 과 정반대 설정이다 — 자를 거면 원 행동 L2 벌점을 같이.</li>
+  <li><b>평가 하네스에 하중 구간별 성공률</b>: 표 8 처럼 0.5–1.0 / 1.0–1.5 / 1.5–2.0 kg 로 나눠 보고하면 dev12 의 손 하중 0–5 kg 학습 범위 안에서 어디가 약한지 바로 보인다.</li>
+  <li><b>받침대 높이는 학습에 넣기</b>: PRISM 은 0.43 m 까지 우연히 일반화했지만 0.45 m 에서 실패. 우리 0/0.1/0.2/0.3 m 는 모두 학습 분포에 넣는다 (이미 계획대로).</li>
+</ol></div>
+<h3 class="ps">가져오지 않을 것</h3>
+<ul>
+  <li><b>반사실 영상 생성·단안 재구성 파이프라인 전체</b>: 우리는 상자 한 종류이고 teacher 는 과제 보상 RL 이라 참조 동작이 필요 없다. 클립당 약 680 s 와 외부 영상 모델 (SeedDance) 이 든다.</li>
+  <li><b>동작 추종 teacher 와 추종 보상</b>: PRISM 보상의 대부분이 참조 몸체·물체 궤적 추종이다. 우리 상위 정책은 골반 명령 + 상체 11 만 내고 다리는 dev12 가 하므로, 전신 추종 보상은 맞지 않는다.</li>
+  <li><b>전신 직접 제어</b>: 허리·다리를 정책이 직접 내는 구조라 "하위가 못 따라가는 출력" 문제가 애초에 없다. 우리 v2 의 허리 추종 실패 문제에는 답을 주지 않는다.</li>
+  <li><b>사전 계산된 회전 후 전진 명령</b>: 우리 골반 명령은 정책의 출력이지 입력이 아니다. 나중에 접근·운반 단계에서 사람 명령을 student 입력으로 줄 때만 "dx 와 dyaw 배타, 들기 전 0" 설계를 다시 볼 것.</li>
+  <li><b>외부 PC 스테레오 깊이 (Fast-FoundationStereo)</b>: K1 은 D436 자체 깊이를 쓰는 구조. 깊이 격차가 실기에서 크게 보일 때만 검토.</li>
+  <li><b>하이퍼파라미터 그대로 복사</b>: 논문 표와 공개 코드가 서로 다르다 (9 절). 우리 rsl_rl 기본값에서 출발하고 λ 일정만 가져온다.</li>
+  <li><b>이력 없는 student</b>: PRISM 은 깊이 한 장으로 됐지만 깊이 58×87·전신 제어 조건이다. 우리 26×64 · 6 프레임 설계를 줄일 근거는 아니다.</li>
+</ul>
+
+<p class="src">출처 표기: (p.N), (표 N), (그림 N), (식 N), 코드는 파일 경로. 논문에 없는 값은 "논문에 없음".</p>
+</main>
+</body>
+</html>

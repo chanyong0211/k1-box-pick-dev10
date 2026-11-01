@@ -1,0 +1,418 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VisualMimic — 논문 상세</title>
+<link rel="stylesheet" href="paper.css">
+</head>
+<body>
+<main class="wrap">
+<a class="back" href="../index.html#catalog">← 자료 목록으로</a>
+
+<header class="ph">
+  <h1>VisualMimic: 동결 키포인트 추종기 위에서 깊이 영상으로 키포인트 명령을 내는 휴머노이드 이동·조작</h1>
+  <p class="orig">VisualMimic: Visual Humanoid Loco-Manipulation via Motion Tracking and Generation</p>
+  <p class="meta">Shaofeng Yin*, Yanjie Ze*, Hong-Xing Yu, C. Karen Liu, Jiajun Wu · Stanford University · 사전 공개 (arXiv v1 2025-09, v2 2025-11-13) · Unitree G1 + RealSense D435i · IsaacGym (학습), MuJoCo (sim2sim)</p>
+  <div class="chips">
+    <a class="chip loc" href="../reference/visualmimic/paper.pdf">로컬 PDF</a>
+    <a class="chip loc" href="../reference/visualmimic/code/">로컬 코드</a>
+    <a class="chip" href="https://arxiv.org/abs/2509.20322" target="_blank" rel="noopener">arXiv 2509.20322</a>
+    <a class="chip gh" href="https://github.com/visualmimic/VisualMimic" target="_blank" rel="noopener">visualmimic/VisualMimic</a>
+    <a class="chip" href="https://visualmimic.github.io/" target="_blank" rel="noopener">프로젝트 페이지</a>
+    <span class="simv s5">유사도 4–5</span>
+    <span class="badge">LICENSE 없음</span>
+    <span class="badge wt" title="checkpoints/ 의 TorchScript 4 개, 각 24.9 MB, 실제 가중치 (LFS 포인터 아님)">가중치</span>
+  </div>
+</header>
+
+<div class="callout blue tldr">사람 동작으로 teacher→student 증류한 과제 무관 키포인트 추종기(명령 18 차원, 50 Hz)를 동결하고, 그 위에서 과제마다 특권 PPO teacher → 깊이 80×45 DAgger student 로 키포인트 명령 생성기를 학습한다. 상위 출력은 하위 정규화기 통계의 μ±1.64σ 로 자르고 하위는 명령 ×U(0.5, 1.5) 잡음으로 학습한다. 자르기를 빼면 Kick Ball 189 → 12 m, 잡음을 빼면 Push Box 151 → 2 m. G1 실기 상자 들기(0.5 kg, 1 m 높이)·밀기(3.8 kg)·공 드리블·상자 차기 전이(정성).</div>
+
+<h2 class="ps">우리와 무엇이 같고 다른가</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>이 논문</th><th>우리 (dev10 pelvis_pick)</th></tr></thead>
+  <tbody>
+    <tr><td>하위 제어기</td><td>사람 동작(AMASS·OMOMO)으로 학습한 과제 무관 <b>키포인트 추종기</b>. 23 관절 전부를 내고 과제 학습 중 동결 <span class="src">(p.3, p.5)</span>. 네 과제 체크포인트의 하위 가중치가 바이트 단위로 같음 (코드 확인)</td><td class="ours">dev12 하체 RL(Isaac Lab + Newton, AMP 다리만), 골반 vx·vy·ωz·높이·pitch·roll 추종, 상체 11 은 외부 목표를 PD 로 따르고 하위는 그 목표(저역 통과 + 변화율)를 관측만 함</td></tr>
+    <tr><td>하위 명령</td><td>18 차원 = 루트 위치 오차 3 + 머리·두 손·두 발 5 점 × 3 (루트 기준 오차, 세계 좌표 추종) <span class="src">(p.5, 식 1–3)</span></td><td class="ours">골반 속도 3 + 높이 + pitch + roll (6) + 상체 관절 목표 11</td></tr>
+    <tr><td>상위 출력</td><td>키포인트 명령 18. 팔·다리를 모두 "점"으로 간접 지시. 출력은 하위 정규화 공간에서 ±1.64 로 잘림 (코드)</td><td class="ours">상체 11 관절 목표 + 골반 명령. 팔은 관절 공간으로 직접 지시</td></tr>
+    <tr><td>출력 묶기</td><td>하위 학습 때 기록한 입력 정규화기 μ±1.64σ (약 90 %) + 하위 학습 때 명령 차원마다 ×U(0.5, 1.5) 곱셈 잡음 <span class="src">(p.6)</span>. 잘린 양 벌점은 논문에 없음</td><td class="ours">v2: 환경 안 자르기 + 벌점 없음 → PPO std 발산, 켜짐/꺼짐 포화, 추종기가 못 따르는 허리 출력</td></tr>
+    <tr><td>과제·물체</td><td>밀기·차기 위주 8 과제. 들기는 바닥의 15″×20″×20″(0.38×0.51×0.51 m), 0.5 kg 상자 1 개를 1 m 까지 <span class="src">(p.2, p.7)</span></td><td class="ours">바닥·받침대 0/0.1/0.2/0.3 m 박스 37×40.5×29 cm, 0.5–2 kg, 발끝 앞 0.04–0.30 m, 옆 ±0.15 m, yaw ±40°, 쪼그리기·숙이기, 두 손바닥 옆면 조이기</td></tr>
+    <tr><td>손</td><td>sim2sim 모델은 손목·손가락 고정(구동 23: 다리 12, 허리 3, 팔 4×2). 팔 kp 40 / kd 5 (코드)</td><td class="ours">고무 공 손, 손가락 없음, 팔 5×2 (손목 roll 포함), 팔 kp 22.3 / kd 1.42, 허리 yaw 1 개 76.45 / 4.87</td></tr>
+    <tr><td>지각·증류</td><td>특권 PPO teacher → 깊이 80×45 <b>1 장</b> + 고유감각 11 프레임 student, <b>DAgger 만</b> (student RL 없음) <span class="src">(p.5–6, 코드)</span></td><td class="ours">특권 teacher → D436 깊이 26×64 crop 6 프레임 + 고유감각 (DAgger). v2: teacher 90 %, student 69 % (Isaac), 50 % (MuJoCo)</td></tr>
+    <tr><td>카메라</td><td>몸통에 붙은 D435i, sim2sim 모델에서 약 46° 아래, 학습 때 방향 ±5° 무작위 <span class="src">(p.6, lift_box.xml)</span></td><td class="ours">머리 D436, 목 0°/47° 두 위치(손으로 고정)</td></tr>
+    <tr><td>주기</td><td>생성기 50 Hz, 추종기 50 Hz, PD 1000 Hz <span class="src">(그림 2)</span></td><td class="ours">상위·하위 50 Hz (같은 급)</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">1. 문제와 과제</h2>
+<ul>
+  <li>목표: 외부 모캡 없이 <b>로봇 자기 카메라(egocentric)</b>만으로 물체와 전신 상호작용(밀기·차기·들기)을 하는 sim-to-real RL <span class="src">(p.1–2)</span>.</li>
+  <li>문제의식: 시각 RL 은 행동·탐색 공간이 커서 앉기·계단 수준에 머물고, 모방 학습은 시연 데이터가 부족하다 <span class="src">(p.2)</span>.</li>
+  <li>해법: 계층 분할. 하위 = 사람답게 움직이는 과제 무관 추종기, 상위 = 과제별 "단순화된 추종 명령" 생성기 <span class="src">(p.2–3)</span>.</li>
+  <li>쌍을 이룬 사람-물체 동작 데이터 없이, 과제 보상 몇 개만으로 학습한다 <span class="src">(p.2, p.5)</span>.</li>
+</ul>
+
+<h3 class="ps">시뮬 과제 8 개 <span class="src">(p.7)</span></h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>과제</th><th>내용 · 물체</th><th>지표 (표 II)</th></tr></thead>
+  <tbody>
+    <tr><td>Push Box</td><td>30″×40″×40″ (0.76×1.02×1.02 m), 4 kg 상자 밀기, 마찰 0.5–2.0</td><td>Distance · Forward · Drift [m]</td></tr>
+    <tr><td>Kick Box</td><td>15″×20″×20″ (0.38×0.51×0.51 m), 0.5 kg 상자 차기</td><td>Distance · Forward · Drift</td></tr>
+    <tr><td><b>Lift Box</b></td><td>15″×20″×20″, 0.5 kg 상자 들기</td><td>Height [m] · Box Fall Rate [%] · Alive [s]</td></tr>
+    <tr><td>Reach Box</td><td>30″×40″×40″ 상자로 달려가기</td><td>Velocity · Collision Rate · Alive</td></tr>
+    <tr><td>Large Kick</td><td>15″×20″×20″, 0.5 kg 상자 세게 차기</td><td>Distance · Forward · Drift</td></tr>
+    <tr><td>Kick Ball</td><td>축구공 드리블</td><td>Distance · Forward · Drift</td></tr>
+    <tr><td>Balance Ball</td><td>한 발을 공 위에 올려 균형</td><td>Force [N] · Foot Fall Rate · Alive</td></tr>
+    <tr><td>Push Cube</td><td>탁자 위 8″ (0.20 m) 정육면체를 목표로 밀기</td><td>Error [cm] · Finish Time [s] · Alive</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>지표는 1 분 롤아웃, 시드 3 개 평균. 롤아웃 수: 상태 기반 4096, 시각 기반 512 <span class="src">(p.8, 표 II 설명)</span>.</li>
+  <li>물체 위치는 "heavily randomized" — 범위는 논문에 없음 <span class="src">(p.8)</span>.</li>
+  <li>실기: Lift Box, Kick Ball, Kick Box, Push Box 4 과제 <span class="src">(p.7)</span>. 0.5 kg 상자를 1 m 높이로, 로봇 키만 한 3.8 kg 상자 밀기 <span class="src">(p.2)</span>.</li>
+</ul>
+
+<h2 class="ps">2. 시스템 구조</h2>
+<p>두 단계 학습, 정책 네 개. 1단계에서 추종기를 한 번 만들어 고정하고, 2단계에서는 과제마다 생성기만 학습한다 <span class="src">(p.3, 그림 2)</span>.</p>
+
+<div class="fig">
+  <p style="margin:0 0 8px"><b>1단계: 과제 무관 키포인트 추종기</b></p>
+  <div class="flow">
+    <span class="node">AMASS + OMOMO<br>GMR 리타깃</span><span class="arr">→</span>
+    <span class="node">teacher 동작 추종기<br>미래 참조 2 s + 특권 고유감각<br>PPO, r<sub>motion</sub></span><span class="arr">→ DAgger →</span>
+    <span class="node">student 키포인트 추종기<br>o<sub>t−10:t</sub> + c<sup>kp</sup><sub>t</sub> (18)<br>명령 ×U(0.5, 1.5) 잡음</span><span class="arr">→</span>
+    <span class="node">정규화기 μ, σ 기록<br>(= Human Motion Space)</span>
+  </div>
+</div>
+<div class="fig">
+  <p style="margin:0 0 8px"><b>2단계: 과제별 키포인트 생성기 (배포 경로)</b></p>
+  <div class="flow">
+    <span class="node">깊이 80×45 1 장<br>+ 고유감각 11 프레임<br>+ 0/1 명령</span><span class="arr">→</span>
+    <span class="node">student 생성기<br>CNN + MLP, 50 Hz</span><span class="arr">→</span>
+    <span class="node">clamp ±1.64<br>(하위 정규화 공간 = μ±1.64σ)</span><span class="arr">→</span>
+    <span class="node frozen">동결 키포인트 추종기<br>50 Hz, 23 관절</span><span class="arr">→</span>
+    <span class="node">목표 = 0.5·a + 기본 자세</span><span class="arr">→</span>
+    <span class="node">PD 1000 Hz</span>
+  </div>
+  <div class="flow" style="margin-top:8px">
+    <span class="node">물체 상태 s<sub>obj</sub> + o<sub>t−10:t</sub></span><span class="arr">→</span>
+    <span class="node">teacher 생성기<br>3층 MLP, PPO</span><span class="arr">→ 행동 라벨 (DAgger) →</span>
+    <span class="node">student 생성기</span>
+  </div>
+</div>
+
+<div class="tbl-wrap"><table>
+  <thead><tr><th>정책</th><th>입력</th><th>출력</th><th>학습</th><th>배포</th></tr></thead>
+  <tbody>
+    <tr><td>π<sup>tea</sup><sub>tracker</sub></td><td>o<sub>t</sub> + 미래 참조 c<sup>motion</sup><sub>t:t+20</sub> (2 s) + 특권 고유감각(발 접촉력 등)</td><td>관절 행동</td><td>PPO, 3층 MLP</td><td>아니오</td></tr>
+    <tr><td>π<sup>stu</sup><sub>tracker</sub></td><td>o<sub>t−10:t</sub> + c<sup>kp</sup><sub>t</sub></td><td>23 관절 목표</td><td>DAgger, 3층 MLP</td><td>예 · 동결 · 과제 공유</td></tr>
+    <tr><td>π<sup>tea</sup><sub>generator</sub></td><td>o<sub>t−10:t</sub> + s<sub>obj</sub></td><td>키포인트 명령</td><td>PPO, 3층 MLP, 과제 보상</td><td>아니오</td></tr>
+    <tr><td>π<sup>stu</sup><sub>generator</sub></td><td>깊이 + o<sub>t−10:t</sub></td><td>키포인트 명령</td><td>DAgger, CNN + MLP</td><td>예</td></tr>
+  </tbody>
+</table></div>
+<p class="src">출처: p.3 (그림 2, III-A), p.5 (III-B), p.6. 3층 MLP 는 논문 표현; 코드 student 들은 은닉 1024×3 (9 절).</p>
+
+<h2 class="ps">3. 관측과 행동</h2>
+<h3 class="ps">3-1. 키포인트 명령 <span class="src">(p.5, 식 1–3)</span></h3>
+<ul>
+  <li>c<sup>kp</sup><sub>t</sub> = [Δp<sub>t</sub>, Δx<sup>1</sup><sub>t</sub>, …, Δx<sup>5</sup><sub>t</sub>] → 3 + 5×3 = <b>18 차원</b>.</li>
+  <li>루트 위치 오차 Δp<sub>t</sub> = p<sup>des</sup><sub>t</sub> − p<sup>cur</sup><sub>t</sub>.</li>
+  <li>키포인트 오차 Δx<sup>i</sup><sub>t</sub> = (x<sup>i,des</sup><sub>t</sub> − p<sup>des</sup><sub>t</sub>) − (x<sup>i,cur</sup><sub>t</sub> − p<sup>cur</sup><sub>t</sub>), i = 머리·두 손·두 발.</li>
+  <li>추종기의 몸 위치·루트 속도 추종은 <b>세계 좌표</b>. 지역 좌표판은 크게 떨어짐 (표 III "Local-Frame Tracker").</li>
+  <li>그림 2 에서 "6 점" = 루트 + 5 키포인트. 상체 키포인트만 쓴 변형은 발을 못 써 Balance Ball 실패 <span class="src">(p.8)</span>.</li>
+</ul>
+
+<h3 class="ps">3-2. 하위 student 추종기 (코드로 확인)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>구간</th><th>차원</th><th>내용 · 배율</th></tr></thead>
+  <tbody>
+    <tr><td>명령</td><td>18</td><td>키포인트 명령 (상위 출력이 정규화 없이 그대로 들어감, 9 절)</td></tr>
+    <tr><td>각속도</td><td>3</td><td>골반 IMU 각속도 × 0.25</td></tr>
+    <tr><td>자세</td><td>2</td><td>roll, pitch</td></tr>
+    <tr><td>관절 위치</td><td>23</td><td>q − 기본 자세</td></tr>
+    <tr><td>관절 속도</td><td>23</td><td>q̇ × 0.05, 발목 4 개(인덱스 4·5·10·11)는 0 으로</td></tr>
+    <tr><td>직전 행동</td><td>23</td><td>하위 직전 출력</td></tr>
+    <tr><td><b>한 프레임</b></td><td><b>92</b></td><td>현재 1 + 이력 10 = 1012 차원</td></tr>
+    <tr><td>행동</td><td>23</td><td>±10 자르기 → × 0.5 + 기본 자세 = PD 목표</td></tr>
+  </tbody>
+</table></div>
+<p class="src">출처: <a href="../reference/visualmimic/code/sim2sim/sim2sim.py"><code>sim2sim/sim2sim.py</code></a> 185–309 행, 체크포인트 내 DAggerActor (obs_prop 0:92).</p>
+
+<h3 class="ps">3-3. 상위 student 생성기 (코드로 확인)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>구간</th><th>차원</th><th>내용</th></tr></thead>
+  <tbody>
+    <tr><td>깊이</td><td>3600</td><td>45×80 <b>최신 1 장</b>. 0.1–2.0 m 를 0–1 로 정규화 후 −0.5 (−0.5…0.5), 640×360 렌더 → bicubic 축소</td></tr>
+    <tr><td>0/1 명령</td><td>1</td><td>정지(0) / 과제 수행(1)</td></tr>
+    <tr><td>명령 이력</td><td>10</td><td>지난 10 스텝의 0/1</td></tr>
+    <tr><td>고유감각</td><td>69</td><td>각속도×0.25 (3) + roll·pitch (2) + q−기본 (23) + q̇×0.05 (23) + 직전 <b>상위</b> 행동 (18)</td></tr>
+    <tr><td>고유감각 이력</td><td>690</td><td>10 × 69</td></tr>
+    <tr><td><b>합</b></td><td><b>4370</b></td><td>깊이 3600 + 고유감각 770</td></tr>
+    <tr><td>행동</td><td>18</td><td>하위 정규화 공간의 키포인트 명령, clamp ±1.64</td></tr>
+  </tbody>
+</table></div>
+<p class="src">출처: <a href="../reference/visualmimic/code/sim2sim/sim2sim.py"><code>sim2sim/sim2sim.py</code></a> 48–96, 186, 265–289 행; 체크포인트 forward (slice 0:4370, reshape 45×80).</p>
+<ul>
+  <li>teacher 생성기 입력 = 고유감각 + "환경마다 정의한" 물체 상태. 물체 상태의 구체 차원은 논문에 없음 <span class="src">(p.5)</span>.</li>
+  <li>teacher 동작 추종기 입력의 구체 차원도 논문에 없음 (미래 2 s, 발 접촉력 등만 서술) <span class="src">(p.3)</span>.</li>
+</ul>
+
+<h3 class="ps">3-4. 실제 자르기 범위 (Human Motion Space)</h3>
+<p>하위 정규화기(네 체크포인트 공통)의 명령 18 칸 μ, σ 를 읽어 μ±1.64σ 를 물리 단위로 풀었다. 단위는 코드에 없음(위치 오차라면 m). 칸 순서가 식 1 의 Δp, Δx<sup>1–5</sup> 와 같은지는 코드로 확인되지 않는다.</p>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>칸</th><th>μ</th><th>σ</th><th>μ−1.64σ</th><th>μ+1.64σ</th></tr></thead>
+  <tbody>
+    <tr><td>0</td><td>−0.007</td><td>0.141</td><td>−0.238</td><td>0.224</td></tr>
+    <tr><td>1</td><td>−0.004</td><td>0.134</td><td>−0.224</td><td>0.216</td></tr>
+    <tr><td>2</td><td>−0.013</td><td>0.029</td><td>−0.061</td><td>0.035</td></tr>
+    <tr><td>3</td><td>−0.005</td><td>0.032</td><td>−0.056</td><td>0.047</td></tr>
+    <tr><td>4</td><td>0.001</td><td>0.029</td><td>−0.046</td><td>0.048</td></tr>
+    <tr><td>5</td><td>0.002</td><td>0.025</td><td>−0.039</td><td>0.042</td></tr>
+    <tr><td>6</td><td>0.179</td><td>0.173</td><td>−0.105</td><td>0.463</td></tr>
+    <tr><td>7</td><td>−0.207</td><td>0.146</td><td>−0.447</td><td>0.033</td></tr>
+    <tr><td>8</td><td>0.074</td><td>0.187</td><td>−0.232</td><td>0.380</td></tr>
+    <tr><td>9</td><td>−0.004</td><td>0.054</td><td>−0.092</td><td>0.084</td></tr>
+    <tr><td>10</td><td>0.014</td><td>0.039</td><td>−0.050</td><td>0.077</td></tr>
+    <tr><td>11</td><td>0.013</td><td>0.026</td><td>−0.030</td><td>0.057</td></tr>
+    <tr><td>12</td><td>0.004</td><td>0.054</td><td>−0.085</td><td>0.093</td></tr>
+    <tr><td>13</td><td>−0.011</td><td>0.037</td><td>−0.072</td><td>0.050</td></tr>
+    <tr><td>14</td><td>0.031</td><td>0.029</td><td>−0.016</td><td>0.079</td></tr>
+    <tr><td>15</td><td>0.007</td><td>0.030</td><td>−0.042</td><td>0.055</td></tr>
+    <tr><td>16</td><td>−0.001</td><td>0.022</td><td>−0.037</td><td>0.035</td></tr>
+    <tr><td>17</td><td>−0.023</td><td>0.017</td><td>−0.050</td><td>0.004</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>읽은 곳: <a href="../reference/visualmimic/code/checkpoints/lift_box.pt"><code>checkpoints/lift_box.pt</code></a> 안 low_level_normalizer (data/38 = 평균, data/39 = 표준편차, float32 원시 바이트). 실행·역직렬화 없이 숫자만 읽음.</li>
+  <li>읽기: 대부분 칸이 ±3–9 cm 상자로 매우 좁다. 칸 0·1 만 ±0.22 m, 칸 6–8 만 평균이 0 에서 크게 벗어나 있어 "오차"가 아닌 다른 정의일 가능성 (미확인).</li>
+  <li>검증: 관절 속도 칸 중 발목 4 개의 σ 가 정확히 0 → 위 관측 배치 해석이 맞다.</li>
+</ul>
+
+<h2 class="ps">4. 보상 · 종료 · 커리큘럼</h2>
+<h3 class="ps">4-1. 하위 추종기 보상</h3>
+<ul>
+  <li>r<sub>motion</sub> = r<sub>track</sub> + r<sub>penalty</sub>: 정확한 동작 추종 + 떨림·발 미끄럼 벌점. 구조는 TWIST [5] 를 따름, 세계 좌표 몸 위치·루트 속도 추종 <span class="src">(p.3, p.5)</span>.</li>
+  <li>항별 식·가중치: 논문에 없음 (TWIST 참조).</li>
+</ul>
+
+<h3 class="ps">4-2. 상위 생성기 과제 보상 <span class="src">(p.5–6, 식 4–9)</span></h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항</th><th>식</th><th>뜻</th><th>가중치</th></tr></thead>
+  <tbody>
+    <tr><td>R<sub>approach</sub> (한 점)</td><td>e<sup>−0.1 d(t)</sup></td><td>끝점(손·발)과 물체 목표점 거리 d</td><td>논문에 없음</td></tr>
+    <tr><td>R<sub>approach</sub> (두 점)</td><td>2 e<sup>−0.1d₁</sup> e<sup>−0.1d₂</sup> / (e<sup>−0.1d₁</sup> + e<sup>−0.1d₂</sup>)</td><td><b>조화 평균</b>: 두 손 밀기에서 "균형" — 작은 쪽이 지배하므로 한 손만 가까우면 낮음</td><td>논문에 없음</td></tr>
+    <tr><td>R<sub>forward</sub></td><td>tanh(10 [x<sub>obj</sub>(t) − max<sub>t′&lt;t</sub> x<sub>obj</sub>(t′)]<sub>+</sub>)</td><td>물체가 <b>새 최고 기록</b>만큼 앞으로 갔을 때만 보상 (앞뒤 흔들기로 못 타먹음)</td><td>논문에 없음</td></tr>
+    <tr><td>R<sub>force</sub></td><td>e<sup>−0.1 [F<sub>des</sub> − F<sub>obj</sub>(t)]<sub>+</sub></sup></td><td>물체에 준 힘이 문턱 F<sub>des</sub> 이상이면 최대 (한쪽만 벌함)</td><td>논문에 없음, F<sub>des</sub> 값도 없음</td></tr>
+    <tr><td>R<sub>look</sub></td><td>−(arccos(f̂<sub>body</sub> · d̂<sub>obj</sub>))²</td><td>몸 정면이 물체를 향하게</td><td>논문에 없음</td></tr>
+    <tr><td>R<sub>drift</sub></td><td>−tanh(10 [|y<sub>obj</sub>(t)| − max<sub>t′&lt;t</sub> |y<sub>obj</sub>(t′)|]<sub>+</sub>)</td><td>옆 이탈이 새 최대가 될 때만 벌점</td><td>논문에 없음</td></tr>
+    <tr><td>정지 보상</td><td>정지 서기 동작 추종</td><td>0/1 명령이 0 일 때만 켬, 1 이면 과제 보상만. 두 명령 50 %씩</td><td>논문에 없음</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>과제별로 어떤 항을 묶었는지, <b>Lift Box 의 보상 구성은 논문에 없음</b>. 위 식들은 "pushing/reaching/kicking" 을 예로 든 일반 항 <span class="src">(p.5)</span>.</li>
+  <li>d 의 단위도 논문에 없음. m 라면 e<sup>−0.1d</sup> 는 0–1 m 에서 1.0–0.90 으로 거의 평평하다 (추론).</li>
+  <li>종료 조건: 논문에 없음. "Alive = 종료 전까지 시간" 지표만 있음 <span class="src">(표 II 설명)</span>.</li>
+  <li>커리큘럼: 논문에 없음.</li>
+</ul>
+
+<h2 class="ps">5. 학습 설정 (알고리즘 · 망 · 무작위화)</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>값</th><th>출처</th></tr></thead>
+  <tbody>
+    <tr><td>시뮬레이터</td><td>IsaacGym (시각 넣으면 느려진다고 언급)</td><td>p.5</td></tr>
+    <tr><td>알고리즘</td><td>teacher 둘 = PPO [25, 26], student 둘 = DAgger [24]</td><td>p.3, p.5</td></tr>
+    <tr><td>동작 데이터</td><td>AMASS + OMOMO 를 GMR 로 G1 에 리타깃</td><td>p.5</td></tr>
+    <tr><td>망 (논문)</td><td>teacher·student 추종기, teacher 생성기 = 3층 MLP. student 생성기 = 깊이 CNN 인코더 + MLP</td><td>p.3, p.5–6</td></tr>
+    <tr><td>student 생성기 (코드)</td><td>CNN: Conv 1→16 k5 p2 · ReLU · MaxPool2 → 16→32 k3 p1 · ReLU · MaxPool2 → 32→64 k3 p1 · ReLU · MaxPool2 (64×5×10 = 3200) → FC 3200→256 · ReLU → 64. [64 + 770] → MLP 1024-1024-1024 (ELU) → 18</td><td>체크포인트 텐서 크기</td></tr>
+    <tr><td>student 추종기 (코드)</td><td>이력 인코더: 프레임마다 92→30 (ELU) → Conv1d 30→20 k4 s2 → 20→10 k2 s1 → 평탄화 30 → 128. [92 + 128] → MLP 1024-1024-1024 (ELU) → 23</td><td>체크포인트 텐서 크기</td></tr>
+    <tr><td>주기</td><td>정책 50 Hz (sim dt 1 ms × decimation 20), PD 1000 Hz</td><td>그림 2, sim2sim.py</td></tr>
+    <tr><td>PD (sim2sim)</td><td>kp 다리 100/100/100/150/40/40, 허리 150×3, 팔 40×4. kd 2/2/2/4/2/2, 허리 4, 팔 5. 토크 한계 88/139/88/139/50/50, 허리 88/50/50, 팔 25</td><td>sim2sim.py 162–182 행</td></tr>
+    <tr><td>PPO 하이퍼파라미터</td><td>논문에 없음 (학습 코드 미공개)</td><td>—</td></tr>
+    <tr><td>env 수</td><td>논문에 없음. 평가는 상태 4096 / 시각 512 롤아웃. 정규화기 표본 수 73,728,000 (하위)·18,432,000 (상위, lift_box) 가 모두 4096 의 배수 (4096 env 추정, 추론)</td><td>표 II, 체크포인트</td></tr>
+    <tr><td>반복 수</td><td>상태 기반 생성기 학습 곡선 0–10 k 스텝. student 체크포인트 이름의 반복: push_box 1000, kick_ball 2000, lift_box 9000, kick_box 10000</td><td>그림 9, 체크포인트 이름</td></tr>
+    <tr><td>벽시계 시간 · GPU</td><td>논문에 없음</td><td>—</td></tr>
+  </tbody>
+</table></div>
+
+<h3 class="ps">무작위화</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>대상</th><th>범위</th><th>출처</th></tr></thead>
+  <tbody>
+    <tr><td>하위 명령 잡음</td><td>명령 차원마다 독립 λ<sub>i</sub> ∼ U(0.5, 1.5), X<sub>noised</sub> = X·λ<sub>i</sub> (상대 50 %)</td><td>p.6</td></tr>
+    <tr><td>Push Box 마찰</td><td>0.5–2.0</td><td>p.7</td></tr>
+    <tr><td>물체 위치</td><td>"heavily randomized", 범위 논문에 없음</td><td>p.8</td></tr>
+    <tr><td>깊이 고정 마스크</td><td>20 % 확률로 왼쪽 아래 고정 흰 마스크</td><td>p.6</td></tr>
+    <tr><td>깊이 사각 마스크</td><td>각 10 % 확률로 최대 6 개 독립 사각형. 흰·검정·회색(회색 값 U(0, 1)). 한 개가 최대 30×30 px (80×45 의 25 %)</td><td>p.6</td></tr>
+    <tr><td>카메라 방향</td><td>±5° (G1 목이 단단히 고정되지 않아 실기 각도가 흔들림)</td><td>p.6</td></tr>
+    <tr><td>질량·마찰(로봇)·외력·지연·깊이 가산 잡음</td><td>논문에 없음</td><td>—</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">6. teacher → student / 증류</h2>
+<h3 class="ps">6-1. 하위: 동작 추종기 → 키포인트 추종기</h3>
+<ul>
+  <li>teacher 는 배포하지 않으므로 미래 2 s 참조와 발 접촉력 같은 특권 정보를 넣어 정확·부드럽게 추종 <span class="src">(p.3)</span>.</li>
+  <li>student 는 고유감각 + "그 시각 참조 프레임에서 계산한" 키포인트 명령만 보고 DAgger 로 teacher 를 따라함 <span class="src">(p.3)</span>.</li>
+  <li>이유: 키포인트만으로 바로 RL 하면 사람답지 않은 동작 (그림 6, 상자 차기). 1단 RL 추종기는 생성기 학습 때 "매우 부자연스러운" 행동 <span class="src">(p.9)</span>.</li>
+  <li>student 학습 때 명령에 ×U(0.5, 1.5) 잡음 → 상위의 거친 명령에 견디고 HMS 자체를 넓힘 <span class="src">(p.6)</span>.</li>
+  <li>주의: p.5 본문은 이 절에서 "π<sup>tea</sup><sub>generator</sub> 를 π<sup>stu</sup><sub>generator</sub> 로 증류"라고 적었으나 문맥상 tracker 의 오기.</li>
+</ul>
+<h3 class="ps">6-2. 상위: 상태 teacher → 깊이 student</h3>
+<ul>
+  <li>teacher: 물체 상태 + 고유감각 → PPO. 시각 RL 을 바로 하면 물체 위치·접촉력이 부분 관측이고 IsaacGym 렌더가 느려 비효율 <span class="src">(p.5)</span>.</li>
+  <li>student: RGB 는 sim-to-real 격차가 커서 <b>깊이만</b> 시각으로 사용. CNN 출력 + 고유감각 → MLP, DAgger <span class="src">(p.6)</span>.</li>
+  <li>DAgger 세부(β 일정, 버퍼, 손실, 반복 수): 논문에 없음.</li>
+  <li>student RL 미세조정: 없음. 증류 손실이 그대로 격차로 남는다 (7 절 표 II).</li>
+  <li>같은 스텝 수의 시각 RL 직접 학습: Push Box 25 m (우리 방식 37 m), Kick Box·Kick Ball 0 <span class="src">(표 III)</span>.</li>
+</ul>
+
+<h2 class="ps">7. 결과</h2>
+<h3 class="ps">7-1. teacher 대 student (시뮬, 1 분 롤아웃) <span class="src">(p.8, 표 II)</span></h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>과제 · 지표</th><th>teacher</th><th>student 깊이</th><th>student 시각 없음</th></tr></thead>
+  <tbody>
+    <tr><td>Push Box Distance / Forward / Drift [m]</td><td>152±36 / 151±29 / 13±4</td><td>37±28 / 19±15 / 21±12</td><td>2±0 / 2±0 / 1±0</td></tr>
+    <tr><td>Kick Box D / F / Drift</td><td>78±3 / 78±3 / 0±0</td><td>55±5 / 30±3 / 33±3</td><td>0 / 0 / 0</td></tr>
+    <tr><td><b>Lift Box Height [m] / Box Fall [%] / Alive [s]</b></td><td>1±0 / <b>34±25</b> / 38±13</td><td>1±0 / 30±23 / 30±7</td><td>0±0 / 15±21 / 6±4</td></tr>
+    <tr><td>Reach Box Velocity [m/s] / Collision [%] / Alive</td><td>4±0 / 0±0 / 60±0</td><td>4±0 / 0±0 / 42±6</td><td>4±0 / 0±0 / 18±6</td></tr>
+    <tr><td>Large Kick D / F / Drift</td><td>8±1 / 7±1 / 2±0</td><td>6±0 / 6±0 / 2±0</td><td>4±0 / 4±0 / 1±0</td></tr>
+    <tr><td>Kick Ball D / F / Drift</td><td>189±3 / 189±3 / 4±1</td><td>135±6 / 121±8 / 47±12</td><td>1±0 / 1±0 / 0±0</td></tr>
+    <tr><td>Balance Ball Force [N] / Foot Fall / Alive</td><td>21±2 / 0±0 / 34±8</td><td>24±1 / 0±0 / 45±7</td><td>6±0 / 0±0 / 5±1</td></tr>
+    <tr><td>Push Cube Error [cm] / Finish [s] / Alive</td><td>9±3 / 4±1 / 58±1</td><td>21±2 / 20±8 / 57±0</td><td>57±22 / 43±8 / 51±10</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>Lift Box 는 성공률이 아니라 높이·떨어뜨림률로 잰다. teacher 도 <b>34 % 떨어뜨림</b>, 60 s 중 38 s 생존. 시각 없는 student 의 낮은 떨어뜨림률(15 %)은 들지 못해서(높이 0).</li>
+  <li>student 격차는 접촉·밀기 과제에서 크다: Push Box 152 → 37 m, Kick Box Forward 78 → 30 m, Drift 0 → 33 m.</li>
+  <li>본문: 시각 student 가 3.8 kg 상자를 분당 37 m, 공을 분당 135 m (앞 121 m) <span class="src">(p.7)</span>. 과제 정의(4 kg)와 본문(3.8 kg)의 질량이 다르다.</li>
+</ul>
+
+<h3 class="ps">7-2. 제거 실험 <span class="src">(p.9, 표 III)</span></h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>변형</th><th>Push Box D / F / Drift</th><th>Kick Box D / F / Drift</th><th>Kick Ball D / F / Drift</th></tr></thead>
+  <tbody>
+    <tr><td colspan="4"><b>상태 기반 (teacher)</b></td></tr>
+    <tr><td>Ours</td><td>152±36 / 151±29 / 13±4</td><td>78±3 / 78±3 / 0±0</td><td>189±3 / 189±3 / 4±1</td></tr>
+    <tr><td>w/o noise (하위 명령 잡음 없음)</td><td>2±1 / 2±1 / 0±0</td><td>30±24 / 30±20 / 1±0</td><td>136±8 / 136±7 / 4±0</td></tr>
+    <tr><td>w/o clip (상위 자르기 없음)</td><td>68±118 / 67±94 / 11±16</td><td>3±5 / 3±4 / 0±0</td><td>12±15 / 12±12 / 1±1</td></tr>
+    <tr><td>DoF as Interface (23 관절 명령)</td><td>10±9 / 8±6 / 5±3</td><td>40±34 / 40±28 / 0±0</td><td>0±0 / 0±0 / 0±0</td></tr>
+    <tr><td>Local-Frame Tracker</td><td>38±27 / 30±23 / 16±15</td><td>45±7 / 45±5 / 1±0</td><td>109±23 / 109±19 / 7±1</td></tr>
+    <tr><td colspan="4"><b>시각 기반 (student)</b></td></tr>
+    <tr><td>Ours</td><td>37±28 / 19±15 / 21±12</td><td>55±5 / 30±3 / 33±3</td><td>135±6 / 121±8 / 47±12</td></tr>
+    <tr><td>w/o noise</td><td>2±1 / 2±1 / 0±0</td><td>25±7 / 11±4 / 15±3</td><td>86±7 / 77±7 / 30±8</td></tr>
+    <tr><td>w/o clip</td><td>10±18 / 9±12 / 4±5</td><td>6±7 / 5±3 / 3±3</td><td>1±1 / 0±1 / 0±0</td></tr>
+    <tr><td>DoF as Interface</td><td>10±2 / 6±1 / 6±1</td><td>5±4 / 1±0 / 4±3</td><td>0±0 / 0±0 / 0±0</td></tr>
+    <tr><td>Local-Frame Tracker</td><td>14±11 / 7±5 / 8±6</td><td>27±15 / 16±9 / 15±6</td><td>38±17 / 34±13 / 12±4</td></tr>
+    <tr><td>Visual RL (직접 시각 RL)</td><td>25±16 / 11±6 / 16±9</td><td>0 / 0 / 0</td><td>0 / 0 / 0</td></tr>
+    <tr><td>Blind (시각 없이 증류)</td><td>2±0 / 2±0 / 1±0</td><td>0 / 0 / 0</td><td>1±0 / 1±0 / 0±0</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>한 번에 한 요소만 바꿈. 두 요소를 같이 빼면(예: DoF + 잡음 없음) 더 나쁨. 보상·학습 설정 동일 <span class="src">(p.8)</span>.</li>
+  <li><b>w/o clip</b>: 세 과제 모두 학습 <b>후반에 return 붕괴</b> (그림 9b). Kick Box 는 약 1 k 스텝에 정점 뒤 0 근처로, Kick Ball 은 중반 뒤 붕괴. 원인 추정: 상위 행동 공간이 너무 큼 <span class="src">(p.8–9)</span>.</li>
+  <li><b>w/o noise</b>: Push Box 완전 실패, Kick Box·Kick Ball 저하 (그림 9a).</li>
+  <li><b>DoF 인터페이스</b>: 하위를 23 관절 명령으로 증류(같은 teacher). 다리 관절까지 상위가 직접 정해야 하는 구조 <span class="src">(p.8)</span>.</li>
+  <li><b>지역 좌표 추종기</b>: 세계 좌표가 이탈을 더 줄이고 상위 학습을 돕는다 <span class="src">(p.8)</span>.</li>
+</ul>
+
+<h3 class="ps">7-3. 행동 관찰</h3>
+<ul>
+  <li>Push Box 에서 조건에 따라 전략이 바뀜: 바닥 μ 0.5 → 숙여 두 손으로, μ 1.5 → 어깨로 기대어, 상자가 낮으면 <b>한 손 밀기</b> + 다른 팔은 보폭 따라 흔들기 <span class="src">(p.8, 그림 7)</span>.</li>
+  <li>상체 키포인트만 쓴 변형: 발을 공 위에 못 올리고 계속 차 버림 <span class="src">(p.8)</span>.</li>
+  <li>학습 곡선의 분산(그늘)이 크다 — 체크포인트·시드마다 성능이 들쭉날쭉 <span class="src">(그림 9)</span>.</li>
+</ul>
+
+<h2 class="ps">8. 실기 · sim2real</h2>
+<ul>
+  <li>로봇: Unitree G1 + 내장 RealSense D435i. Lift Box, Kick Ball, Kick Box, Push Box 4 과제가 "모두 전이 성공" <span class="src">(p.7)</span>.</li>
+  <li><b>실기 성공률·시행 수: 논문에 없음</b> (사진·영상 정성 보고만).</li>
+  <li>실외(조명 변화·고르지 않은 땅·주변 방해물)에서도 동작 <span class="src">(p.7, 그림 3)</span>.</li>
+  <li>실기 깊이는 잡음이 커서 공간·시간 필터 적용. 필터 후에도 시뮬과 격차가 커서 학습 때 강한 마스크 <span class="src">(p.6, 그림 8)</span>.</li>
+  <li>실패 모드: 마스크 없이 학습하면 배포 때 "불안정한 행동". G1 목이 단단히 고정되지 않아 카메라 각도가 흔들림 → 방향 ±5° 무작위 <span class="src">(p.6)</span>.</li>
+  <li>안전: 0/1 명령으로 정지/수행 전환. 항상 정지 상태로 시작, 프로그램을 그냥 끄면 넘어질 수 있어서 도입 <span class="src">(p.6)</span>. sim2sim 은 50 스텝(1 s) 정지 뒤 1 로 바꿈 (sim2sim.py 197, 238–243 행).</li>
+  <li>지연 모델·처리: 논문에 없음. sim2sim 은 깊이를 5 ms 마다 렌더하고 최신 1 장을 그대로 사용 (지연 없음).</li>
+</ul>
+
+<h2 class="ps">9. 코드에서 확인한 것</h2>
+<h3 class="ps">9-1. 무엇이 있고 무엇이 없나</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>있음</th><th>없음 (README 체크리스트 미완)</th></tr></thead>
+  <tbody>
+    <tr><td>
+      <a href="../reference/visualmimic/code/sim2sim/sim2sim.py"><code>sim2sim/sim2sim.py</code></a> (364 행, MuJoCo 배포 루프)<br>
+      <a href="../reference/visualmimic/code/asset/g1/lift_box.xml"><code>asset/g1/lift_box.xml</code></a> 등 과제 XML 4 개<br>
+      <a href="../reference/visualmimic/code/checkpoints/"><code>checkpoints/</code></a> TorchScript 4 개 (각 24.9 MB, <b>실제 가중치</b>, LFS 아님)<br>
+      <a href="../reference/visualmimic/code/README.md"><code>README.md</code></a>
+    </td><td>
+      하위 추종기 학습 코드<br>
+      하위 추종기 단독 체크포인트 (단, 아래처럼 각 JIT 안에 들어 있음)<br>
+      상위 정책 학습 코드 (보상 가중치·PPO 설정·DAgger 일정 전부)<br>
+      sim2real 파이프라인 (깊이 필터·지연 처리)<br>
+      teacher 정책들, LICENSE 파일
+    </td></tr>
+  </tbody>
+</table></div>
+
+<h3 class="ps">9-2. 체크포인트 안의 실제 배포 경로</h3>
+<p>각 .pt 는 <code>HardwareRefNN</code> 하나: high_level_actor (깊이 student) + low_level_policy (키포인트 추종기) + 정규화기 둘. forward 순서:</p>
+<ol>
+  <li>obs[:, 0:4370] → 상위 정규화기 → 상위 actor → 18 차원 출력.</li>
+  <li><code>actions_clipped = clamp(출력, −1.64, 1.64)</code>.</li>
+  <li>[clipped, 하위 관측 994] 를 이어 11 프레임 × 92 로 펼친 뒤 하위 정규화기로 정규화.</li>
+  <li>11 프레임의 명령 칸 0:18 을 <b>정규화하지 않은 값으로 다시 덮어씀</b> → 상위 출력은 처음부터 하위의 "정규화된 명령" 단위다. 따라서 ±1.64 자르기 = 물리 단위 μ±1.64σ (3-4 절 표).</li>
+  <li>하위 actor → 23 관절. 출력 = [상위 18, 하위 23].</li>
+</ol>
+<ul>
+  <li>sim2sim 은 상위 출력(잘린 값)을 하위 관측 이력의 명령 칸과 상위 관측의 "직전 상위 행동"에 그대로 넣는다 (sim2sim.py 292–305 행).</li>
+  <li>하위 actor·이력 인코더·하위 정규화기 텐서의 md5 가 네 과제에서 같음 → 과제 무관 공유 추종기 확인. 상위 actor·상위 정규화기는 과제마다 다름.</li>
+  <li>체크포인트 이름: <code>0901_lift_box_tune_v2_7k_stu-9000</code>, <code>0825_push_box_two_hand_robust_sample_longer_tune_750_stu-1000</code>, <code>0826_kick_ball_command_stu-2000</code>, <code>0822_kick_box_v5_stu_v2-10000</code> → 과제마다 다른 반복에서 고른 student.</li>
+  <li>자르기는 배포 때 결정적 평균 출력에 적용된다. 학습 중 샘플 행동을 어디서 잘랐는지, 잘린 양 벌점이 있었는지는 학습 코드가 없어 확인 불가.</li>
+</ul>
+
+<h3 class="ps">9-3. sim2sim 장면</h3>
+<ul>
+  <li>Lift Box 상자: 0.508×0.381×0.508 m, 0.4536 kg, 마찰 0.5, 로봇 앞 1.2 m 바닥 위 (윗면 높이 0.51 m). 바닥 마찰 0.6 (<a href="../reference/visualmimic/code/asset/g1/lift_box.xml"><code>lift_box.xml</code></a> 66–69, 385–386 행).</li>
+  <li>Push Box 상자: 1.0 m 정육면체, 3.8 kg, 앞 1.0 m (<a href="../reference/visualmimic/code/asset/g1/push_box.xml"><code>push_box.xml</code></a>).</li>
+  <li>카메라 <code>d435_camera</code>: torso_link 기준 (0.058, 0.018, 0.430) m, 광축이 수평 아래 약 46.4° (xyaxes 로 계산), fovy 54.53°.</li>
+  <li>기본 자세: 고관절 pitch −0.2, 무릎 0.4, 발목 pitch −0.2, 어깨 roll ±0.4 (관측 기준; MuJoCo 초기값은 ±0.2), 팔꿈치 1.2. 골반 높이 0.793 m.</li>
+  <li>깊이 버퍼 길이 2 이지만 정책에는 최신 1 장만 들어감 → 프레임 쌓기 없음, 시간 정보는 고유감각 이력 10 프레임이 담당.</li>
+</ul>
+
+<h2 class="ps">10. 한계</h2>
+<ul>
+  <li>저자 언급: 변형 물체·사람 협업 미검증, 긴 과제·다양한 실환경엔 DR·적응 제어가 더 필요 <span class="src">(p.9)</span>.</li>
+  <li>실기 성공률·시행 수 없음. 비교·재현이 어렵다.</li>
+  <li>보상 가중치, PPO·DAgger 설정, env 수, 학습 시간, 종료 조건, 커리큘럼이 모두 논문에 없고 학습 코드도 미공개.</li>
+  <li>Lift Box 는 0.5 kg 가벼운 큰 상자 하나, 윗면 0.51 m. teacher 떨어뜨림률 34 %로 들기 자체가 확실히 풀린 것은 아니다. 낮은 상자·받침대·무거운 상자·들고 걷기는 다루지 않음.</li>
+  <li>순수 DAgger 라 student 격차가 크다 (Push Box 152 → 37 m).</li>
+  <li>μ±1.64σ 는 각 차원을 독립 가우시안으로 본 상자 자르기다. 차원 사이 결합(예: 손 높이와 루트 높이)은 못 담는다.</li>
+  <li>키포인트 칸 순서·정의가 코드로 확인되지 않음 (3-4 절 칸 6–8).</li>
+</ul>
+
+<h2 class="ps">11. 우리에게 가져올 것</h2>
+<div class="take"><ol>
+  <li><b>상위 행동을 "하위가 학습 때 본 명령 분포의 정규화 단위"로 정의하고 ±1.64 로 자른다.</b> 골반 명령 6 칸은 dev12 학습 명령 분포(정규화기가 있으면 그 μ, σ)에서 z 값으로 내고 clamp ±1.64. 균등 분포라면 μ±1.64σ = 범위의 94.7 %: vx ±0.757, vy ±0.379, ωz ±0.947, 서기 높이 0.347–0.758 m, pitch ±42.6°, roll ±9.5° (계산값). 상체 11 목표도 dev12 가 학습 때 본 목표 분포의 μ, σ 로 같은 처리 → v2 의 "추종기가 못 따르는 허리 출력" 문제에 대응.</li>
+  <li><b>자르기에 잘린 양 벌점을 꼭 붙인다.</b> VisualMimic 은 자르기만 쓰고 벌점은 언급이 없다. 우리 v2 는 환경 안 자르기 + 벌점 없음으로 PPO std 가 발산했다 → 원 행동의 경계 초과분 L2 벌점 (VIRAL 식) + std 상한. 학습 중 경계에 붙은 비율을 로그로 남겨 켜짐/꺼짐 포화를 감시.</li>
+  <li><b>dev12 재학습 때 명령 잡음.</b> 명령 차원마다 독립 ×U(0.5, 1.5). 골반 명령은 vx·vy·ωz 와 (높이 − 기본), pitch 의 편차에 곱한다. 이 잡음 하나가 Push Box 2 m ↔ 151 m 를 갈랐다 (표 III).</li>
+  <li><b>두 손 접근은 조화 평균으로.</b> 2e₁e₂/(e₁+e₂) 는 먼 손이 지배하므로 v2 의 "한 손 밀기" 국소 최적을 직접 깎는다. 단 척도는 다시 정한다: e<sup>−0.1d</sup> 를 m 로 쓰면 0–0.3 m 에서 1.0–0.97 로 평평 → 우리 손–옆면 거리엔 e<sup>−d/0.1 m</sup> 급 (추론). 그림 7 처럼 낮은 물체에선 한 손 전략이 자연히 나오므로 조화 평균 없이는 재발할 것.</li>
+  <li><b>조임 힘은 한쪽 문턱 보상.</b> e<sup>−0.1[F<sub>des</sub>−F]<sub>+</sub></sup> 를 손마다 걸고 F<sub>des</sub> ≥ m g / (2 μ) 에 여유 (2 kg, μ 0.8 이면 손당 약 12 N, 추론). 팔 kp 22.3 이라 "닿기만" 하면 수 N 뿐이므로 명시적 조임 보상이 필요하다.</li>
+  <li><b>"새 최고 기록" 진척 보상.</b> tanh(10[z<sub>box</sub> − max<sub>t′&lt;t</sub> z<sub>box</sub>]<sub>+</sub>) 꼴로 상자 높이를 보상하면 들썩임·흔들기로 보상을 타먹지 못한다. 옆 이탈도 R<sub>drift</sub> 꼴로.</li>
+  <li><b>0/1 정지 명령을 상위 관측에 넣고 50 %로 섞어 학습.</b> 정지 = 서기 유지 보상. K1 배포 때 항상 정지로 시작 → 손으로 과제 시작, 비상 시 정지로 복귀.</li>
+  <li><b>깊이 DR 출발값.</b> 고정 마스크 20 %, 최대 6 개 사각 마스크 각 10 %, 흰·검정·회색 U(0, 1), 한 개 최대 화면 25 % (우리 26×64 crop 이면 약 17×24 px). 카메라 방향 무작위는 ±5° 가 G1 목 흔들림 기준이므로 K1 은 실측 장착 오차(목 0°/47° 수동 고정) 이상으로. 실기 깊이엔 공간·시간 필터를 같은 방식으로 학습 쪽 마스크와 짝지을 것.</li>
+  <li><b>체크포인트는 고른다.</b> 저자들도 과제마다 1000–10000 반복 중 다른 student 를 골랐고 학습 곡선 분산이 크다. 우리 "체크포인트마다 성공률 들쭉날쭉"은 정상 현상으로 보고 이웃 저장본과 같은 지표로 비교해 고른다.</li>
+</ol>
+<p><b>가져오지 말 것</b></p>
+<ul>
+  <li><b>키포인트 인터페이스로 갈아타기</b>: 하위를 키포인트 추종기로 재학습해야 하고 사람 동작 teacher 가 필요하다. DoF 인터페이스 실패(Push Box 152 → 10)는 다리까지 23 관절을 상위가 정한 경우라, 다리를 dev12 가 맡는 우리 분할을 그대로 반박하지는 않는다. 다만 팔 11 관절 직접 탐색이 약하다는 경고로 받아 "단계별 명목 팔 자세 + 작은 잔차"와 위 자르기로 탐색 공간을 줄인다.</li>
+  <li><b>세계 좌표 추종</b>: 논문에선 지역 좌표보다 좋았지만 K1 엔 베이스 속도·위치 추정기가 없다. dev12 의 골반 속도 명령 인터페이스를 유지.</li>
+  <li><b>순수 DAgger 로 격차가 닫힌다는 기대</b>: 여기도 접촉 과제 격차가 크다(Push Box 152 → 37, Kick Box 앞 78 → 30). 우리 student 격차(90 → 69 %)를 접촉 정보 탓으로 본 해석과 맞으므로 DAgger 뒤 student RL(PRISM λ 혼합 등)을 계획에 둔다.</li>
+  <li><b>깊이 1 장 설계</b>: 그들은 최신 1 장 + 고유감각 이력으로 충분했지만 증거는 밀기·차기 위주다. 우리 6 프레임은 조임·들림 판단 때문에 유지 (논문은 근거 없음).</li>
+  <li><b>Lift Box 를 "풀린 문제"의 기준으로 삼기</b>: 0.5 kg·윗면 0.51 m·teacher 떨어뜨림 34 %. 바닥 29 cm 높이 상자 도달 한계(v2)에 대해 이 논문은 아무 근거도 주지 않는다.</li>
+  <li><b>코드 복사</b>: LICENSE 파일이 없다 → 수치·아이디어만 참고.</li>
+</ul>
+</div>
+
+<p class="src">출처 표기: (p.N), (표 N), (그림 N), (식 N), 코드는 파일 경로. 논문에 없는 값은 "논문에 없음". 유사도·평가 배경: <a href="../reports/%EB%B0%95%EC%8A%A4%20%EC%A7%91%EA%B8%B0%20%EC%83%81%EC%9C%84%20%EC%A0%95%EC%B1%85%20%EC%B0%B8%EA%B3%A0%20%EC%97%B0%EA%B5%AC.md">보고서</a>.</p>
+</main>
+</body>
+</html>

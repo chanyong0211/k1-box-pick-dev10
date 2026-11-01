@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>R2S2 — 논문 상세</title>
+<link rel="stylesheet" href="paper.css">
+</head>
+<body>
+<main class="wrap">
+<a class="back" href="../index.html#catalog">← 자료 목록으로</a>
+
+<header class="ph">
+  <h1>R2S2: 실기 검증된 기본 기술을 하나의 잠재 기술 공간으로 묶어 휴머노이드 도달 범위 넓히기</h1>
+  <p class="orig">Unleashing Humanoid Reaching Potential via Real-world-Ready Skill Space</p>
+  <p class="meta">Zhikai Zhang, Chao Chen, Han Xue (공동 1저자) et al. (마지막 저자 Li Yi) · Tsinghua IIIS, Galbot, Peking University, Nanjing University, Tongji University, Shanghai AI Lab, Shanghai Qi Zhi Institute · RA-L 2025 (2025-11 채택, arXiv v2 2025-12-18) · Unitree H1(정량 결과), Unitree G1 29 DoF · Isaac Gym</p>
+  <div class="chips">
+    <a class="chip loc" href="../reference/r2s2/paper.pdf">로컬 PDF</a>
+    <a class="chip" href="https://arxiv.org/abs/2505.10918" target="_blank" rel="noopener">arXiv 2505.10918</a>
+    <a class="chip gh" href="https://github.com/GalaxyGeneralRobotics/OpenWBT" target="_blank" rel="noopener">GalaxyGeneralRobotics/OpenWBT</a>
+    <a class="chip" href="https://zzk273.github.io/R2S2/" target="_blank" rel="noopener">프로젝트 페이지</a>
+    <span class="simv s3">유사도 3</span>
+    <span class="badge">Apache-2.0 (OpenWBT)</span>
+  </div>
+</header>
+
+<div class="callout blue tldr">보행(vx·vy·ω)·몸 자세(높이·몸통 굽힘)·손 도달(6D 자세) 기본 기술 셋을 따로 PPO 로 학습하고, DAgger 와 PPO 를 동시에 섞어 CVAE student 하나로 묶은 뒤(기술 사이 조정·전환까지 확장), 과제별 상위 PPO 가 <b>동결 디코더 위 잠재 z</b> 를 낸다. H1 상자 들기 시뮬 100 %, 실기 9/10. 같은 앙상블을 MLP + 명시 명령(이산 기술 지시자 포함)으로 쓰면 상자 43.29 %.</div>
+
+<div class="callout">이 PDF(8 쪽)에는 부록이 없다. 망 크기·잠재 차원, PPO 하이퍼파라미터, λ<sub>3</sub>·λ<sub>4</sub>, env 수·반복 수·학습 시간, 무작위화 범위, 기술 명령 범위, 제어 주기, 종료 조건, 상위 관측 구성, 상자 크기·질량은 모두 <b>논문에 없음</b>. 실기는 로봇–목표 관계를 모션 캡처로 받는다(p.8).</div>
+
+<h2 class="ps">우리와 무엇이 같고 다른가</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>이 논문</th><th>우리 (dev10 pelvis_pick)</th></tr></thead>
+  <tbody>
+    <tr><td>하위 제어기</td><td>CVAE 앙상블 student 의 <b>디코더 D(a|s, z)</b>, 상위 학습 중 동결(p.5). 전신 관절 PD 목표를 낸다. 팔(손 도달)도 하위 안에 있다</td><td>dev12 하체 RL(MLP), 골반 vx·vy·ωz·높이·pitch·roll 추종, 상체 11 은 하위 밖 외부 PD 목표(하위가 저역 통과 목표와 변화율 관측), 손 하중 0–5 kg 학습, 스모크만</td></tr>
+    <tr><td>상위 출력</td><td>잠재 z<sub>t</sub> 하나(차원 논문에 없음). 해석 가능한 명령은 내지 않는다(p.5)</td><td>상체 11 관절 목표 + 골반 명령(연속, 이산 모드 없음)</td></tr>
+    <tr><td>과제·물체</td><td>Box Pickup: 앞 2 m × 2 m 안, 높이 0.2–1.2 m 에 놓인 상자를 1.4 m 까지 들기. 보상이 "손 → 상자 옆면" 거리이고(표 2), 그림 1(b) 에서 두 손으로 옆면을 끼운다(p.1, p.6). 크기·질량 논문에 없음</td><td>바닥·받침대 0/0.1/0.2/0.3 m, 박스 37×40.5×29 cm, 0.5–2 kg, 발끝 앞 0.04–0.30 m, 옆 ±0.15 m, yaw ±40°, 두 손바닥 옆면 조이기 후 일어서 유지</td></tr>
+    <tr><td>지각·증류</td><td>시각 없음. 상위는 특권 과제 상태, 실기는 모션 캡처(p.8). "증류"는 기술 teacher → CVAE student(같은 고유감각, p.5)</td><td>특권 teacher → D436 깊이(26×64, 6 프레임) + 고유감각 student (DAgger)</td></tr>
+    <tr><td>학습 방식</td><td>모든 단계 PPO(p.3). 앙상블 단계는 DAgger + PPO 동시(식 6)</td><td>rsl_rl PPO teacher → DAgger student</td></tr>
+    <tr><td>하위 명령 공간</td><td>기술별 명령: 보행 ⟨vx, vy, ω⟩(기저 좌표), 몸 자세 ⟨높이 h, 몸통 굽힘 b⟩(세계 좌표), 손 ⟨6D 손 끝 자세⟩(로봇 지역 좌표)(p.4). 범위 논문에 없음</td><td>vx ±0.8, vy ±0.4 m/s, ωz ±1.0 rad/s, 높이 서기 0.335–0.77 / 걷기 0.42–0.77 m, pitch −45°–45°, roll ±10°(서기만)</td></tr>
+    <tr><td>로봇</td><td>H1(키 1.8 m), G1 29 DoF(p.2). 허리 yaw 인터페이스 없음(한계, p.8)</td><td>K1 35.7 kg, 23 DoF(다리 12, 허리 yaw 1, 팔 2×5), 손가락 없는 고무 공 손</td></tr>
+    <tr><td>주기</td><td>논문에 없음</td><td>dev12 하위 고정, 상위 주기 설계 중</td></tr>
+    <tr><td>실기 결과</td><td>H1 상자 9/10, 거리 오차 0.08 m. 점 닿기 3 과제 10/10(표 3)</td><td>아직 없음(dev10 v2: teacher 90 %, student Isaac 69 %, MuJoCo 50 %)</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">1. 문제와 과제</h2>
+<ul>
+  <li><b>문제</b>: 선반 위부터 바닥까지 닿으려면 기저 위치·방향, 몸 높이·자세, 손 자세를 함께 써야 한다. 한 정책으로 처음부터 배우면 최적화가 어렵고 sim2real 이 나쁘다(p.1–2).</li>
+  <li><b>기존 방법의 비용</b>: AMO 는 궤적 최적화 안내, HOMIE 는 복잡한 보상·커리큘럼에 기대고, 둘 다 기본 명령 공간에서 텔레옵 시연을 모아 IL 한다(p.2–3).</li>
+  <li><b>제안</b>: 실기 검증된 기본 기술을 먼저 따로 만들고, 이들을 하나의 연속 잠재 공간으로 묶은 뒤, 과제별 상위 RL 이 그 공간에서 표집한다. 사람 시연은 쓰지 않는다(p.2–3, 표 1).</li>
+</ul>
+
+<h3 class="ps">관련 방법 비교 (p.2, 표 1)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>방법</th><th>실기</th><th>기술 사전</th><th>기술 공간</th></tr></thead>
+  <tbody>
+    <tr><td>PULSE</td><td>없음</td><td>사람 모션</td><td>잠재, RL 용</td></tr>
+    <tr><td>HOMIE</td><td>G1</td><td>보상</td><td>기본 명령, IL 용</td></tr>
+    <tr><td>AMO</td><td>G1</td><td>궤적 최적화</td><td>기본 명령, IL 용</td></tr>
+    <tr class="ours"><td>R2S2</td><td>G1, H1</td><td>기본 기술</td><td>잠재, RL 용</td></tr>
+  </tbody>
+</table></div>
+
+<h3 class="ps">평가 과제 4 개 (p.6)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>과제</th><th>배치</th><th>성공 기준</th><th>거리 오차(DE)</th></tr></thead>
+  <tbody>
+    <tr><td>Single-point Touch</td><td>앞 2 m × 2 m 정사각형 안 한 점, 높이 0.1–2.0 m, 한 손으로</td><td>점 5 cm 이내</td><td>손 끝–점 최근접 거리 평균</td></tr>
+    <tr><td>Dual-point Touch</td><td>두 점, 각 높이 0.1–2.0 m, 두 점 거리 &lt; 1 m, 손마다 하나</td><td>각 점 5 cm 이내</td><td>같음</td></tr>
+    <tr><td>Shelf Touch</td><td>다층 선반 안 한 점, 높이 0.1–2.0 m, 선반 충돌 없이</td><td>5 cm 이내</td><td>같음</td></tr>
+    <tr><td>Box Pickup</td><td>앞 2 m × 2 m 안 상자, 높이 0.2–1.2 m. 1.4 m 까지 들기</td><td>상자 1.3 m 위</td><td>상자와 1.4 m 높이 사이 최근접 거리</td></tr>
+  </tbody>
+</table></div>
+<p>시뮬은 10,000 회 평균, 실기는 sim2real 가능한 방법만 10 회 평균(p.6).</p>
+
+<h2 class="ps">2. 시스템 구조</h2>
+<div class="fig">
+  <p><b>1단계 — 기본 기술 학습 (부위별 PPO, 나머지 관절 고정)</b></p>
+  <div class="flow">
+    <span class="node">보행 π<sup>loco</sup>: ⟨vx, vy, ω⟩ → 하체 PD 목표</span>
+    <span class="node">몸 자세 π<sup>body</sup>: ⟨h, b⟩ → 하체 PD 목표</span>
+    <span class="node">손 도달 π<sup>hand</sup>: ⟨6D 손 끝 자세⟩ → 두 팔 PD 목표</span>
+  </div>
+  <p><b>2단계 — 이종 기술 앙상블 (CVAE student 학습)</b></p>
+  <div class="flow">
+    <span class="node frozen">teacher: 하체 π<sup>loco</sup> 또는 π<sup>body</sup> + 상체 π<sup>hand</sup> (동결)</span>
+    <span class="arr">→ a* = concat(a<sup>lower</sup>, a<sup>upper</sup>) → DAgger 손실 →</span>
+    <span class="node">student: 인코더 E(z|s, g) · 학습 사전 P(z|s) · 디코더 D(a|s, z)</span>
+    <span class="arr">← PPO 손실(두 teacher 보상 합) ←</span>
+    <span class="node">시뮬: 부위별 명령 동시 + 에피소드 중 하체 기술 전환</span>
+  </div>
+  <p><b>3단계 — 과제별 상위 정책 (실행 시 흐름)</b></p>
+  <div class="flow">
+    <span class="node">과제 목표 g<sup>high</sup> (점·상자) + 상태 s<sup>high</sup></span>
+    <span class="arr">→</span>
+    <span class="node">상위 π<sup>plan</sup> (PPO 학습)</span>
+    <span class="arr">→ 잠재 z<sub>t</sub> →</span>
+    <span class="node frozen">디코더 D(a|s, z) (동결)</span>
+    <span class="arr">→ 전신 관절 PD 목표 →</span>
+    <span class="node">로봇 / 시뮬</span>
+  </div>
+  <p class="src">그림 2(p.4) 를 다시 그림. 점선 = 동결.</p>
+</div>
+
+<div class="tbl-wrap"><table>
+  <thead><tr><th>단계</th><th>학습되는 것</th><th>고정된 것</th><th>목적 함수</th></tr></thead>
+  <tbody>
+    <tr><td>1 기본 기술</td><td>π<sup>loco</sup>, π<sup>body</sup>, π<sup>hand</sup> 각각</td><td>해당 기술이 안 쓰는 관절(p.3)</td><td>r<sup>prim</sup> = r<sub>command</sub> + r<sub>behavior</sub> + r<sub>regularization</sub> (식 1)</td></tr>
+    <tr><td>2 앙상블</td><td>CVAE student(E, P, D)</td><td>기본 기술(teacher)</td><td>λ<sub>1</sub>L<sub>DAgger</sub> + λ<sub>2</sub>L<sub>PPO</sub> + λ<sub>3</sub>L<sub>Regu</sub> + λ<sub>4</sub>L<sub>KL</sub> (식 6, 8)</td></tr>
+    <tr><td>3 상위</td><td>과제별 π<sup>plan</sup></td><td>디코더 D ("frozen decoder", p.5)</td><td>r<sup>plan</sup> = r<sub>task</sub> + r<sub>regularization</sub> (식 10)</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>3단계에서 인코더·학습 사전을 쓰는지, z 가 사전 평균에 더하는 잔차인지(PULSE 식)는 <b>논문에 없음</b>. 문장은 "표집한 z<sub>t</sub> 를 동결 디코더로 관절 행동으로 바꾼다"뿐(p.5).</li>
+  <li>각 기본 기술은 따로 조정하고 실기에서 따로 검증할 수 있다는 것이 분리 학습의 이유(p.2).</li>
+</ul>
+
+<h2 class="ps">3. 관측과 행동</h2>
+<h3 class="ps">기본 기술 (p.3–4)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>기술</th><th>목표 g (명령)</th><th>관측 s<sub>t</sub></th><th>행동</th></tr></thead>
+  <tbody>
+    <tr><td>보행</td><td>⟨vx<sup>c</sup>, vy<sup>c</sup>, ω<sup>c</sup>⟩ 기저 좌표 선·각속도</td><td rowspan="3">[ω<sub>t</sub> 기저 각속도, g<sup>r</sup><sub>t</sub> 투영 중력, q<sub>t</sub>, q̇<sub>t</sub>, a<sub>t−1</sub>]. q·q̇·a 는 해당 부위만: 보행·몸 자세 = 하체, 손 도달 = 두 팔</td><td rowspan="3">해당 부위 관절 PD 목표 a<sup>prim</sup>, 다른 관절은 고정</td></tr>
+    <tr><td>몸 자세</td><td>⟨h<sup>c</sup>, b<sup>c</sup>⟩ 기저 높이 + 몸통 굽힘각, 세계 좌표(그림 2 는 p<sup>c</sup> 로 표기)</td></tr>
+    <tr><td>손 도달</td><td>⟨e<sup>c</sup>⟩ 목표 손 끝 6D 자세, 로봇 지역 좌표</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>명령 범위, 관절 수별 차원, PD 게인, 행동 스케일: <b>논문에 없음</b>.</li>
+</ul>
+<h3 class="ps">앙상블 student (p.5)</h3>
+<ul>
+  <li>입력: 상태 s<sub>t</sub> + 목표 g<sub>t</sub>. g<sub>t</sub> 에는 하체·상체 기술 명령과 <b>어느 teacher 가 활성인지 알리는 기술 지시자</b>가 들어간다.</li>
+  <li>출력: 전신 관절 행동 a<sub>t</sub>. 정답은 두 teacher 행동을 이은 a* = concat(a<sup>lower</sup>, a<sup>upper</sup>) (식 7).</li>
+  <li>CVAE: 인코더 E(z|s, g) = N(μ<sup>e</sup>, σ<sup>e</sup>), 디코더 D(a|s, z), 학습되는 조건부 사전 P(z|s) = N(μ<sup>p</sup>, σ<sup>p</sup>). 고정 단봉 가우시안 대신 상태별 분포를 잡는다(p.5).</li>
+</ul>
+<h3 class="ps">상위 π<sup>plan</sup> (p.5)</h3>
+<ul>
+  <li>입력: s<sup>plan</sup><sub>t</sub>, 과제 목표 g<sup>plan</sup><sub>t</sub>(점 위치, 상자 등). 구체 구성 <b>논문에 없음</b>.</li>
+  <li>출력: 잠재 z<sub>t</sub>(차원 논문에 없음) → 동결 D → 관절 행동.</li>
+</ul>
+
+<h2 class="ps">4. 보상 · 종료 · 커리큘럼</h2>
+<p>보상은 표 2(p.3) 하나에 모두 있다. 아래는 그대로 옮긴 것이다(부호·스케일도 논문 표기 그대로).</p>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>묶음</th><th>항</th><th>식</th><th>스케일</th></tr></thead>
+  <tbody>
+    <tr><td rowspan="5">r<sub>command</sub></td><td>선속도 추종(보행)</td><td>exp{−5.0 |v<sup>c</sup> − v|²}</td><td>1.0</td></tr>
+    <tr><td>각속도 추종(보행)</td><td>exp{−7.0 |ω<sup>c</sup> − ω|²}</td><td>1.0</td></tr>
+    <tr><td>몸 높이 추종(몸 자세)</td><td>exp{−4.0 |h<sup>c</sup> − h|²}</td><td>1.0</td></tr>
+    <tr><td>pitch 추종(몸 자세)</td><td>exp{−4.0 |b<sup>c</sup> − b|²}</td><td>1.0</td></tr>
+    <tr><td>손 끝 자세 추종(손 도달)</td><td>exp{−4.0 |e<sup>c</sup> − e|²}</td><td>1.0</td></tr>
+    <tr><td rowspan="6">r<sub>behavior</sub></td><td>걸음 속도(보행)</td><td>Σ<sub>foot</sub> [1 − C<sub>foot</sub>(t)] |v<sub>foot</sub>|²</td><td>1.0</td></tr>
+    <tr><td>걸음 힘(보행)</td><td>Σ<sub>foot</sub> [C<sub>foot</sub>(t)] |f<sub>foot</sub>|²</td><td>1.0</td></tr>
+    <tr><td>기저 roll(몸 자세)</td><td>exp{−4.0 r²}</td><td>1.0</td></tr>
+    <tr><td>다리 위치 대칭(몸 자세)</td><td>‖q<sub>left leg</sub> − q<sub>right leg</sub>‖²</td><td>0.5</td></tr>
+    <tr><td>다리 토크 대칭(몸 자세)</td><td>|a<sub>low</sub><sup>left leg</sup> − a<sub>low</sub><sup>right leg</sup>|</td><td>−0.2</td></tr>
+    <tr><td>두 발 접지(몸 자세)</td><td>c<sub>left</sub> · c<sub>right</sub></td><td>1.0</td></tr>
+    <tr><td rowspan="4">r<sub>regularization</sub></td><td>행동 가속</td><td>‖a<sub>t</sub> − 2a<sub>t−1</sub> + a<sub>t−2</sub>‖²</td><td>−0.01</td></tr>
+    <tr><td>행동 변화율</td><td>‖a<sub>t</sub> − a<sub>t−1</sub>‖²</td><td>−0.01</td></tr>
+    <tr><td>충돌</td><td>원치 않는 충돌</td><td>−5.0</td></tr>
+    <tr><td>기본 관절 오차</td><td>exp{−2.0 |q − q<sub>0</sub>|²}</td><td>0.2</td></tr>
+    <tr><td rowspan="5">r<sub>task</sub> (상위)</td><td>Single-point touch</td><td>exp{−dist(hand, point)}</td><td>1.0</td></tr>
+    <tr><td>Dual-point touch</td><td>exp{−dist(hands, points)}</td><td>1.0</td></tr>
+    <tr><td>Shelf touch</td><td>exp{−dist(hand, point)}</td><td>1.0</td></tr>
+    <tr class="ours"><td>Box Pickup: 손 접근</td><td>exp{−dist(hand, box side)}</td><td>1.0</td></tr>
+    <tr class="ours"><td>Box Pickup: 상자 들기</td><td>exp{−dist<sub>z</sub>(box height, 1.4)}</td><td>1.0</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li><b>보행 behavior</b>(식 2–4): 발마다 유각·입각 주기. C<sub>foot</sub>(t) 는 Von Mises 분포, t ∈ [0, 1) 는 주기 위상(Siekmann·Walk-These-Ways 참고, p.4). 주기 길이는 논문에 없음.</li>
+  <li><b>몸 자세 behavior</b>(식 5): roll·다리 위치 = 운동학 대칭, 다리 토크·두 발 접지 = 동역학 균형. "이 기술은 운동학·동역학 대칭이 실기 안정에 중요"(p.4).</li>
+  <li><b>손 도달 behavior</b>: 없음. "팔은 sim2real 이 비교적 쉽다"(p.4).</li>
+  <li><b>상위 보상</b>: r<sub>task</sub> + 1단계의 r<sub>regularization</sub> 재사용(식 10). 과제마다 r<sub>task</sub> 만 새로 정의한다. <b>상자 과제는 항이 단 둘</b>이고 접촉·쥐기·자세 항이 없다.</li>
+  <li><b>표기상 이상한 점</b>: 다리 위치 대칭 +0.5 는 제곱 차이에 양의 스케일이라 대칭을 벌주는 쪽이 아니다(벌점이면 음수여야 함). exp{−dist} 에는 거리 스케일 계수가 없다. 설명은 논문에 없음.</li>
+  <li><b>앙상블 PPO 보상</b>: 활성 하체·상체 teacher 의 보상 항을 그대로 합친 것. 조정·전환용 추가 항 없음(p.5).</li>
+  <li><b>종료 조건</b>: 논문에 없음.</li>
+  <li><b>커리큘럼</b>: 앙상블 단계의 손실 가중 λ<sub>1</sub> 을 0.95 → 0.05 로 점차 줄이고 λ<sub>2</sub> 는 반대로(식 6). 감소 모양·기간은 논문에 없음. 상위 단계 커리큘럼은 언급 없음.</li>
+</ul>
+
+<h2 class="ps">5. 학습 설정 (알고리즘 · 망 · 무작위화)</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>값</th><th>출처</th></tr></thead>
+  <tbody>
+    <tr><td>RL 알고리즘</td><td>모든 정책 PPO</td><td>p.3</td></tr>
+    <tr><td>시뮬레이터</td><td>Isaac Gym</td><td>p.3</td></tr>
+    <tr><td>student 구조</td><td>CVAE(인코더·디코더·학습 사전), PULSE 에서 착안. 층 크기·잠재 차원 논문에 없음</td><td>p.5</td></tr>
+    <tr><td>기본 기술·상위 망</td><td>논문에 없음 (w/o LS 기준선만 "MLP student" 로 명시)</td><td>p.7</td></tr>
+    <tr><td>손실 가중</td><td>λ<sub>1</sub> 0.95 → 0.05, λ<sub>2</sub> 반대, λ<sub>3</sub>·λ<sub>4</sub> 논문에 없음</td><td>p.5</td></tr>
+    <tr><td>도메인 무작위화</td><td>관측 가우시안 잡음, 동역학 파라미터 무작위화, 무작위 외력. 범위 논문에 없음</td><td>p.3</td></tr>
+    <tr><td>env 수·반복 수·시간</td><td>논문에 없음. 그림 4 의 앙상블 단계 곡선은 0–15k 반복 구간(그림 읽기)</td><td>그림 4, p.7</td></tr>
+    <tr><td>PPO 하이퍼파라미터</td><td>논문에 없음</td><td>–</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">6. teacher → student / 증류</h2>
+<p>여기서 증류는 지각 증류가 아니라 <b>기술 teacher 여럿 → CVAE student 하나</b>다(이종 기술 앙상블, p.4–5). student 와 teacher 는 같은 고유감각을 본다.</p>
+<h3 class="ps">왜 기본 기술을 그냥 이어 쓰면 안 되나 (p.4–5)</h3>
+<ul>
+  <li><b>조정·전환이 분포 밖</b>: 따로 학습해서 "쪼그리며 팔 뻗기", "보행 → 몸 자세 전환"을 본 적이 없다. 부위별 행동을 이어 붙이거나 기술을 바꾸면 불안정하거나 넘어진다.</li>
+  <li><b>명령 공간이 서로 다름</b>: 상위가 모든 명령을 동시에 내면 충돌(예: 빨리 걸으며 아주 낮게 쪼그리기). 기술 지시자 + 해당 명령을 내게 하면 "<b>이산 지시자가 RL 탐색을 막고 상위가 한 기술만 고집</b>"했다.</li>
+</ul>
+<h3 class="ps">앙상블 학습 절차 (p.5)</h3>
+<ol>
+  <li><b>환경</b>: 매 스텝 teacher 둘이 활성: 하체 π<sup>lower</sup> ∈ {π<sup>loco</sup>, π<sup>body</sup>}, 상체 π<sup>upper</sup> = π<sup>hand</sup>. 부위별 목표를 동시에 준다(걸으면서 손 6D 추종 = 조정). 에피소드 중 하체 기술을 무작위로 바꾼다(π<sup>lower</sup><sub>t+1</sub> ≠ π<sup>lower</sup><sub>t</sub> = 전환).</li>
+  <li><b>IL</b>: L<sub>DAgger</sub> = E ‖a<sup>ensem</sup><sub>t</sub> − a*<sub>t</sub>‖² (식 7). student 가 굴리고 teacher 가 정답을 단다.</li>
+  <li><b>RL</b>: L<sub>PPO</sub> 는 두 teacher 의 보상을 합친 보상. 추가 항 없이 조정·전환을 배운다.</li>
+  <li><b>혼합</b>: L<sub>Ensem</sub> = λ<sub>1</sub>L<sub>DAgger</sub> + λ<sub>2</sub>L<sub>PPO</sub>, λ<sub>1</sub> 0.95 → 0.05 (식 6). 처음엔 모방, 나중엔 탐색. <b>teacher 감독을 끝까지 유지</b>해 망각을 막는다.</li>
+  <li><b>잠재 정리</b>: L<sub>Regu</sub> = ‖μ<sup>e</sup>(s<sub>t</sub>, g<sub>t</sub>) − μ<sup>e</sup>(s<sub>t+1</sub>, g<sub>t+1</sub>)‖ (식 9) 로 이웃 시점 잠재를 붙여 전환이 잠재 공간에서 연속이 되게 하고, L<sub>KL</sub> = D<sub>KL</sub>(E ‖ P) 로 사후를 학습 사전에 묶는다(식 8).</li>
+</ol>
+<h3 class="ps">순차 IL → RL 과의 차이 (그림 4, 표 4, p.7)</h3>
+<ul>
+  <li>순차(Seq-ILRL): IL 사전학습 뒤 RL 만. 약 5k 반복에서 RL 을 켜자 정규화 명령 추종 정확도가 약 0.6 → 0.3 으로 무너지고 회복 못 함. "처음부터 학습보다도 나쁘다"(그림 읽기, p.7).</li>
+  <li>동시(R2S2): 약 0.7 까지 오르고 유지. IL 만(w/o SE) 은 약 0.6 에서 정체. 기본 기술 없이 처음부터(w/o PS) 는 15k 에서 약 0.6(그림 읽기).</li>
+</ul>
+
+<h2 class="ps">7. 결과</h2>
+<p>정량 결과는 모두 Unitree H1(p.6).</p>
+<h3 class="ps">기준선 비교 (표 3, p.7)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>방법</th><th>한 점 SR %</th><th>DE m</th><th>두 점 SR %</th><th>DE m</th><th>선반 SR %</th><th>DE m</th><th>상자 SR %</th><th>DE m</th><th>sim2real</th></tr></thead>
+  <tbody>
+    <tr><td>시뮬 Vanilla PPO</td><td>11.63</td><td>0.49</td><td>5.71</td><td>0.52</td><td>13.20</td><td>0.37</td><td>0.00</td><td>0.65</td><td>불가</td></tr>
+    <tr><td>시뮬 Vanilla DreamerV3</td><td>30.51</td><td>0.15</td><td>22.83</td><td>0.33</td><td>8.93</td><td>0.28</td><td>0.00</td><td>0.59</td><td>불가</td></tr>
+    <tr><td>시뮬 HumanoidBench 계층 RL</td><td>100</td><td>0.04</td><td>100</td><td>0.04</td><td>47.69</td><td>0.13</td><td>0.00</td><td>0.44</td><td>불가</td></tr>
+    <tr class="ours"><td>시뮬 R2S2</td><td>100</td><td>0.03</td><td>100</td><td>0.03</td><td>100</td><td>0.02</td><td>100</td><td>0.04</td><td>가능</td></tr>
+    <tr class="ours"><td>실기 R2S2 (10 회)</td><td>100</td><td>0.03</td><td>100</td><td>0.03</td><td>100</td><td>0.03</td><td>90</td><td>0.08</td><td>–</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>사전 없는 PPO·DreamerV3 는 쉬운 과제도 못 풀고 동작이 불안정해 실기 불가(p.6).</li>
+  <li>HumanoidBench 계층(하위 = 두 손 도달 정책)은 보조 보상으로 점 닿기는 풀지만, 심한 떨림 때문에 선반·상자에서 무너지고 실기 불가(p.6, 그림 3).</li>
+</ul>
+<h3 class="ps">구성 요소 절제 (표 4, p.7)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>변형</th><th>한 점 SR %</th><th>두 점 SR %</th><th>선반 SR %</th><th>상자 SR %</th><th>상자 DE m</th><th>sim2real</th></tr></thead>
+  <tbody>
+    <tr><td>w/o PS (기본 기술 없이 다기술 제어기를 처음부터)</td><td>49.58</td><td>43.15</td><td>47.81</td><td>30.74</td><td>0.26</td><td>불가</td></tr>
+    <tr><td>w/o SE (앙상블을 IL 만으로)</td><td>30.51</td><td>26.39</td><td>28.34</td><td>22.82</td><td>0.33</td><td>불가</td></tr>
+    <tr><td>w/ Seq-ILRL (IL 후 RL 만)</td><td>47.16</td><td>45.98</td><td>54.72</td><td>29.53</td><td>0.24</td><td>불가</td></tr>
+    <tr><td>w/o LS (MLP student + 기술 지시자 + 기본 명령을 상위가 냄)</td><td>56.87</td><td>52.38</td><td>44.86</td><td>43.29</td><td>0.19</td><td>가능</td></tr>
+    <tr class="ours"><td>R2S2 전체</td><td>100</td><td>100</td><td>100</td><td>100</td><td>0.04</td><td>가능</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li><b>w/o PS · w/o SE · Seq-ILRL</b>: 하위 기술 학습이 모자라 상위가 쓸 기술이 없다. w/o SE 는 상위가 지시자를 바꿔 하체 기술이 전환될 때 가끔 넘어진다(p.7).</li>
+  <li><b>w/o LS</b>: 하위 추종 정확도는 영향 없음. 저하는 순전히 상위 학습 난이도 탓: "지시자와 서로 다른 명령 공간의 날 조합에서 표집하면 RL 탐색이 크게 비효율적"(p.7). 논문은 이 기준선을 AMO·HOMIE 식 기본 명령 공간과의 비교로도 본다.</li>
+</ul>
+
+<h2 class="ps">8. 실기 · sim2real</h2>
+<ul>
+  <li><b>로봇</b>: H1(키 1.8 m), G1(29 DoF) 둘 다 실기 시연(p.2, 그림 1). 그림 1(b) 의 상자 사진: G1 이 바닥 상자를 두 손으로 옆에서 끼우는 장면, H1 이 낮은 받침대 위 상자를 두 팔 사이에 끼워 머리 위로 올리는 장면(그림 읽기). 표 3 실기 숫자가 어느 로봇인지는 "정량 결과는 H1"(p.6) 한 문장뿐.</li>
+  <li><b>물체·목표 상태</b>: 모션 캡처(p.8, 한계 3). 그림 1 의 H1 몸에 마커가 보인다(그림 읽기).</li>
+  <li><b>결과</b>: 상자 9/10, DE 0.08 m(시뮬 0.04 m). 점 닿기 3 과제 10/10(표 3). 실패 1 회의 원인 서술 없음.</li>
+  <li><b>sim2real 장치</b>:
+    <ul>
+      <li>기술마다 따로 조정·실기 검증(분리 학습의 장점, p.2).</li>
+      <li>기술별 behavior 보상: 보행 주기, 쪼그림 대칭·두 발 접지(p.4).</li>
+      <li>관측 잡음·동역학 무작위화·외력(범위 없음, p.3).</li>
+      <li>상위는 r<sub>task</sub> 만 새로 정의, 실기용 추가 설계 없음(p.5).</li>
+    </ul>
+  </li>
+  <li><b>기준선 실패 모양</b>: 사전 없는 정책은 불안정한 모터 동작(그림 3, 빨간 원 표시)으로 실기 불가(p.6).</li>
+  <li><b>부산물 — 텔레옵</b>: 머리에 스테레오 RGB 카메라 한 대, VR 로 손 자세를 받아 IK 로 로봇 손에 옮기고, 양손 분리 조이스틱 버튼으로 하체 이동과 손 열고 닫기(p.7).</li>
+</ul>
+
+<h2 class="ps">9. 코드에서 확인한 것</h2>
+<p>해당 없음 — 로컬 code/ 없음(카탈로그·노트 기준 OpenWBT 는 G1 텔레옵 쪽이고 잠재 기술 공간은 미공개, 이 페이지에서는 열지 않음).</p>
+
+<h2 class="ps">10. 한계</h2>
+<h3 class="ps">논문이 밝힌 것 (p.8)</h3>
+<ul>
+  <li>제어 인터페이스·기본 기술 수가 적다. 예: 몸통 yaw 제어가 없다.</li>
+  <li>공간적으로 겹치는 기술의 혼합은 아직 어렵다.</li>
+  <li>로봇–대상 관계를 모션 캡처에 기댄다. 시각 모듈이 필요하다.</li>
+</ul>
+<h3 class="ps">읽으며 본 것</h3>
+<ul>
+  <li><b>재현 값 부족</b>: 망·잠재 차원·PPO·무작위화·주기·명령 범위·학습 시간이 모두 없다.</li>
+  <li><b>상자 정보 없음</b>: 크기·질량·마찰이 없고, 손이 상자를 어떻게 붙드는지(조이는 힘, 미끄럼) 분석이 없다. 상자 보상에 접촉 항이 없다.</li>
+  <li><b>w/o LS 기준선이 여러 변수를 섞음</b>: 이산 지시자, 부위별로 다른 명령 공간, MLP student 가 한꺼번에 바뀐다. 연속 명령만 쓰는 통합 하위(우리 dev12 같은 꼴)와의 비교는 없다.</li>
+  <li><b>표기 문제</b>: 다리 위치 대칭 +0.5 부호, exp{−dist} 스케일 없음, 몸 자세 명령 기호 b(본문)·p(그림 2) 불일치.</li>
+  <li><b>실기 표본</b>: 과제당 10 회, 로봇 기종 명시 약함.</li>
+</ul>
+
+<h2 class="ps">11. 우리에게 가져올 것</h2>
+<div class="take"><ol>
+  <li><b>상위 행동은 연속 명령만, 이산 모드 플래그 금지</b>(p.5: 이산 지시자가 탐색을 막고 한 기술만 고집). "쪼그림 모드 / 걷기 모드" 같은 이산 출력을 teacher 행동에 넣지 않는다. dev10 v2 의 on/off 포화 출력과 같은 계열의 실패다.</li>
+  <li><b>명령 충돌은 상위 행동 변환에서 미리 막기</b>: R2S2 가 든 충돌 예("빨리 걸으며 아주 낮게")가 dev12 에는 범위로 이미 있다(걷기 높이 0.42 m 하한, roll 은 서기만). teacher 행동 → dev12 명령 변환에서 속도가 0 이 아닐 때 높이 하한 0.42 m, roll 0 을 강제하고, 자른 만큼 원 행동 L2 벌점(std 폭주 교훈).</li>
+  <li><b>상자 과제 보상의 최소 골격</b>(표 2): "손 → 상자 옆면 거리" + "상자 높이 → 목표 높이" 두 항, 각 1.0. 우리 teacher 의 뼈대로 두고 조임·두 손 접촉 항을 위에 얹는다. 단 exp(−d) 는 m 단위 스케일 1 이라 d = 0.05 m 에서 0.95, 0.30 m 에서 0.74 로 너무 평평하다. 커널 폭은 우리 거리(수 cm–30 cm)에 맞게 따로 정할 것(예: exp(−d/0.1), 값은 우리 결정).</li>
+  <li><b>정규화 묶음을 시작값으로</b>(표 2): 행동 변화율 −0.01, 행동 가속(2 차 차분) −0.01, 원치 않는 충돌 −5.0, 기본 자세 exp(−2|q − q<sub>0</sub>|²) 0.2. 상위 행동(골반 명령 6 + 상체 11)에 걸고, q<sub>0</sub> 는 상체 11 의 "두 손 앞으로" 기본 자세로.</li>
+  <li><b>student 증류에 DAgger + 같은 과제 보상 PPO 를 동시에</b>(식 6): λ<sub>1</sub> 을 0.95 에서 줄여 가고 λ<sub>2</sub> 를 올린다. 순차 IL → RL 은 RL 시작 직후 추종 0.6 → 0.3, 상자 29.53 % 로 무너졌다(그림 4, 표 4). dev10 v2 student 격차(Isaac 69 % vs teacher 90 %)를 줄일 후보: 깊이 student 가 자기 관측으로 못 따라 하는 부분(접촉 정보)을 RL 로 메우되 teacher 감독은 끝까지 유지. 최종 λ<sub>1</sub> 을 0.05 까지 내릴지는 시험으로 정할 것(R2S2 student 는 teacher 와 같은 관측을 봄).</li>
+  <li><b>dev12 동결 전 "조정·전환" 점검</b>(p.4–5): R2S2 는 따로 배운 기술을 이으면 넘어진다고 보고하고, 부위별 명령 동시 송신 + 에피소드 중 기술 전환으로 해결했다. dev12 스모크에 (a) 걷는 중 상체 11 목표의 빠른 변화와 0–5 kg 손 하중, (b) 서기 영역(높이 0.335–0.42 m, pitch, roll) ↔ 걷기 영역 전환을 에피소드 중간에 넣어 추종 오차·넘어짐을 잰다.</li>
+  <li><b>쪼그림 안정 점검 항목</b>(표 2, p.4): 두 발 동시 접지 c<sub>left</sub>·c<sub>right</sub>(1.0), 기저 roll exp(−4r²)(1.0), 다리 토크 대칭(−0.2). 상위 학습 중 dev12 가 낮은 높이·큰 pitch 에서 한 발 들림이나 좌우 토크 비대칭을 보이면 여기서 원인을 찾는다(고칠 땐 dev12 쪽에서).</li>
+  <li><b>평가 꼴</b>(p.6): 성공률과 거리 오차를 같이 보고, 성공 문턱은 목표보다 약간 아래(1.4 m 목표에 1.3 m). 우리 고정 평가셋에서도 성공률 + "상자 높이 목표까지 남은 거리" + 양손–옆면 거리를 같이 기록.</li>
+  <li><b>잠재 행동 공간은 "다음 수"로 보관</b>: 명시 명령 상위가 탐색에서 막히면(43.29 % → 100 % 근거), dev12 를 그대로 두고 상위 위에 저차원 행동 사전(예: 상체 11 + 골반 명령을 IK 기준 자세로 묶은 잠재)을 두는 선택지를 검토.</li>
+</ol></div>
+<h3 class="ps">가져오지 말 것</h3>
+<ul>
+  <li><b>하위를 CVAE 잠재 디코더로 갈아타기</b>: 하위를 기술 teacher 들로부터 DAgger + PPO 로 다시 학습해야 한다. dev12 는 MLP 명령 추종 정책이고 팔은 하위 밖이다. z 는 해석이 안 돼 dev12 범위 자르기·추종 오차 감시도 못 한다.</li>
+  <li><b>6D 손 끝 자세 명령</b>: K1 팔은 5 자유도라 임의 6D 자세를 못 만든다. 상체는 관절 목표로 둔다.</li>
+  <li><b>실기 90 % 를 기대치로</b>: 상자·목표 상태를 모션 캡처로 받은 숫자다. 우리 student 는 D436 깊이로 상자를 본다.</li>
+  <li><b>w/o LS 43.29 % 를 "명령 공간 상위는 안 된다"로 읽기</b>: 그 기준선은 이산 지시자 + 부위별로 다른 명령 공간 + MLP student 의 묶음이다. 연속 통합 명령인 dev12 와 같은 조건이 아니다.</li>
+  <li><b>상자 목표 1.4 m(머리 위)·받침 0.2–1.2 m 분포</b>: 우리는 바닥·0.3 m 이하에서 집어 서서 유지한다. 과제 분포를 그대로 쓰면 바닥 도달 한계 문제를 피해 간다.</li>
+  <li><b>Vanilla PPO 0 % 를 우리 상황의 근거로</b>: 하위 없이 관절을 처음부터 배우는 PPO 다. 동결 하위 위 상위 PPO 와 다르다.</li>
+  <li><b>보행 주기 보상(Von Mises)</b>: 하위 보행 학습용이다. dev12 는 AMP 로 걷고 동결한다.</li>
+</ul>
+
+<p class="src">출처 표기: (p.N) = PDF 쪽, (표 N), (그림 N), (식 N). 논문에 없는 값은 "논문에 없음". "그림 읽기"는 그림에서 눈으로 읽은 근삿값.</p>
+</main>
+</body>
+</html>

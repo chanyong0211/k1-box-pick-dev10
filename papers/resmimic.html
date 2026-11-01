@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ResMimic — 논문 상세</title>
+<link rel="stylesheet" href="paper.css">
+</head>
+<body>
+<main class="wrap">
+<a class="back" href="../index.html#catalog">← 자료 목록으로</a>
+
+<header class="ph">
+  <h1>ResMimic: 사람 동작으로 학습한 범용 추적기(GMT)를 고정하고 그 출력에 잔차를 더해 전신 로코매니퓰레이션을 배우기</h1>
+  <p class="orig">ResMimic: From General Motion Tracking to Humanoid Whole-body Loco-Manipulation via Residual Learning</p>
+  <p class="meta">Siheng Zhao, Yanjie Ze (공동 1저자), Yue Wang, C. Karen Liu, Pieter Abbeel, Guanya Shi, Rocky Duan · Amazon FAR, USC, Stanford, UC Berkeley, CMU · 사전 공개 (arXiv 2025-10, v2) · Unitree G1 29 DoF(1.3 m), 고무 손 · IsaacGym 학습, MuJoCo sim2sim 평가</p>
+  <div class="chips">
+    <a class="chip loc" href="../reference/resmimic/paper.pdf">로컬 PDF</a>
+    <a class="chip loc" href="../reference/resmimic/code/">로컬 코드</a>
+    <a class="chip" href="https://arxiv.org/abs/2510.05070" target="_blank" rel="noopener">arXiv 2510.05070</a>
+    <a class="chip gh" href="https://github.com/amazon-far/ResMimic" target="_blank" rel="noopener">amazon-far/ResMimic</a>
+    <a class="chip" href="https://resmimic.github.io/" target="_blank" rel="noopener">프로젝트 페이지</a>
+    <span class="simv s5">유사도 2–5</span>
+    <span class="badge">Apache-2.0</span>
+    <span class="badge wt">가중치</span>
+  </div>
+</header>
+
+<div class="callout blue tldr">AMASS·OMOMO 약 42 시간으로 학습한 GMT 를 고정하고, 물체 상태를 보는 잔차 정책이 a = a<sub>GMT</sub> + Δa(29 차원)를 낸다. 가상 물체 PD 힘 커리큘럼·점구름 물체 보상·접촉 보상을 더해 MuJoCo 4 과제 평균 성공 92.5 %(GMT 단독 10 %, 처음부터 0 %, GMT 미세조정 7.5 %), 수렴 1,300 iter (p.5 표 I).</div>
+
+<div class="callout">유사도가 2–5 인 이유: 동결 제어기 인터페이스 메모는 5(지난 dev10 v2 의 "동결 SONIC + teacher" 와 같은 계열, 하위 고정 + 잔차의 정량 근거), 계층 명령 메모는 2(상위가 명령이 아니라 관절 잔차를 냄), 박스 메모는 3.</div>
+
+<h2 class="ps">우리와 무엇이 같고 다른가</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>이 논문</th><th>우리 (dev10 pelvis_pick)</th></tr></thead>
+  <tbody>
+    <tr><td>하위 제어기</td><td><strong>고정 GMT</strong>(TorchScript, 사람 동작 추종). 입력 = 고유감각 + 사람 참조 동작</td><td class="ours">dev12 하체 RL(동결), 골반 vx·vy·ωz·높이·pitch·roll 추종, 상체 11 외부 PD</td></tr>
+    <tr><td>상위 출력</td><td>잔차 Δa ∈ R<sup>29</sup> 를 GMT 의 <strong>행동(관절 목표) 위에 직접</strong> 더함. 하위 입력을 바꾸지 않음</td><td class="ours">상체 11 관절 목표(PD 직행) + 골반 명령(하위 입력)</td></tr>
+    <tr><td>과제·물체</td><td>과제별 MoCap HOI 참조 1 개 추종: Kneel(한 무릎 꿇고 상자 들기), Carry(상자 등에 업기), Squat(팔·몸통으로 상자 들기), Chair(의자 들기). 실기 상자 4.5 kg</td><td class="ours">바닥·받침대 0–0.3 m 박스 37×40.5×29 cm, 0.5–2 kg, 두 손 옆면 조이기, 배치 무작위</td></tr>
+    <tr><td>지각·증류</td><td>잔차는 MoCap 물체 상태를 봄(non-blind) 또는 안 봄(blind). 시각 없음</td><td class="ours">특권 teacher → D436 깊이 student (DAgger)</td></tr>
+    <tr><td>지난 dev10 v2 와 비교</td><td>잔차를 추종기 <strong>뒤</strong>(관절 행동)에 더함 → 추종기가 못 따라가는 문제 없음</td><td class="ours">v2: 동결 SONIC <strong>앞</strong>(참조 관절)에 13 차원 오프셋 → 허리 등 추종 못 함. 이번: 상체는 PD 직행(ResMimic 과 같은 위치), 다리만 명령 경유</td></tr>
+    <tr><td>로봇·손</td><td>G1 29 DoF, 고무 손(rubber hand 링크)</td><td class="ours">K1 23 DoF, 고무 공 손</td></tr>
+    <tr><td>시뮬레이터·물리</td><td>IsaacGym, dt 2 ms, decimation 10 (코드). 평가는 MuJoCo</td><td class="ours">Isaac Lab + Newton, 평가 MuJoCo sim2sim</td></tr>
+    <tr><td>학습 방식</td><td>두 단계 모두 PPO. 잔차는 과제당 하나</td><td class="ours">PPO teacher, 하위 고정</td></tr>
+    <tr><td>성공 정의</td><td>물체 점구름 오차 E<sub>o</sub> 가 임계 미만 + 균형 유지 (임계값 논문에 없음)</td><td class="ours">집어 들고 서서 유지</td></tr>
+    <tr><td>실기</td><td>G1 시연(blind·MoCap non-blind), 정량 실기 표 없음 (p.5, p.7)</td><td class="ours">아직 없음</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">1. 문제와 과제</h2>
+<ul>
+  <li>문제 (p.1–2): GMT 는 사람 동작을 잘 따라 하지만 물체를 모르고 정밀하지 않다. 리타게팅한 사람–물체 데이터는 몸 크기 차이 때문에 손이 물체를 뚫거나 허공에 떠 있다(그림 2). 기존 로코매니퓰레이션은 단계별 제어기·과제별 데이터 파이프라인에 의존.</li>
+  <li>관찰: 균형·발 딛기·뻗기 같은 전신 동작은 과제 간에 공유되고, 물체와의 세밀한 상호작용만 과제별로 고치면 된다 → 사전학습 + 잔차 사후학습.</li>
+  <li>과제 4 개 (p.6): Kneel, Carry(등에 업기), Squat(팔과 몸통으로 들기 — 전신 접촉), Chair(무겁고 불규칙한 의자 들기). 참조는 OptiTrack 으로 사람·물체를 함께 녹화.</li>
+</ul>
+
+<h2 class="ps">2. 시스템 구조</h2>
+<div class="fig">
+  <p><strong>1 단계: GMT (과제 무관, 고정 대상)</strong></p>
+  <div class="flow">
+    <span class="node">AMASS + OMOMO 15,000+ 클립(약 42 h), 계단 등 제외</span><span class="arr">→</span>
+    <span class="node">GMR 리타게팅 → G1 참조</span><span class="arr">→</span>
+    <span class="node">PPO 로 π<sub>GMT</sub> 학습 (TWIST 보상·DR)</span><span class="arr">→</span>
+    <span class="node frozen">π<sub>GMT</sub> 고정 (base_policy.pt)</span>
+  </div>
+  <p style="margin-top:12px"><strong>2 단계: 잔차 (과제별, 학습)</strong></p>
+  <div class="flow">
+    <span class="node">고유감각 + 사람 참조</span><span class="arr">→</span>
+    <span class="node frozen">π<sub>GMT</sub> → a<sub>GMT</sub></span><span class="arr">⊕</span>
+    <span class="node">π<sub>Res</sub>(고유감각, 물체 상태, 사람 참조, 물체 참조) → Δa</span><span class="arr">→</span>
+    <span class="node">a = a<sub>GMT</sub> + Δa → 관절 목표 (×0.5) 50 Hz</span><span class="arr">→</span>
+    <span class="node">PD 500 Hz</span>
+  </div>
+  <div class="flow" style="margin-top:8px">
+    <span class="node">가상 물체 PD 힘 F = k<sub>p</sub>(p̂ − p) − k<sub>d</sub>v, 토크 동일 꼴</span><span class="arr">→</span>
+    <span class="node">k<sub>p</sub>·k<sub>d</sub> 를 점차 줄여 0 으로 (학습 초기만 받쳐 줌)</span>
+  </div>
+  <p style="margin-top:12px"><strong>3 단계: 실기</strong></p>
+  <div class="flow">
+    <span class="node">고유감각 (+ 선택: MoCap 물체 상태)</span><span class="arr">→</span>
+    <span class="node frozen">π<sub>GMT</sub> + π<sub>Res</sub></span><span class="arr">→</span>
+    <span class="node">G1</span>
+  </div>
+  <p style="margin-top:8px;font-size:13px">주기: 코드 sim dt 0.002 s × decimation 10 = 정책 50 Hz, 물리 500 Hz. GMT 는 <code>torch.jit.load</code> 로 불러 <code>no_grad</code> + <code>detach()</code> — 그래디언트가 흐르지 않는 완전 고정.</p>
+</div>
+
+<h2 class="ps">3. 관측과 행동</h2>
+<h3 class="ps">논문 정의 (p.3–4)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>기호</th><th>내용</th><th>창</th></tr></thead>
+  <tbody>
+    <tr><td>로봇 고유감각 s<sup>r</sup></td><td>루트 자세 θ, 루트 각속도 ω, 관절 위치 q ∈ R<sup>29</sup>, 관절 속도 q̇, 최근 행동 a<sup>hist</sup></td><td>t−10…t</td></tr>
+    <tr><td>사람 참조 ŝ<sup>r</sup></td><td>참조 루트 위치 p̂, 루트 자세 θ̂, 관절 q̂</td><td>t−10…t+10 (미래 포함)</td></tr>
+    <tr><td>물체 상태 s<sup>o</sup></td><td>[p<sup>o</sup>, θ<sup>o</sup>, v<sup>o</sup>, ω<sup>o</sup>]</td><td>현재</td></tr>
+    <tr><td>물체 참조 ŝ<sup>o</sup></td><td>[p̂<sup>o</sup>, θ̂<sup>o</sup>, v̂<sup>o</sup>, ω̂<sup>o</sup>]</td><td>t−10…t+10</td></tr>
+    <tr><td>GMT 입력</td><td>(s<sup>r</sup>, ŝ<sup>r</sup>) — 물체 없음</td><td></td></tr>
+    <tr><td>잔차 입력</td><td>(s<sup>r</sup>, s<sup>o</sup>, ŝ<sup>r</sup>, ŝ<sup>o</sup>)</td><td></td></tr>
+    <tr><td>행동</td><td>a<sub>t</sub> = a<sup>gmt</sup> + Δa<sup>res</sup>, Δa ∈ R<sup>29</sup> = 관절 목표 (PD)</td><td></td></tr>
+  </tbody>
+</table></div>
+<h3 class="ps">공개 코드의 실제 관측 (<a href="../reference/resmimic/code/legged_gym/legged_gym/envs/g1/g1_hoi.py"><code>g1_hoi.py</code></a>, <a href="../reference/resmimic/code/legged_gym/legged_gym/envs/g1/g1_mimic_future_config.py"><code>g1_mimic_future_config.py</code></a>)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>묶음</th><th>구성</th><th>차원</th></tr></thead>
+  <tbody>
+    <tr><td>현재 참조(mimic)</td><td>루트 xy 속도 2, 루트 z 1, roll·pitch 2, yaw 각속도 1, 관절 29</td><td>35</td></tr>
+    <tr><td>고유감각</td><td>각속도 3, roll·pitch 2, 관절 위치 29, 관절 속도 29(발목 4 개는 0 으로), 직전 행동 29</td><td>92</td></tr>
+    <tr><td>이력</td><td>위 두 묶음(127)을 10 스텝 + 현재</td><td>127 × 11 = 1,397</td></tr>
+    <tr><td>미래 참조</td><td>5, 10, …, 50 스텝 뒤(0.1–1.0 s) 10 시점 × (35 + 마스크 1)</td><td>360</td></tr>
+    <tr><td>물체 (잔차만, non-blind)</td><td>물체 루트 위치 3 + 쿼터니언 4 (잡음 없음, "TODO: add noise?")</td><td>7</td></tr>
+    <tr><td>critic 특권</td><td>미래 20 시점 참조(각 21 + 29 + 27), 고유감각, 선속도, 루트 위치·자세, 핵심 몸체 9 개 위치, 발 접촉 2, 질량·마찰·모터 세기 등</td><td></td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>GMT 입력 = 잔차 입력에서 물체 7 차원을 뺀 것 (<code>full_obs_to_base_obs</code>, <a href="../reference/resmimic/code/rsl_rl/rsl_rl/runners/on_policy_dagger_runner.py"><code>on_policy_dagger_runner.py</code></a>).</li>
+  <li>관측 잡음: 관절 위치 0.01, 관절 속도 0.1, 각속도 0.1, 중력 0.05, IMU 0.1 — 50,000 × 24 스텝에 걸쳐 0 에서 점증.</li>
+  <li>행동: 29 관절, 배율 0.5, PD 이득은 G1 모터 전기자 관성 기반(hip roll·knee 99.1, hip yaw·pitch 40.2, ankle 28.5, 어깨·팔꿈치 14.3 N·m/rad 등).</li>
+</ul>
+
+<h2 class="ps">4. 보상 · 종료 · 커리큘럼</h2>
+<p>잔차 보상 = 동작 추종 보상 r<sup>m</sup>(GMT 와 같은 것, 가중 재조정 없음) + 물체 추종 r<sup>o</sup> + 접촉 r<sup>c</sup> (p.4–5).</p>
+<h3 class="ps">물체·접촉 보상 (논문)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항</th><th>식</th><th>설명</th></tr></thead>
+  <tbody>
+    <tr><td>점구름 물체 추종 r<sup>o</sup></td><td>exp(−λ<sub>o</sub> Σ<sub>i=1</sub><sup>N</sup> ‖P[i]<sub>t</sub> − P̂[i]<sub>t</sub>‖<sub>2</sub>)</td><td>물체 메시 표면에서 N 점을 뽑아 현재·참조 비교. 위치·회전을 한 항에, 가중 조정 불필요 (p.5)</td></tr>
+    <tr><td>접촉 r<sup>c</sup></td><td>Σ<sub>i</sub> ĉ<sub>t</sub>[i] · exp(−λ / f<sub>t</sub>[i]), ĉ<sub>t</sub>[i] = 1(‖d̂<sub>t</sub>[i]‖ &lt; σ<sub>c</sub>)</td><td>링크 i(몸통·엉덩이·팔, 발 제외)가 참조에서 물체 표면 σ<sub>c</sub> 안이면 "접촉 필요", 그 링크의 접촉력 f 가 클수록 보상 (p.5)</td></tr>
+  </tbody>
+</table></div>
+<p>λ<sub>o</sub>, N, λ, σ<sub>c</sub> 값은 논문에 없음.</p>
+
+<h3 class="ps">공개 코드의 보상 가중 (<a href="../reference/resmimic/code/legged_gym/legged_gym/envs/g1/g1_hoi_config.py"><code>g1_hoi_config.py</code></a>)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항</th><th>가중</th><th>식 (<code>humanoid_mimic.py</code>)</th></tr></thead>
+  <tbody>
+    <tr><td>tracking_joint_dof</td><td>2.0</td><td>exp(−0.15 Σ Δq²)</td></tr>
+    <tr><td>tracking_joint_vel</td><td>0.2</td><td>exp(−0.01 Σ Δq̇²)</td></tr>
+    <tr><td>tracking_root_translation_z</td><td>1.0</td><td>exp(−5 Δz²)</td></tr>
+    <tr><td>tracking_root_rotation</td><td>1.0</td><td>exp(−5 · 회전 오차²)</td></tr>
+    <tr><td>tracking_root_linear_vel / angular_vel</td><td>1.0 / 1.0</td><td>exp(−1.0 · 오차²)</td></tr>
+    <tr><td>tracking_keybody_pos (지역)</td><td>1.0</td><td>핵심 몸체 9 개(양손·양발목·양무릎·양팔꿈치·머리)</td></tr>
+    <tr><td>tracking_keybody_pos_global</td><td><strong>10.0</strong></td><td>전역 위치 (GMT 기본 2.0 에서 올림)</td></tr>
+    <tr><td><strong>tracking_object_point_cloud</strong></td><td><strong>2.0</strong></td><td>exp(−10 · mean<sub>i</sub> ‖P<sub>i</sub> − P̂<sub>i</sub>‖)</td></tr>
+    <tr><td>feet_air_time</td><td>5.0</td><td></td></tr>
+    <tr><td>feet_slip / feet_contact_forces / feet_stumble</td><td>−0.1 / −5e−4 / −1.25</td><td></td></tr>
+    <tr><td>dof_pos_limits / dof_torque_limits</td><td>−5.0 / −1.0</td><td></td></tr>
+    <tr><td>dof_vel / dof_acc / action_rate / ang_vel_xy</td><td>−1e−4 / −5e−8 / −0.01 / −0.01</td><td></td></tr>
+    <tr><td>ankle_dof_acc / ankle_dof_vel</td><td>−1e−7 / −2e−4</td><td></td></tr>
+  </tbody>
+</table></div>
+<div class="callout">공개 코드에는 <strong>접촉 보상과 가상 물체 제어기가 없다</strong>(저장소 전체에 해당 함수·물체 외력 코드 없음). 물체 관측도 현재 위치·자세 7 차원뿐이고 물체 참조 궤적·속도는 정책에 들어가지 않는다.</div>
+
+<h3 class="ps">종료</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>조건</th><th>논문 (p.5)</th><th>코드</th></tr></thead>
+  <tbody>
+    <tr><td>의도치 않은 지면 접촉·참조 이탈</td><td>있음 (DeepMimic 식)</td><td>지정 몸체 접촉력 &gt; 1 N, 핵심 몸체 위치 오차 &gt; 0.7 m, roll·pitch &gt; 4.0 rad(사실상 꺼짐)</td></tr>
+    <tr><td>물체 이탈</td><td>‖P<sub>t</sub> − P̂<sub>t</sub>‖ &gt; σ<sub>o</sub></td><td>점 평균 거리 &gt; <strong>0.3 m</strong></td></tr>
+    <tr><td>필요 접촉 상실</td><td><strong>10 프레임 넘게</strong> 끊기면 종료</td><td>없음</td></tr>
+    <tr><td>에피소드 길이</td><td>논문에 없음</td><td>10 s</td></tr>
+  </tbody>
+</table></div>
+
+<h3 class="ps">커리큘럼 · 초기화</h3>
+<ul>
+  <li><strong>가상 물체 제어기 커리큘럼</strong> (p.4): 매 스텝 물체에 F<sub>t</sub> = k<sub>p</sub>(p̂<sup>o</sup> − p<sup>o</sup>) − k<sub>d</sub>v<sup>o</sup>, T<sub>t</sub> = k<sub>p</sub>(θ̂<sup>o</sup> ⊖ θ<sup>o</sup>) − k<sub>d</sub>ω<sup>o</sup> 를 가하고 이득을 점차 줄임. 시작 이득·감쇠 일정은 논문에 없음.</li>
+  <li>이유: 리타게팅 관통 때문에 참조를 그대로 따라 하면 물체를 쳐서 넘어뜨리고 → 물체 보상이 낮고 조기 종료가 잦아 → <strong>로봇이 물체에서 물러나는 국소해</strong>에 빠짐(그림 7). 무거운 물체의 초기 불안정도 막음.</li>
+  <li><strong>잔차 0 근처 초기화</strong>: 마지막 층을 작은 gain 의 Xavier 균일 초기화 (p.4). 코드: <code>final_layer_gain = 0.01</code>, <code>init_noise_std = 0.1</code>(GMT 학습은 1.0).</li>
+  <li>RSI: 참조의 임의 시점 시작(<code>rand_reset</code>)은 HOI 설정에서 꺼짐(<code>rand_reset = False</code>). 물체 초기 위치 ±0.02 m, yaw ±5° (코드).</li>
+</ul>
+
+<h2 class="ps">5. 학습 설정 (알고리즘 · 망 · 무작위화)</h2>
+<p>논문은 두 단계 모두 PPO 라고만 하고, GMT 보상·DR 은 TWIST 를 따른다고 적는다 (p.3–4). 아래는 코드 값.</p>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>값 (코드)</th></tr></thead>
+  <tbody>
+    <tr><td>env 수 / rollout</td><td>4096 (<code>train.sh</code>) / 24 스텝</td></tr>
+    <tr><td>PPO</td><td>lr 2e−4 적응(KL 0.008), epoch 5, mini-batch 4, clip 0.2, γ 0.99, λ 0.95, entropy 0.005, grad norm 1.0</td></tr>
+    <tr><td>std 일정</td><td><code>std_schedule = [1.0, 0.4, 4000, 1500]</code>: 4,000 갱신 뒤 1,500 갱신에 걸쳐 1.0 → 0.4 배</td></tr>
+    <tr><td>actor·critic</td><td>MLP [512, 512, 256, 128], SiLU, LayerNorm, 미래 참조 인코더 [256, 256, 128] + 4-head 어텐션(dropout 0.1), 잠재 128 (<code>ActorCriticFuture</code>)</td></tr>
+    <tr><td>최대 iteration</td><td>잔차 500,000 (설정 상한). 논문 수렴: 평균 1,300 iter</td></tr>
+    <tr><td>학습 시간·GPU</td><td>논문에 없음 (반복 수로만 비교, p.6)</td></tr>
+  </tbody>
+</table></div>
+<h3 class="ps">도메인 무작위화 (코드 <a href="../reference/resmimic/code/legged_gym/legged_gym/envs/g1/g1_mimic_distill_config.py"><code>g1_mimic_distill_config.py</code></a>)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>대상</th><th>범위</th></tr></thead>
+  <tbody>
+    <tr><td>중력</td><td>±0.1 m/s² (4 s 마다)</td></tr>
+    <tr><td>마찰</td><td>0.1–2.0</td></tr>
+    <tr><td>몸통 질량 / COM</td><td>−3 – +3 kg / ±0.05 m</td></tr>
+    <tr><td>밀기</td><td>몸통 4 s 마다 최대 1.0 m/s, 손끝 2 s 마다(최대 1.0)</td></tr>
+    <tr><td>모터 세기</td><td>×0.8–1.2</td></tr>
+    <tr><td>행동 지연</td><td>버퍼 8 스텝</td></tr>
+    <tr><td>물체</td><td>마찰 0.1–2.0, 질량 −3 – +1 kg, COM ±0.05 m 가 정의돼 있으나 HOI 설정에서 <code>randomize_object = False</code>(꺼짐). 물체 질량 4.0 kg 고정, 위치 ±0.02 m·yaw ±5°만 켜짐</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">6. teacher → student / 증류</h2>
+<p>잔차 단계에는 증류가 없다(<code>train.sh</code> 의 <code>--teacher_exptid None</code> → KL 항 꺼짐, 순수 PPO). 논문은 GMT 를 "특권 정보 없이 단일 단계 RL"로 학습했다고 적는다 (p.3).</p>
+<ul>
+  <li>코드에는 TWIST2 에서 온 teacher → student 경로가 남아 있다: 특권 teacher(<code>G1MimicPrivCfg</code>, 미래 20 시점 참조 + 특권 정보) → student GMT(<code>DaggerPPO</code> = PPO + teacher 분포와의 KL, 계수 0.2 → 0.1 을 60,000 스텝에 걸쳐 감소). 공개 <code>base_policy.pt</code>(내부 이름 <code>0815_new_kpkd-15000-jit</code>, 15,000 iter 로 보임)가 어느 경로로 학습됐는지는 확인 불가.</li>
+  <li>LessMimic 은 이 ResMimic 을 teacher(π<sub>mimic</sub>)로 써서 참조 없는 정책을 BC 로 증류했다(LessMimic 부록 A).</li>
+</ul>
+
+<h2 class="ps">7. 결과</h2>
+<h3 class="ps">MuJoCo sim2sim 비교 (p.5 표 I, IsaacGym 학습)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>방법</th><th>Kneel</th><th>Carry</th><th>Squat</th><th>Chair</th><th>평균 SR</th><th>수렴 iter</th><th>E<sub>o</sub> 평균</th><th>E<sub>m</sub></th><th>E<sub>j</sub></th></tr></thead>
+  <tbody>
+    <tr><td>Base Policy (GMT 단독)</td><td>0 %</td><td>0 %</td><td>40 %</td><td>0 %</td><td>10 %</td><td>–</td><td>0.61</td><td>9.22</td><td>0.89</td></tr>
+    <tr><td>Train from Scratch</td><td>0 %</td><td>0 %</td><td>0 %</td><td>0 %</td><td>0 %</td><td>4,500 (Kneel 수렴 안 함)</td><td>0.76</td><td>7.04</td><td>5.84</td></tr>
+    <tr><td>Base + Finetune</td><td>0 %</td><td>30 %</td><td>0 %</td><td>0 %</td><td>7.5 %</td><td>2,400</td><td>0.46</td><td>3.44</td><td>2.30</td></tr>
+    <tr><td><strong>ResMimic</strong></td><td><strong>90 %</strong></td><td><strong>100 %</strong></td><td><strong>80 %</strong></td><td><strong>100 %</strong></td><td><strong>92.5 %</strong></td><td><strong>1,300</strong></td><td>0.12</td><td>0.13</td><td>1.29</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>E<sub>o</sub> = 시간 평균 점구름 오차, E<sub>m</sub> = 링크 전역 위치 오차, E<sub>j</sub> = 관절 오차 (p.6). 과제별 수렴: ResMimic Kneel 2,000 / Carry 1,000 / Squat 1,500 / Chair 700.</li>
+  <li>Q1: GMT 단독은 관절 오차는 가장 낮지만(물체를 모르므로) 과제는 10 %.</li>
+  <li>Q2: 처음부터 학습은 IsaacGym 에서 부분 성공해도 MuJoCo 에서 무너짐(그림 5). GMT 의 대규모 사전학습이 sim2sim 강건성을 준다.</li>
+  <li>Q3: 미세조정은 GMT 구조상 물체 관측을 추가할 수 없고, GMT 의 일반화를 덮어써 불안정 — Chair 는 IsaacGym 에서 성공하지만 MuJoCo 에서 실패 (p.7).</li>
+</ul>
+<h3 class="ps">절제 (p.7–8, 정성)</h3>
+<ul>
+  <li><strong>가상 물체 제어기 없음</strong>(그림 7): 손–물체 관통이 있는 참조에서 물체를 쳐서 넘어뜨리고, 낮은 물체 보상·잦은 조기 종료로 "물러서기" 국소해. 있으면 초기에 물체가 안정돼 정밀한 조작으로 수렴.</li>
+  <li><strong>접촉 보상 없음</strong>(그림 8): 상자를 손목·손만으로 드는 해로 수렴 → IsaacGym 에선 되지만 MuJoCo·실기에서 실패. 접촉 보상이 있으면 사람처럼 몸통 + 팔 접촉을 써 전이가 좋아짐(몸통 접촉력 그래프로 확인).</li>
+</ul>
+
+<h2 class="ps">8. 실기 · sim2real</h2>
+<ul>
+  <li>Unitree G1(29 DoF, 1.3 m). <strong>blind</strong>(물체 상태 없이, 그림 1 전부)와 <strong>non-blind</strong>(MoCap 물체 상태, 그림 4) 둘 다 가능 (p.7).</li>
+  <li>그림 1: 한 무릎 꿇고 상자 들기, 상자 등에 업기, 의자에 앉았다 일어서기, <strong>4.5 kg 상자를 전신 접촉으로 운반</strong>(G1 손목 하중 한계 약 2.5 kg), 4.5 kg·5.5 kg 의자 들기.</li>
+  <li>그림 4 (non-blind): 무작위 물체 초기 자세에서 상자 들기 11 회 연속, 무릎 꿇고 들기 연속, 외부 밀기에 반응.</li>
+  <li>그림 6: 실기에서 GMT 단독은 겉보기 동작만 따라 하고 물체를 놓침(불완전한 시연 데이터에서 더 심함), 처음부터 학습·미세조정은 sim2real 차이로 완전히 실패.</li>
+  <li>성공률 표는 없다. 실패 사례 설명도 없다.</li>
+</ul>
+
+<h2 class="ps">9. 코드에서 확인한 것</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>파일</th><th>내용</th></tr></thead>
+  <tbody>
+    <tr><td><a href="../reference/resmimic/code/legged_gym/assets/checkpoints/base_policy.pt"><code>legged_gym/assets/checkpoints/base_policy.pt</code></a></td><td><strong>실제 가중치</strong>(LFS 포인터 아님, 3.5 MB, TorchScript zip). G1 GMT</td></tr>
+    <tr><td><a href="../reference/resmimic/code/rsl_rl/rsl_rl/runners/on_policy_dagger_runner.py"><code>rsl_rl/rsl_rl/runners/on_policy_dagger_runner.py</code></a></td><td><code>PPORes_BasePolicy</code>: jit 로드 + no_grad + detach. 롤아웃에서 <code>final_actions = actions + base_actions</code></td></tr>
+    <tr><td><a href="../reference/resmimic/code/rsl_rl/rsl_rl/modules/actor_critic_future.py"><code>rsl_rl/rsl_rl/modules/actor_critic_future.py</code></a></td><td>마지막 층 Xavier gain <code>final_layer_gain</code>(HOI 0.01), 첫 층 gain 0.5</td></tr>
+    <tr><td><a href="../reference/resmimic/code/legged_gym/legged_gym/envs/g1/g1_hoi_config.py"><code>legged_gym/legged_gym/envs/g1/g1_hoi_config.py</code></a></td><td>과제 설정: 참조 kneel(기본)·squat·carry·chair 전환, 물체 이탈 종료 0.3 m, 보상 가중, 잔차 init std 0.1</td></tr>
+    <tr><td><a href="../reference/resmimic/code/legged_gym/legged_gym/envs/g1/g1_hoi.py"><code>legged_gym/legged_gym/envs/g1/g1_hoi.py</code></a></td><td>관측(물체 7 차원 추가), 점구름 오차·보상·종료</td></tr>
+    <tr><td><a href="../reference/resmimic/code/legged_gym/assets/motions/"><code>legged_gym/assets/motions/</code></a></td><td>4 과제 참조(pkl 로봇 동작 + npz 물체 궤적), 물체 URDF·메시(box 4.0 kg 등)</td></tr>
+    <tr><td><a href="../reference/resmimic/code/train.sh"><code>train.sh</code></a></td><td><code>--task g1_hoi --num_envs 4096 --teacher_exptid None</code></td></tr>
+  </tbody>
+</table></div>
+<h3 class="ps">논문과 코드가 다른 곳</h3>
+<ul>
+  <li>가상 물체 제어기·접촉 보상·접촉 상실 종료: 논문 핵심 장치지만 공개 코드에 없음.</li>
+  <li>물체 관측: 논문 [위치, 자세, 속도, 각속도] + 참조 창 t−10…t+10 vs 코드 현재 위치·쿼터니언 7 차원.</li>
+  <li>사람 참조 창: 논문 t−10…t+10 vs 코드 현재 프레임(10 스텝 이력에 포함) + 미래 5–50 스텝 10 시점.</li>
+  <li>점구름 보상: 논문 exp(−λΣ‖·‖) vs 코드 exp(−10 · 평균 거리), 가중 2.0.</li>
+</ul>
+
+<h2 class="ps">10. 한계</h2>
+<ul>
+  <li>과제마다 MoCap 사람–물체 참조 1 개와 잔차 정책 1 개. 참조 밖 물체 배치·크기 일반화는 시험하지 않음(초기 물체 ±2 cm).</li>
+  <li>실기 non-blind 는 MoCap 물체 상태 필요. 시각 없음.</li>
+  <li>성공 임계 σ<sub>o</sub>, 보상 계수, 가상 힘 감쇠 일정 등 핵심 값이 논문에 없고, 공개 코드에는 그 장치 자체가 없다.</li>
+  <li>평가 과제당 성공률이 10 % 단위(시행 10 회로 보임), 실기는 정성 시연뿐.</li>
+</ul>
+
+<h2 class="ps">11. 우리에게 가져올 것</h2>
+<div class="take"><ol>
+  <li><strong>근거 — dev12 는 고정한다</strong>: GMT 미세조정 7.5 %(MuJoCo 에서 무너짐) vs 고정 + 잔차 92.5 %, 수렴도 2,400 대 1,300 iter. 상위 학습 중 하위를 같이 고치지 않는다. 고쳐야 한다면 과제 보상이 아니라 원래 추종 보상으로, 별도 단계에서.</li>
+  <li><strong>구조 확인 — 상체는 추종기 뒤에 직접</strong>: ResMimic 이 정밀 조작을 낸 것은 잔차가 추종기 <strong>출력</strong>(관절 목표)에 더해졌기 때문이다. dev10 v2 는 SONIC 의 <strong>입력</strong>에 오프셋을 넣어 허리 등 추종기가 못 따라가는 출력이 생겼다. 이번 설계(상체 11 = PD 직행, 다리만 골반 명령)는 팔에 대해 ResMimic 과 같은 위치이므로 유지하고, 다리 쪽은 명령 범위를 dev12 가 실제 도달하는 영역으로 묶는다.</li>
+  <li><strong>가져올 것 — 출력 0 근처 초기화 + 작은 초기 std</strong>: 마지막 층 Xavier gain 0.01, 초기 std 0.1(코드). 우리 상위 출력(상체 목표 델타·골반 명령 델타)도 처음엔 "서서 기본 자세 유지"와 같게 시작해 dev12 가 학습 분포 안의 명령만 받게 한다. dev10 v2 의 켜짐/꺼짐 포화·std 발산은 초기 std 1.0 + 환경 안 자르기와 맞물렸으므로, 초기 std 를 0.1–0.3 으로 낮추고 std 상한·감소 일정(코드: 4,000 갱신 뒤 1.0 → 0.4 배)을 함께 둔다.</li>
+  <li><strong>가져올 것 — 가상 상자 보조 힘 커리큘럼</strong>: 학습 초기에 상자를 목표(들어 올린 높이) 쪽으로 PD 힘·토크로 받쳐 주고 이득을 0 까지 줄인다. 우리 쪽 구체안: 상자에 위쪽 보조 힘 α·m·g + 목표 높이로의 PD(α 1 → 0), 감쇠는 iteration 고정 일정 대신 성공률 기준으로 내리고, 평가는 항상 α = 0 으로. 논문이 이득 값을 주지 않았고 공개 코드에도 없으니 값은 우리가 정해 실험해야 한다. 기대 효과: 한 손 밀기·물러서기 국소해 전에 "들면 보상" 경험을 먼저 준다.</li>
+  <li><strong>가져올 것 — 점구름 상자 보상</strong>: 상자 표면 N 점의 현재 vs 목표(들어 올린 자세) 평균 거리 d 로 exp(−10·d)(코드 계수), 가중 2.0. 위치와 기울기를 한 항으로 다뤄 상자 기울어짐(옆면 조이기에서 잘 생김)도 같이 벌한다.</li>
+  <li><strong>가져올 것 — 종료 두 가지</strong>: 상자 점 평균 오차 &gt; 0.3 m 이면 종료(코드), 필요한 접촉이 10 프레임(0.2 s) 넘게 끊기면 종료(논문). 우리는 "두 손 접촉이 성립한 뒤"부터 접촉 상실 종료를 켠다.</li>
+  <li><strong>가져올 것 — 필요한 링크에만 접촉 보상</strong>: 접촉이 필요한 링크(우리: 양 손바닥)에만 Σ ĉ·exp(−λ/f) 꼴로 힘에 비례한 보상. ResMimic 은 접촉 보상이 없으면 IsaacGym 에서만 되는 "손목만으로 들기"로 수렴해 전이 실패했다 — 시뮬에서만 통하는 접촉 방식을 막는 장치. 우리 경우 두 손 각각의 힘을 따로 보상하고 약한 쪽 기준(min)으로 묶는다.</li>
+  <li><strong>평가 방식</strong>: 모든 비교를 MuJoCo sim2sim 으로 했다(IsaacGym 성공이 MuJoCo 실패로 바뀌는 경우를 직접 보임). 우리도 Isaac 성공률 대신 MuJoCo 성공률로 체크포인트를 고른다(dev10 v2 student 가 Isaac 69 % → MuJoCo 50 % 였던 차이를 같은 방식으로 추적).</li>
+  <li><strong>가져오지 말 것 — 다리에 잔차</strong>: ResMimic 은 29 관절 전부에 잔차를 더한다. 우리는 다리를 dev12 명령으로만 움직이고 다리 관절 잔차는 넣지 않는다(넣으면 dev12 학습 분포 밖 상태가 되고 하위 고정의 이점이 사라짐).</li>
+  <li><strong>가져오지 말 것 — 과제별 MoCap 참조 추종</strong>: 사람–물체 참조 1 개를 따라 하는 방식은 우리 상자 배치 무작위(앞 0.04–0.30 m, 옆 ±0.15 m, yaw ±40°, 받침 0–0.3 m)에 맞지 않고 K1 용 HOI 참조도 없다. 무릎 꿇기(Kneel 90 %)도 우리 하위 명령 공간 밖.</li>
+  <li><strong>라이선스</strong>: Apache-2.0 — 잔차 합산·초기화·점구름 보상 코드는 옮겨 쓸 수 있다(legged_gym·rsl_rl 부분은 각 원 라이선스).</li>
+</ol></div>
+
+<p class="src">출처 표기: (p.N), (표 N), (그림 N), (식 N), 코드는 파일 경로. 논문에 없는 값은 "논문에 없음".</p>
+</main>
+</body>
+</html>

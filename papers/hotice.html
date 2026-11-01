@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HOTICE — 논문 상세</title>
+<link rel="stylesheet" href="paper.css">
+</head>
+<body>
+<main class="wrap">
+<a class="back" href="../index.html#catalog">← 자료 목록으로</a>
+
+<header class="ph">
+  <h1>HOTICE: 장애물 사이로 물체를 든 채 지나가는 휴머노이드 전신 운반</h1>
+  <p class="orig">HOTICE: Whole-Body Humanoid Object Transportation in Cluttered Environments</p>
+  <p class="meta">Toan Nguyen, Weiduo Yuan, Siheng Zhao, Yue Wang, Daniel Seita · University of Southern California · 사전 공개 (arXiv 2026-09-21) · Unitree G1 · MuJoCo (MuJoCo Playground)</p>
+  <div class="chips">
+    <a class="chip loc" href="../reference/hotice/paper.pdf">로컬 PDF</a>
+    <a class="chip" href="https://arxiv.org/abs/2609.25363" target="_blank" rel="noopener">arXiv 2609.25363</a>
+    <a class="chip" href="https://hotice2027.github.io" target="_blank" rel="noopener">프로젝트 페이지</a>
+    <span class="simv s3">유사도 3</span>
+    <span class="badge only">논문만 (코드 없음)</span>
+  </div>
+</header>
+
+<div class="callout blue tldr">G1 이 이미 든 상자를 옆·머리 위·바닥 장애물 사이로 목표까지 옮긴다. 장애물 회피 안내 벡터장(HOD-PF)을 관측과 보상에 넣고, 다리 12 / 팔 8 을 두 에이전트 PPO 로 나눠 학습한 뒤, 장면별 teacher 들을 DAgger + PPO 로 student 하나에 모았다. 시뮬 성공 88.5 % (한 에이전트 65.7 %), 실기 장애물 유형별 6/6 · 5/6 · 5/6.</div>
+
+<h2 class="ps">우리와 무엇이 같고 다른가</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>이 논문</th><th>우리 (dev10 pelvis_pick)</th></tr></thead>
+  <tbody>
+    <tr><td>하위 제어기</td><td>없음. 정책이 다리 12 관절 목표를 직접 내고 PD 가 토크로 바꿈 (p.4)</td><td>dev12 하체 RL 동결, 골반 vx·vy·ωz·높이·pitch·roll 추종, 상체 11 외부 PD</td></tr>
+    <tr><td>상위 출력</td><td>20 차원 관절 목표 = 하체 actor 12 + 팔 actor 8. 허리·손목은 "불필요"해서 뺌 (p.4)</td><td>상체 11 + 골반 명령</td></tr>
+    <tr><td>정책 분할</td><td>두 에이전트: actor·critic·보상 흐름은 각자, 관측·종료 조건은 공유 (식 4–5)</td><td>상위 정책 하나 (분할은 선택지)</td></tr>
+    <tr><td>과제·물체</td><td>이미 든 상자를 5 s 안에 목표 0.1 m 이내로, 장애물 충돌 없이. 상자 최대 3.5 kg · 40×40×40 cm (p.5). 받침에서 집는 정책은 따로 있으나 내용 없음 (p.2, p.7)</td><td>바닥·받침대 0–0.3 m 박스 37×40.5×29 cm, 0.5–2 kg 집기, 두 손 옆면 조이기 후 서서 유지</td></tr>
+    <tr><td>로봇·손</td><td>Unitree G1. 손 형태는 논문에 없음 (그림 1·7 에서는 두 팔로 상자 옆면을 끼워 듦)</td><td>K1 35.7 kg, 23 자유도, 손가락 없는 고무 공 손, 팔 kp 22.3 / kd 1.42</td></tr>
+    <tr><td>지각·증류</td><td>장면별 특권 teacher → DAgger + PPO 로 student 하나. student 입력 = 고유감각 + 상자 상태(실기 AprilTag) + 안내 벡터(SLAM 지도에서 계산). 깊이 영상 입력 없음 (그림 2, p.6–7)</td><td>특권 teacher → D436 깊이(26×64, 6 프레임) + 고유감각 student (DAgger)</td></tr>
+    <tr><td>시뮬·주기</td><td>MuJoCo Playground 학습, 실기 정책 50 Hz (p.5, p.7)</td><td>Isaac Lab + Newton, rsl_rl PPO</td></tr>
+  </tbody>
+</table></div>
+<p>요약: 뼈대(고정 하위 + 상위)는 다르고, 가져올 것은 <b>두 에이전트로 보상 흐름을 나누는 방법</b>, <b>상자 꼭짓점 8 개 키포인트 관측</b>, <b>"기저 움직임을 뺀 잔차에만 점수 주기"</b>, <b>평가 규약</b> 정도다.</p>
+
+<h2 class="ps">1. 문제와 과제</h2>
+<ul>
+  <li>장애물 C 가 있는 장면에서 로봇은 시작점 s ∈ R³ 에서 물체 O 를 든 채 출발해 목표 g ∈ R³ 까지 옮긴다. 장애물은 세 종류: 옆(side), 머리 위(overhead), 바닥(ground) (p.2, 그림 1).</li>
+  <li>물체는 주로 직육면체 상자. 원통·구로도 일반화 실험 (p.6–7).</li>
+  <li>논문 설명과 실험은 <b>상자를 이미 들고 시작</b>한다고 가정. 전체 파이프라인용으로 받침에서 집는 정책도 학습했다고만 쓰고 세부는 없음 (p.2).</li>
+  <li>성공: 5 s 안에 목표 0.1 m 이내 도달, 넘어짐·떨어뜨림·충돌(로봇 또는 상자) 없음. 실패: 넘어짐, 떨어뜨림, 충돌 중 하나 (p.2, p.6).</li>
+  <li>지표: 성공률 SR, 끝 시점 루트–목표 평균 거리 mDist (p.6).</li>
+  <li>상자 질량·크기는 무작위, 상한 3.5 kg · 40×40×40 cm³. "G1 의 하중·크기에 맞추고 극한 장면에서도 통과 가능하도록" 정한 값 (p.5).</li>
+</ul>
+
+<h2 class="ps">2. 시스템 구조</h2>
+<p>세 부분: (A) 사람–물체 분리 안내장 HOD-PF, (B) 상·하체 두 에이전트 학습, (C) 장면별 전문가 → 일반 student 증류 (그림 2).</p>
+<div class="fig">
+  <p><b>teacher 학습</b> (장면마다 하나, 특권 상태)</p>
+  <div class="flow">
+    <span class="node">관측 (두 actor 공유): 고유감각 + 상자 상태 + SGF·OGF 안내 벡터 (잡음·지연 없음)</span>
+    <span class="arr">→</span>
+    <span class="node">upper actor → a_up ∈ R⁸ (팔)<br>upper critic ← r_up = U ∪ S</span>
+    <span class="node">lower actor → a_low ∈ R¹² (다리)<br>lower critic ← r_low = L ∪ S</span>
+    <span class="arr">→</span>
+    <span class="node">a = [a_low, a_up] 20D → PD → 토크</span>
+    <span class="arr">→</span>
+    <span class="node">MuJoCo 장면</span>
+  </div>
+  <p><b>증류</b></p>
+  <div class="flow">
+    <span class="node frozen">teacher 1 … N (동결)</span>
+    <span class="arr">→ DAgger →</span>
+    <span class="node">generalist student (두 에이전트 구조 그대로)</span>
+    <span class="arr">→</span>
+    <span class="node">PPO 미세조정 + 센서 잡음·제어 지연</span>
+  </div>
+  <p><b>실기 (50 Hz)</b></p>
+  <div class="flow">
+    <span class="node frozen">사전 SLAM 지도 (상자 없이 걸으며 재구성)</span>
+    <span class="arr">+</span>
+    <span class="node">실시간 위치 + 관절각 → HOD-PF 벡터</span>
+    <span class="arr">+</span>
+    <span class="node">AprilTag + 머리 카메라 → 상자 자세</span>
+    <span class="arr">→</span>
+    <span class="node">student</span>
+    <span class="arr">→</span>
+    <span class="node">G1 PD</span>
+  </div>
+</div>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>부분</th><th>학습 / 고정</th><th>비고</th></tr></thead>
+  <tbody>
+    <tr><td>HOD-PF 안내장</td><td>학습 아님 (해석적 계산)</td><td>측지 거리 + 부호 거리 함수의 퍼텐셜, 기울기로 벡터 (식 1–3)</td></tr>
+    <tr><td>teacher (장면별)</td><td>PPO 두 에이전트로 학습 후 증류 때 고정</td><td>잡음 없는·지연 없는 특권 상태 (p.4)</td></tr>
+    <tr><td>student</td><td>DAgger 다음 PPO 미세조정</td><td>teacher 와 같은 두 에이전트 구조, 잡음·지연 시뮬 (p.5)</td></tr>
+    <tr><td>집기 정책</td><td>별도 학습 (세부 없음)</td><td>실기에서 운반 정책 앞에 실행, 50 Hz (p.7)</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">3. 관측과 행동</h2>
+<h3 class="ps">관측</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>내용</th><th>출처</th></tr></thead>
+  <tbody>
+    <tr><td>고유감각</td><td>구성·차원 논문에 없음</td><td>그림 2</td></tr>
+    <tr><td>상자 상태</td><td>상자 자세 (실기는 상자에 붙인 AprilTag 를 머리 카메라로 추정)</td><td>p.6–7</td></tr>
+    <tr><td>SGF 벡터</td><td>F_standard 를 머리, 어깨, 몸통, 루트(골반), 무릎, 발에서 질의</td><td>p.3–4</td></tr>
+    <tr><td>OGF 벡터</td><td>F_object 를 상자 키포인트와 두 손에서 질의. 상자 = 꼭짓점 8 개, 원통 = 윗테 4 + 아랫테 4 (등간격), 구 = 반지름 위치의 세계 고정 팔분면 방향 8 개. 모양마다 8 개라 관측 배치·망·행동 공간이 같음</td><td>p.4, p.6</td></tr>
+  </tbody>
+</table></div>
+<p>각 벡터는 R³. 질의점 수로 세면 SGF 약 9 점(어깨·무릎·발 좌우 가정) + OGF 10 점 = 약 57 차원 (추정, 논문에 총 차원 없음).</p>
+
+<h3 class="ps">HOD-PF 계산</h3>
+<ul>
+  <li>끌림 퍼텐셜 U_att(x) = η · D_geo(x, g). D_geo = 장애물을 피해 가는 최단 경로 길이 (식 1).</li>
+  <li>밀림 퍼텐셜 U_rep(x) = ½ ξ (1/sdf(x) − 1/d₀)² (sdf(x) ≤ d₀ 일 때), 아니면 0 (식 2).</li>
+  <li>F_standard(x) = −∇ₓ(U_att + U_rep) (식 3). 목표로 당기고 장애물에서 밀어냄.</li>
+  <li>OGF 는 장애물을 여유 m 만큼 부풀린 C_inflated 로 같은 계산. 이유 둘: 상자는 관절로 직접 구동되지 않아 실기 잡음·지연에 여유가 필요, 무거운 물체는 가까이 가서 피하기 어려우니 미리 피하게 (p.4, 그림 3).</li>
+</ul>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>상수</th><th>값</th><th>출처</th></tr></thead>
+  <tbody>
+    <tr><td>d₀ (장애물 영향 거리)</td><td>0.2 m</td><td>p.3 (HumanoidPF 에서 가져옴)</td></tr>
+    <tr><td>η</td><td>0.6</td><td>p.3</td></tr>
+    <tr><td>ξ</td><td>1 × 10⁻³</td><td>p.3</td></tr>
+    <tr><td>OGF 부풀림 m</td><td>8 cm ("회피 성능과 통과 가능성의 균형")</td><td>p.4</td></tr>
+    <tr><td>장면 유사도 격자</td><td>(0.04 m)³, SGF·OGF 벡터 코사인 유사도 평균</td><td>p.6</td></tr>
+  </tbody>
+</table></div>
+
+<h3 class="ps">행동</h3>
+<ul>
+  <li>a_low ∈ R¹² (다리 관절), a_up ∈ R⁸ (팔 관절), 이어 붙여 20 차원 → PD 제어기 → 토크 (p.4).</li>
+  <li>허리·손목 관절은 "이 설정에서 불필요"해서 제외 (p.4). G1 팔 7 관절 중 손목 3 을 빼면 어깨 3 + 팔꿈치 1 = 팔당 4 로 보임 (추정).</li>
+  <li>PD 이득, 행동 배율, 행동 범위: 논문에 없음.</li>
+</ul>
+
+<h2 class="ps">4. 보상 · 종료 · 커리큘럼</h2>
+<h3 class="ps">보상 묶음과 두 흐름</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>묶음</th><th>들어가는 항</th><th>받는 쪽</th></tr></thead>
+  <tbody>
+    <tr><td>L (하체)</td><td>보행, 균형</td><td>lower</td></tr>
+    <tr><td>U (상체)</td><td>물체 도달, 잡기 유지</td><td>upper</td></tr>
+    <tr><td>S (공유)</td><td>물체 들기, HOD-PF 보상 ("팔 관절과 몸통 자세가 함께 정하는 값")</td><td>둘 다</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>r_low = Σ_{i∈L∪S} wᵢ rᵢ, r_up = Σ_{i∈U∪S} wᵢ rᵢ (식 4). 각 항의 식과 가중치 wᵢ 는 논문에 없음.</li>
+  <li>공유 항이 두 흐름에 다 들어가 둘 다 운반에 책임을 지고, 보행 신호와 잡기 신호가 한 이점 추정 안에서 다투지 않는다는 것이 설계 이유 (p.4).</li>
+</ul>
+<h3 class="ps">HOD-PF 보상 (식이 주어진 유일한 항)</h3>
+<ul>
+  <li>SGF: 머리·골반·발의 위치 x, 속도 v 에 대해 cos(F_standard(x), v) 최대화 (p.4).</li>
+  <li>OGF: 손과 상자 키포인트에 대해 cos(F_object(x) − c, v − c) 최대화. c = 머리·골반·발 SGF 벡터를 모은 "전체 이동 명령". <b>c 를 빼서 보행이 이미 만드는 움직임은 제외하고, 손이 실제로 책임지는 장애물 회피 조정에만 점수</b>를 준다 (p.4).</li>
+</ul>
+<h3 class="ps">종료 · 커리큘럼</h3>
+<ul>
+  <li>종료: 두 에이전트가 같은 종료 조건을 공유한다고만 씀. 구체 조건은 논문에 없음. 과제 실패 정의는 넘어짐·떨어뜨림·충돌 (p.2, p.4).</li>
+  <li>커리큘럼: 언급 없음. 장면별 보상 조정도 하지 않음 ("안내장이 일반화되는 표현이자 보상 구조") (p.5).</li>
+  <li>원통·구 정책은 손 위치·물체 직립 보상만 조금 바꾸고 나머지 항·가중치·하이퍼파라미터는 상자 정책 그대로 (p.6).</li>
+</ul>
+
+<h2 class="ps">5. 학습 설정 (알고리즘 · 망 · 무작위화)</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>값</th><th>출처</th></tr></thead>
+  <tbody>
+    <tr><td>알고리즘</td><td>PPO 두 개를 함께 최적화: J = J_low^PPO(Â_low) + J_up^PPO(Â_up). 각 에이전트가 자기 보상 흐름·가치 함수로 이점 추정</td><td>식 5</td></tr>
+    <tr><td>critic</td><td>에이전트마다 특권 critic</td><td>p.4</td></tr>
+    <tr><td>망</td><td>MLP ("가벼운 상태 기반"). 층 수·폭은 논문에 없음</td><td>p.4</td></tr>
+    <tr><td>teacher 학습량</td><td>방법마다 teacher 를 400 M 타임스텝, 장면 20 개</td><td>p.5</td></tr>
+    <tr><td>일반화 실험</td><td>장면 75 개에 teacher 75 개 → student 하나, 처음 보는 장면 50 개로 평가</td><td>p.6</td></tr>
+    <tr><td>장면 생성</td><td>HumanoidPF [21] 파이프라인: 절차 생성 장면 + 3D-FRONT 실내 장면 잘라 쓰기</td><td>p.4–5</td></tr>
+    <tr><td>student 무작위화</td><td>센서 잡음, 제어 지연 "등". 범위 값은 논문에 없음</td><td>p.5</td></tr>
+    <tr><td>평가 교란</td><td>입력 잡음, 지연, 외란. 값은 논문에 없음</td><td>p.5–6</td></tr>
+    <tr><td>env 수 · 반복 수 · 시간 · PPO 하이퍼파라미터</td><td>논문에 없음</td><td>–</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">6. teacher → student / 증류</h2>
+<ul>
+  <li>teacher: 장면마다 하나, 잡음·지연 없는 특권 상태로 학습 (p.4).</li>
+  <li>student: 일반 정책 하나. DAgger 로 teacher 들을 증류한 뒤, teacher 와 같은 두 에이전트 구조로 PPO 를 더 돌려 다듬음. 이때 센서 잡음·제어 지연을 시뮬 (p.5).</li>
+  <li>student 입력: 고유감각 + 물체 상태 + HOD-PF 벡터 (그림 2). 즉 student 도 상태 기반이고, "보이는 것"의 차이는 잡음·지연뿐이다. 영상 student 가 아님.</li>
+  <li>DAgger 만 vs DAgger + PPO 비교, teacher 대비 student 성공률 차이는 보고하지 않음.</li>
+</ul>
+
+<h2 class="ps">7. 결과</h2>
+<h3 class="ps">주 실험: 장면 20 개 × 1,000 회 = 20,000 회 (표 I)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>방법</th><th>SR (%) ↑</th><th>mDist (m) ↓</th></tr></thead>
+  <tbody>
+    <tr><td>Single-Agent &amp; SGF</td><td>58.7</td><td>0.296</td></tr>
+    <tr><td>Single-Agent &amp; HOD-PF</td><td>65.7</td><td>0.267</td></tr>
+    <tr><td>Dual-Agent &amp; SGF</td><td>77.1</td><td>0.195</td></tr>
+    <tr class="ours"><td>Dual-Agent &amp; HOD-PF (HOTICE)</td><td>88.5</td><td>0.130</td></tr>
+  </tbody>
+</table></div>
+<p>"SGF" 행 = OGF 없이 HumanoidPF 의 표준 안내장을 상자 포함 모든 키포인트에 그대로 쓴 것. "Single-Agent" = 다리·팔을 한 정책으로 (p.5).</p>
+<ul>
+  <li>두 에이전트 효과: HOD-PF 에서 65.7 → 88.5 (+22.8 %p), SGF 에서 58.7 → 77.1 (+18.4 %p).</li>
+  <li>OGF 효과: 두 에이전트에서 77.1 → 88.5 (+11.4 %p), 한 에이전트에서 58.7 → 65.7 (+7.0 %p).</li>
+  <li>정성 (그림 4A): SGF 만 쓰면 상자가 옆 장애물에 닿고, 한 에이전트는 어려운 장애물에서 균형을 잃음.</li>
+</ul>
+<h3 class="ps">처음 보는 장면 50 개 (그림 5)</h3>
+<ul>
+  <li>평균 SR 80.1 % (바닥 약 70 %), 평균 mDist 0.27 m.</li>
+  <li>학습 장면과의 유사도(약 1.00 → 0.78)가 낮아질수록 완만히 나빠짐. 최소제곱 직선 RMSE: SR 6.1, mDist 0.092 m.</li>
+</ul>
+<h3 class="ps">다른 모양 (표 II, 장면 20 개)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th></th><th>직육면체</th><th>원통</th><th>구</th></tr></thead>
+  <tbody>
+    <tr><td>SR (%)</td><td>88.5</td><td>86.7</td><td>87.2</td></tr>
+    <tr><td>mDist (m)</td><td>0.130</td><td>0.127</td><td>0.131</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">8. 실기 · sim2real</h2>
+<ul>
+  <li>로봇: Unitree G1. 장면은 상자 없이 로봇을 걸려 SLAM(FAST-LIO2)으로 미리 재구성 (p.6).</li>
+  <li>추론 때 HOD-PF 벡터는 실시간 위치 추정 + 관절각으로 계산, 상자 자세는 AprilTag + 머리 카메라 (p.6–7).</li>
+  <li>LiDAR 로 실시간 재구성도 원리상 가능하지만 G1 의 LiDAR 하나가 든 상자에 크게 가려짐 → 하드웨어 한계라고 설명 (p.7).</li>
+  <li>시행: 매 시행 공용 집기 정책이 받침에서 상자를 집고 나서 운반 정책이 이어받음. 둘 다 50 Hz. 장애물 유형마다 방법별 6 회 (p.7).</li>
+</ul>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>방법 (표 III)</th><th>옆</th><th>머리 위</th><th>바닥</th></tr></thead>
+  <tbody>
+    <tr><td>Single-Agent &amp; SGF</td><td>3/6</td><td>3/6</td><td>1/6</td></tr>
+    <tr><td>Single-Agent &amp; HOD-PF</td><td>6/6</td><td>3/6</td><td>2/6</td></tr>
+    <tr><td>Dual-Agent &amp; SGF</td><td>4/6</td><td>4/6</td><td>4/6</td></tr>
+    <tr class="ours"><td>Dual-Agent &amp; HOD-PF (HOTICE)</td><td>6/6</td><td>5/6</td><td>5/6</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>실패 모습 (그림 7): SGF 만 쓰면 옆 장애물에 더 자주 충돌, 한 에이전트는 바닥 파이프를 넘을 때(허들) 맞고 넘어짐.</li>
+  <li>집기 정책의 실기 성공률은 따로 보고하지 않음.</li>
+</ul>
+
+<h2 class="ps">9. 코드에서 확인한 것</h2>
+<p>해당 없음 — 코드 미공개 (논문에는 익명 프로젝트 페이지만 있고 <code>reference/hotice/</code> 에 code/ 폴더 없음).</p>
+
+<h2 class="ps">10. 한계</h2>
+<ul>
+  <li>저자 언급: 충돌 이후 상황을 모형화하지 않아 큰 충돌이면 넘어짐. 어깨에 메기·허리에 끼기 같은 복잡한 조작은 못 함. 움직이는 장애물 없음. 기대기·부드러운 물체 스치기 같은 "허용 충돌"은 다루지 않음 (p.8).</li>
+  <li>재현에 필요한 값이 대부분 빠짐: 보상 항별 식·가중치, 망 크기, PPO 하이퍼파라미터, 무작위화 범위, env 수, 종료 조건.</li>
+  <li>집기 정책은 존재만 언급. 우리 과제(집기)에 대한 직접 근거는 없음.</li>
+  <li>student 도 상태 기반이고 실기에 SLAM 지도 + AprilTag 가 필요. 영상 student 의 격차 문제는 다루지 않음.</li>
+  <li>DAgger 뒤 PPO 의 효과, teacher–student 격차 수치가 없음.</li>
+  <li>실기 시행 수가 유형당 6 회로 작음.</li>
+</ul>
+
+<h2 class="ps">11. 우리에게 가져올 것</h2>
+<div class="take"><ol>
+  <li><b>상자 꼭짓점 8 개를 teacher 관측에.</b> 상자 중심·자세 대신(또는 함께) 골반 좌표계 꼭짓점 8 개(24 값)를 넣는다. 37×40.5×29 cm 상자의 옆면 위치가 바로 드러나 손바닥 목표를 정하기 쉽고, student 가 깊이에서 추정할 보조 목표로도 쓸 수 있다. HOTICE 는 모양이 바뀌어도 키포인트 8 개로 관측 배치를 고정했다 (p.6).</li>
+  <li><b>"기저 움직임을 뺀 잔차"에만 손 보상.</b> HOTICE 의 OGF 보상은 이동 명령 c 를 빼고 손의 추가 움직임만 평가한다 (p.4). 우리에선 손바닥 접근 보상을 손 속도 그대로가 아니라 골반 속도를 뺀 상대 속도(또는 골반 명령이 만드는 몫을 뺀 값)로 계산해, 골반을 숙여서 얻은 접근과 팔이 만든 접근을 가른다 (추론, 우리 적용안).</li>
+  <li><b>보상 흐름 분할은 2순위 실험으로.</b> 한 정책으로 상체 11 의 조이기 항과 골반 명령의 자세 항이 서로 다툴 때(dev10 v2 의 한 손 밀기처럼) 시도할 가치가 있다: upper 헤드 = 손바닥 거리·두 손 접촉·조임 항, pelvis 헤드 = 높이·pitch 추종·명령 변화율 항, 공유 = 상자 높이·직립·성공. 근거는 +18.4–22.8 %p (표 I). 다만 rsl_rl 기본 ActorCritic 은 critic 하나라 구현 비용이 있으니 단일 정책 기준선이 막힐 때만.</li>
+  <li><b>불필요한 관절은 뺀다.</b> HOTICE 는 허리·손목을 뺐다 (p.4). dev10 v2 에서 추종기가 못 따라간 것이 허리였으므로, 첫 teacher 는 허리 yaw 고정(상체 출력 10)으로 시작하고 상자 yaw ±40° 구간 성공률이 떨어질 때만 좁은 범위로 연다 (우리 적용안).</li>
+  <li><b>평가 규약.</b> "시간 안 목표 도달 + 넘어짐·떨어뜨림 없음" 이진 성공, 조건별 1,000 회, 평가에 잡음·지연·외란을 넣음 (p.5–6). 우리는 받침 높이 0/0.1/0.2/0.3 × yaw × 옆 오프셋 격자로 같은 표를 만든다.</li>
+  <li><b>student PPO 미세조정의 또 하나의 선례.</b> DAgger 뒤 같은 구조로 PPO (p.5). 다만 이 논문은 효과 수치를 주지 않으므로 근거로는 약하다 (DoorMan·PRISM 쪽 숫자를 근거로 쓸 것).</li>
+</ol>
+<p><b>가져오지 말 것</b></p>
+<ul>
+  <li>HOD-PF 안내장 자체: 집기 과제에는 장애물이 없다. 나중에 어수선한 곳을 들고 지나갈 때만 의미가 있고, 그때도 상자 부풀림 여유 8 cm 정도만 참고.</li>
+  <li>장면별 teacher 여러 개 → 증류: 우리 장면 변화(상자 자세 + 받침 높이 4 단계)는 작아 teacher 하나로 충분할 것이다. 받침 높이별 teacher 는 하나로 안 될 때의 대안.</li>
+  <li>다리 관절 직접 제어: 우리는 dev12 를 동결해 두는 설계다.</li>
+  <li>SLAM 지도 + AprilTag 실기 구성: 우리는 머리 D436 깊이 student 로 간다.</li>
+</ul></div>
+
+<p class="src">출처 표기: (p.N), (표 N), (그림 N), (식 N). 코드는 없음. 논문에 없는 값은 "논문에 없음", 추정은 "추정", 우리 쪽 해석은 "우리 적용안·추론"으로 표시.</p>
+</main>
+</body>
+</html>

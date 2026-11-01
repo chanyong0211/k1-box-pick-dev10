@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{짧은 이름} — 논문 상세</title>
+<link rel="stylesheet" href="paper.css">
+</head>
+<body>
+<main class="wrap">
+<a class="back" href="../index.html#catalog">← 자료 목록으로</a>
+
+<header class="ph">
+  <h1>{짧은 이름}: {한국어로 풀어 쓴 제목}</h1>
+  <p class="orig">{원제}</p>
+  <p class="meta">{저자 (주요 몇 명 + et al.)} · {소속} · {발표처·연도, 사전 공개면 "사전 공개"} · {로봇} · {시뮬레이터}</p>
+  <div class="chips">
+    <a class="chip loc" href="../reference/{id}/paper.pdf">로컬 PDF</a>
+    <a class="chip loc" href="../reference/{id}/code/">로컬 코드</a>  <!-- code/ 가 있을 때만 -->
+    <a class="chip" href="https://arxiv.org/abs/{arxiv}" target="_blank" rel="noopener">arXiv {arxiv}</a>
+    <a class="chip gh" href="{github}" target="_blank" rel="noopener">{owner/repo}</a>
+    <a class="chip" href="{project page}" target="_blank" rel="noopener">프로젝트 페이지</a>
+    <span class="simv s{n}">유사도 {n}</span>
+    <span class="badge">{라이선스}</span>
+  </div>
+</header>
+
+<div class="callout blue tldr">{한 줄 요약: 무엇을, 어떻게, 결과 숫자}</div>
+
+<h2 class="ps">우리와 무엇이 같고 다른가</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>이 논문</th><th>우리 (dev10 pelvis_pick)</th></tr></thead>
+  <tbody>
+    <tr><td>하위 제어기</td><td>…</td><td>dev12 하체 RL, 골반 vx·vy·ωz·높이·pitch·roll 추종, 상체 11 외부 PD</td></tr>
+    <tr><td>상위 출력</td><td>…</td><td>상체 11 + 골반 명령</td></tr>
+    <tr><td>과제·물체</td><td>…</td><td>바닥·받침대 0–0.3 m 박스 37×40×29 cm, 0.5–2 kg, 두 손 옆면 조이기</td></tr>
+    <tr><td>지각·증류</td><td>…</td><td>특권 teacher → D436 깊이 student (DAgger)</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">1. 문제와 과제</h2>
+<h2 class="ps">2. 시스템 구조</h2>
+<!-- 블록도: <div class="fig"><div class="flow"><span class="node">…</span><span class="arr">→</span><span class="node frozen">고정 하위</span></div></div> 또는 인라인 SVG -->
+<h2 class="ps">3. 관측과 행동</h2>
+<h2 class="ps">4. 보상 · 종료 · 커리큘럼</h2>
+<h2 class="ps">5. 학습 설정 (알고리즘 · 망 · 무작위화)</h2>
+<h2 class="ps">6. teacher → student / 증류</h2>   <!-- 해당 없으면 절을 빼거나 "해당 없음" -->
+<h2 class="ps">7. 결과</h2>
+<h2 class="ps">8. 실기 · sim2real</h2>
+<h2 class="ps">9. 코드에서 확인한 것</h2>      <!-- code/ 가 있을 때 -->
+<h2 class="ps">10. 한계</h2>
+<h2 class="ps">11. 우리에게 가져올 것</h2>
+<div class="take"><ol><li>…</li></ol></div>
+
+<p class="src">출처 표기: (p.N), (표 N), (그림 N), (식 N), 코드는 파일 경로. 논문에 없는 값은 "논문에 없음".</p>
+</main>
+</body>
+</html>

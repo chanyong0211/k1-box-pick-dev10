@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OIL — 논문 상세</title>
+<link rel="stylesheet" href="paper.css">
+</head>
+<body>
+<main class="wrap">
+<a class="back" href="../index.html#catalog">← 자료 목록으로</a>
+
+<header class="ph">
+  <h1>OIL: 동결한 전신 제어기 위에 물체 지시를 얹는 상호작용 층</h1>
+  <p class="orig">OIL: An Object Interaction Layer for Humanoid Whole-Body Control</p>
+  <p class="meta">Pranay Dugar, Mohitvishnu S. Gadde, Rajesh Mangannavar et al. (교신 Alan Fern) · Oregon State University (CoRIS) · 프리프린트 2026-10 · Agility Digit V3 · MuJoCo</p>
+  <div class="chips">
+    <a class="chip loc" href="../reference/oil/paper.pdf">로컬 PDF</a>
+    <a class="chip" href="https://arxiv.org/abs/2610.14033" target="_blank" rel="noopener">arXiv 2610.14033</a>
+    <a class="chip gh" href="https://github.com/osudrl/masked-humanoid-controller" target="_blank" rel="noopener">osudrl/masked-humanoid-controller (하위 MHC)</a>
+    <span class="simv s4">유사도 4</span>
+    <span class="badge">코드 미공개</span>
+  </div>
+</header>
+
+<div class="callout blue tldr">동결한 전신 제어기(MHC) 위에 2층 LSTM(64) PPO 정책 하나를 얹어, "물체 위치 · 두 손 위치 · 손별 접촉 여부" 지시를 팔 관절 목표 8 개로 바꾼다. 다섯 과제 평균 성공 90.4 %(물체 정보 없는 하위 51.0 %, 과제별 전용 정책 88.4 %), Digit V3 실기로 수정 없이 옮김 (p.6, 표 1; p.8).</div>
+
+<h2 class="ps">우리와 무엇이 같고 다른가</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>이 논문</th><th>우리 (dev10 pelvis_pick)</th></tr></thead>
+  <tbody>
+    <tr><td>하위 제어기</td><td>MHC(Masked Humanoid Controller), loco-manipulation 모드. 기저 지시(평면 속도 · 회전 · 기저 자세, 높이 0.36–1.05 m) + 팔 관절 지시 8 → 20 관절 PD 목표. 가중치 고정 (p.4; p.10, 표 2)</td><td>dev12 하체 RL(Isaac Lab + Newton, rsl_rl PPO, 다리 AMP), 골반 vx ±0.8 · vy ±0.4 m/s · ωz ±1.0 rad/s · 높이 0.335–0.77 m(서기) / 0.42–0.77 m(걷기) · pitch ±45° · roll ±10°(서기만) 추종, 상체 11 외부 PD 목표를 관측, 손 하중 0–5 kg 학습, 고정 예정(스모크 시험만)</td></tr>
+    <tr><td>상위 출력</td><td>팔 관절 목표 8 개만 (팔당 4). 기저 지시는 손으로 짠 지시 생성기가 하위에 바로 넣고, OIL 은 내지도 보지도 않음 (p.4)</td><td>상체 11(허리 yaw 1 + 팔 5×2) + 골반 명령 둘 다</td></tr>
+    <tr><td>과제·물체</td><td>비파지 양팔 상호작용: 한 손 · 두 손 밀기, 옆면 끼워 들어 옮겨 놓기, 들고 걷기, 큰 상자 밀며 걷기. 상자 한 변 0.16–0.25 m, 0.1–3 kg, 탁자 높이 0.01–1.15 m (p.5; p.10, 표 5)</td><td>바닥 · 받침대 0 / 0.1 / 0.2 / 0.3 m 상자 37×40.5×29 cm, 0.5–2 kg, 발끝 앞 0.04–0.30 m · 옆 ±0.15 m · yaw ±40°, 쪼그림 · 숙임 후 두 손바닥(고무공)으로 옆면 조이기 → 일어서 유지</td></tr>
+    <tr><td>지각·증류</td><td>특권급 물체 상태(로봇 기준 물체 자세)를 학습 7–15 Hz, 실기 10 Hz 로 받음. 실기는 천장 RealSense D455 + ArUco + 칼만 필터. 증류 없음 (p.5, p.8)</td><td>특권 teacher → D436 깊이(26×64, 6 장) + 고유수용 student (DAgger)</td></tr>
+    <tr><td>학습 방식</td><td>PPO, MuJoCo, 2 단계 커리큘럼(손 목표 추종 → 물체 상호작용), 과제 라벨 없는 단계 지시열 (p.4–5)</td><td>PPO teacher(Isaac Lab + Newton) → DAgger student</td></tr>
+    <tr><td>주기</td><td>OIL 50 Hz · MHC 50 Hz · PD 2 kHz · 물체 상태 10 Hz (p.3, 그림 2)</td><td>상위 주기 미정(설계 대상)</td></tr>
+    <tr><td>손 · 접촉</td><td>손가락 없는 팔 끝으로 옆면을 끼움("pinch grasp", p.8). 접촉 센서 없음 → 관측에 접촉 없음 (p.4)</td><td>손가락 없는 고무공 손으로 옆면 조이기. 접촉 센서 없음. v2 student 격차를 접촉 정보 탓으로 봄</td></tr>
+    <tr><td>결과 규모</td><td>시뮬 평균 90.4 %(과제당 5,000 회). 실기는 영상만, 정량 수치 없음 (p.6, p.8)</td><td>v2: teacher 90 %, student 69 %(Isaac), 50 %(MuJoCo sim2sim)</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">1. 문제와 과제</h2>
+<ul>
+  <li><b>문제</b>: HOVER · HumanPlus · MHC 같은 전신 제어기(WBC)는 관절 · 손끝 궤적 같은 <b>로봇 몸</b> 운동학만 받는다. 밀기 · 들기 · 당기기는 겉 운동이 비슷해도 힘 · 접촉 시점 · 균형 전략이 다른데, 물체 의도가 지시에 없으니 로봇 운동에서 미루어 짐작해야 한다 (p.1–2).</li>
+  <li><b>기존 대안의 한계</b>: Opt2Skill · ResMimic · WoCoCo 등은 과제마다 레퍼런스 · 보상 · 접촉 계획 · 학습을 새로 해야 한다. 같은 물체를 다른 경로로 미는 변형도 재학습 (p.2).</li>
+  <li><b>목표</b>: 물체 운동과 접촉을 지시의 1 급 입력으로 만들어, 하나의 정책이 과제별 재학습 없이 여러 상호작용을 하게 한다. 힘 생성 · 하체 협응은 제어기가 채운다 (p.3–4).</li>
+  <li><b>범위</b>: 비파지(non-prehensile) 양팔 말단 상호작용. 손가락 파지는 없다 (p.3).</li>
+</ul>
+<h3 class="ps">학습한 다섯 행동 (Stage 2)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>행동</th><th>내용 · 범위</th><th>단계 순서 (표 4)</th></tr></thead>
+  <tbody>
+    <tr><td>Uni-manual Slide</td><td>무작위로 고른 한 손이 가까운 면을 밀어 표면 위로 Δx ∼ U(0.1, 0.3) m 이동</td><td>Align → Approach → Contact → Slide</td></tr>
+    <tr><td>Bi-manual Slide</td><td>두 손으로 같은 표면 위 무작위 목표점까지 밀기</td><td>Align → Approach → 양손 Contact → Slide</td></tr>
+    <tr><td>Pick-and-place</td><td>두 손 옆면 접촉 → Δz ∼ U(0.0, 0.6) m 들기 → 같은 표면 새 위치에 놓기</td><td>Align → Contact → Lift → Hold → Place</td></tr>
+    <tr><td>Loco-transport</td><td>들고 걷기: vx ∼ U(−0.5, 0.8) m/s, vy ∼ U(−0.3, 0.3) m/s, ω ∼ U(−0.4, 0.4) rad/s</td><td>Align → Contact → Lift → Walk → Stop → Place</td></tr>
+    <tr><td>Large-box Push</td><td>들 수 없는 바닥 큰 상자를 양손 접촉 유지하며 vx ∼ U(0.5, 1.0) m/s 로 밀며 걷기</td><td>Align → Approach → 양손 Contact → Walk-push</td></tr>
+  </tbody>
+</table></div>
+<p>다섯 행동은 접촉 방식(한 손 / 두 손), 지지 조건(탁자 위 / 들림), 이동 결합(정지 / 이동) 세 축을 덮도록 골랐다 (p.5; p.10, 표 4).</p>
+
+<h2 class="ps">2. 시스템 구조</h2>
+<div class="fig">
+  <div class="flow">
+    <span class="node">행동 생성기<br>(손으로 짠 단계 생성기 · FSM · 조작자)</span>
+    <span class="arr">→</span>
+    <span class="node">상호작용 지시 d<sup>i</sup><br>ô 3 · p̂<sup>R</sup>, p̂<sup>L</sup> 6 · ĉ<sup>R</sup>, ĉ<sup>L</sup> 2</span>
+    <span class="arr">→</span>
+    <span class="node"><b>OIL</b> (학습)<br>2층 LSTM 64 + 선형, 50 Hz</span>
+    <span class="arr">→</span>
+    <span class="node">팔 관절 지시 u ∈ R<sup>8</sup></span>
+    <span class="arr">→</span>
+    <span class="node frozen"><b>MHC</b> (동결)<br>loco-manip 모드, 50 Hz</span>
+    <span class="arr">→</span>
+    <span class="node">PD 목표 a ∈ R<sup>20</sup></span>
+    <span class="arr">→</span>
+    <span class="node frozen">PD 2 kHz → Digit V3</span>
+  </div>
+  <div class="flow" style="margin-top:10px">
+    <span class="node">행동 생성기</span>
+    <span class="arr">→</span>
+    <span class="node">기저 지시 d<sup>b</sup><br>v̂ 평면 속도 · ω̂ 회전 · b̂ 기저 자세(높이)</span>
+    <span class="arr">→</span>
+    <span class="node frozen">MHC 로 바로 (OIL 우회)</span>
+  </div>
+  <div class="flow" style="margin-top:10px">
+    <span class="node">물체 상태 o (실기 10 Hz, 학습 7–15 Hz 유지)</span>
+    <span class="node">고유수용 r = (θ, θ̇, 각속도, 자세)</span>
+    <span class="arr">→</span>
+    <span class="node">OIL 입력 (r 은 MHC 에도)</span>
+  </div>
+</div>
+<p>점선 = 동결. 식으로는 π<sup>OI</sup>(r, o, d) = π<sup>WBC</sup>(r, [d<sup>b</sup>, π<sup>OIL</sup>(r, o, d<sup>i</sup>)]) (p.4).</p>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>구성</th><th>학습 / 동결</th><th>주기</th><th>역할</th></tr></thead>
+  <tbody>
+    <tr><td>행동 생성기</td><td>손으로 짠 규칙</td><td>단계 시간 기반 전이</td><td>장면을 뽑고 단계(정렬 · 접근 · 접촉 · 들기 · …)마다 손 · 물체 · 기저 목표와 접촉 플래그를 냄. 단계 라벨은 정책에 안 줌 (p.5; p.10)</td></tr>
+    <tr><td>OIL</td><td>학습(PPO)</td><td>50 Hz</td><td>상호작용 지시 → 팔 관절 목표 8</td></tr>
+    <tr><td>MHC</td><td>동결</td><td>50 Hz</td><td>기저 지시 + 팔 지시 → 20 관절 PD 목표. 큰 도메인 무작위화로 학습돼 실기 이전 검증된 제어기 (p.4)</td></tr>
+    <tr><td>PD</td><td>고정</td><td>2 kHz</td><td>관절 토크</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li><b>하위는 바꾸지 않는다</b>: MHC 의 구조 · 가중치를 OIL 학습 중 그대로 두므로 균형 · 보행 견고함을 그대로 물려받는다. OIL 은 loco-manip 인터페이스(기저 지시 + 팔 관절)만 있으면 어떤 WBC 에도 붙는다고 주장 (p.4).</li>
+  <li><b>손끝 전용 모드</b>: 물체 관련 입력(물체 상태 · 물체 목표 · 접촉 플래그)을 가리면 OIL 이 손끝 위치 추종기가 된다. MHC 는 원래 손끝 공간 제어를 못 하므로, 이것이 MHC 위에 손끝 인터페이스를 덤으로 만든다 (p.4).</li>
+</ul>
+
+<h2 class="ps">3. 관측과 행동</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>입력</th><th>차원</th><th>내용 · 비고</th></tr></thead>
+  <tbody>
+    <tr><td>관절 위치 θ</td><td>20</td><td>J = 20 구동 관절 (p.4)</td></tr>
+    <tr><td>관절 속도 θ̇</td><td>20</td><td>(p.3)</td></tr>
+    <tr><td>기저 각속도 α</td><td>3</td><td>(p.3)</td></tr>
+    <tr><td>기저 자세 q</td><td>4</td><td>쿼터니언 (p.3)</td></tr>
+    <tr><td>기저 선속도</td><td>없음</td><td>실기에서 믿을 만하게 추정하기 어려워 뺌 (p.3)</td></tr>
+    <tr><td>물체 상태 o</td><td>논문에 없음</td><td>로봇 기준 물체 자세의 인코딩 (p.3). 학습 중 갱신율 f ∼ U(7, 15) Hz, 갱신 사이 값 유지 (p.5)</td></tr>
+    <tr><td>목표 물체 위치 ô</td><td>3</td><td>(p.3). 단 보상은 두 점(중심 + 국소 x 축 점) 목표를 씀 → 아래 4 절</td></tr>
+    <tr><td>목표 손 위치 p̂<sup>R</sup>, p̂<sup>L</sup></td><td>3 + 3</td><td>기저 좌표 (p.3)</td></tr>
+    <tr><td>목표 접촉 ĉ<sup>R</sup>, ĉ<sup>L</sup></td><td>1 + 1</td><td>{0, 1} (p.3)</td></tr>
+    <tr><td>기저 지시 d<sup>b</sup></td><td>OIL 입력 아님</td><td>OIL 정의 π<sup>OIL</sup>(r, o, d<sup>i</sup>) 에 없음. MHC 만 받음 (p.4)</td></tr>
+    <tr><td>접촉 · 힘</td><td>없음</td><td>Digit 에 접촉 감지가 없어 관측에서 뺌 (p.4)</td></tr>
+    <tr><td>단계 · 과제 라벨</td><td>없음</td><td>현재 지시와 그 실행 이력(LSTM 은닉)만 봄 (p.5)</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li><b>행동</b>: u ∈ R<sup>8</sup>, 두 팔의 관절 위치 목표(팔당 구동기 4). MHC 가 이를 받아 20 관절 목표 a 를 만든다 (p.4). 행동 범위 · 스케일 · 자르기는 논문에 없음.</li>
+  <li><b>가리기(mask)</b>: Stage 1 과 Stage 2 의 20 % 창에서 물체 관련 필드를 가린다. 가린 값을 0 으로 채우는지, 따로 플래그를 주는지는 논문에 없음.</li>
+  <li><b>비평가(critic) 관측</b>: 논문에 없음 (비대칭 여부 언급 없음).</li>
+</ul>
+
+<h2 class="ps">4. 보상 · 종료 · 커리큘럼</h2>
+<p>r(t) = r<sub>hand</sub> + r<sub>obj</sub> + r<sub>contact</sub> + r<sub>reg</sub> − r<sub>coll</sub>. 각 항은 해당 지시 필드가 가려지지 않았을 때만 켜진다 (p.5–6). 가중치는 정규화 없음 (p.10, 표 6).</p>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항</th><th>식 (p.6)</th><th>가중치 (표 6)</th></tr></thead>
+  <tbody>
+    <tr><td>손 추적</td><td>Σ<sub>h∈{L,R}</sub> w<sub>hand</sub> exp(−s<sub>hand</sub> ‖p<sup>h</sup> − p̂<sup>h</sup>‖<sub>2</sub>)</td><td>0.1 (표엔 "per coordinate")</td></tr>
+    <tr><td>손 근접 보너스</td><td>w<sub>bonus</sub> · 𝟙[‖p<sup>h</sup> − p̂<sup>h</sup>‖<sub>2</sub> &lt; ε<sub>hand</sub>]</td><td>1.0</td></tr>
+    <tr><td>물체 자세 추적</td><td>−w<sub>obj</sub> Σ<sub>k∈{0,1}</sub> ‖p<sup>k</sup> − p̂<sup>k</sup>‖<sub>2</sub><sup>2</sup> (p<sup>0</sup> = 중심, p<sup>1</sup> = 국소 x 축 위 표면 점 → 위치 + 수평 yaw)</td><td>0.2</td></tr>
+    <tr><td>물체 근접 보너스</td><td>w<sub>obj,bonus</sub> · 𝟙[‖p<sup>0</sup> − p̂<sup>0</sup>‖<sub>2</sub> &lt; ε<sub>obj</sub>]</td><td>0.2</td></tr>
+    <tr><td>접촉 일치</td><td>w<sub>match</sub> Σ<sub>h</sub> 𝟙[ĉ<sup>h</sup> = c<sup>h</sup>], 측정 접촉 ĉ<sup>h</sup> = 𝟙[f<sup>h</sup> &gt; f<sub>min</sub>]. 들기 · 운반은 추가로 · 𝟙[f<sup>h,↑</sup> ≥ α m g] (위로 받치는 힘이 질량의 α 배 이상)</td><td>0.2 (손당)</td></tr>
+    <tr><td>행동 매끄러움</td><td>w<sub>Δa</sub> exp(−s<sub>Δa</sub> ‖a<sub>t</sub> − a<sub>t−1</sub>‖<sub>1</sub>), a = MHC 가 낸 전 관절 목표</td><td>0.1</td></tr>
+    <tr><td>전력</td><td>w<sub>power</sub> exp(−s<sub>power</sub> mean|τ ⊙ θ̇|)</td><td>0.1 (표엔 "Arm power")</td></tr>
+    <tr><td>몸통 충돌 (빼기)</td><td>w<sub>coll</sub> · 𝟙[몸통–환경 충돌]</td><td>0.5</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>s<sub>hand</sub>, ε<sub>hand</sub>, ε<sub>obj</sub>, f<sub>min</sub>, α, s<sub>Δa</sub>, s<sub>power</sub>: <b>논문에 없음</b>. 가중치만으로는 재현할 수 없다.</li>
+  <li>규제 두 항은 빼는 벌점이 아니라 지수 커널 <b>보상</b>이다(작을수록 1 에 가까움).</li>
+  <li>손 근접 보너스 1.0 이 가장 크다 — 물체 항(0.2 + 0.2)의 2.5 배.</li>
+</ul>
+<h3 class="ps">종료</h3>
+<ul>
+  <li>기저 roll 또는 pitch 가 ±60° 를 넘음 (p.5)</li>
+  <li>물체 속도 3.5 m/s 초과 (물체 동역학 불안정) (p.5)</li>
+  <li>그 밖에는 정해진 길이까지 진행. 성공 · 실패로 끊지 않음.</li>
+</ul>
+<h3 class="ps">2 단계 커리큘럼 (p.5)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>단계</th><th>에피소드</th><th>지시 창</th><th>내용</th></tr></thead>
+  <tbody>
+    <tr><td>Stage 1 손끝 추종</td><td>8 s</td><td>U[2, 4] s 마다 다시 뽑음</td><td>물체 입력 가림. 무작위 기저 지시 + 몸과 겹치지 않는 도달 가능 손 목표</td></tr>
+    <tr><td>Stage 2 물체 상호작용</td><td>12 s</td><td>물체 창 τ ∼ U(7, 10) s</td><td>창마다 물체 상호작용 0.8 / 손끝 전용 0.2 확률. 물체 창 = 기술 사슬 C = [m<sub>1</sub>, …, m<sub>K</sub>], 단계마다 목표와 길이 τ<sub>i</sub> ∼ U(τ<sub>min</sub>, τ<sub>max</sub>), 시간이 지나면 다음 단계</td></tr>
+  </tbody>
+</table></div>
+<p>Stage 1 → 2 전환 시점 · 기준, τ<sub>min</sub>·τ<sub>max</sub> 값은 논문에 없음.</p>
+<h3 class="ps">지시 샘플링 범위 (p.10, 표 2)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>지시</th><th>분포</th></tr></thead>
+  <tbody>
+    <tr><td>손 x (두 손, 기저 기준)</td><td>U(0, 0.6) m</td></tr>
+    <tr><td>손 y 왼 / 오른</td><td>U(−0.3, 0.7) / U(−0.7, 0.3) m</td></tr>
+    <tr><td>손 z (두 손)</td><td>U(−0.1, 0.9) m</td></tr>
+    <tr><td>기저 높이</td><td>U(0.36, 1.05) m (큰 상자 U(0.4, 0.75) m)</td></tr>
+    <tr><td>운반 vx / vy / ω</td><td>U(−0.5, 0.8) m/s / U(−0.3, 0.3) m/s / U(−0.4, 0.4) rad/s</td></tr>
+    <tr><td>큰 상자 밀기 vx</td><td>U(0.5, 1.0) m/s</td></tr>
+    <tr><td>정지 단계</td><td>(vx, vy, ω) = (0, 0, 0)</td></tr>
+  </tbody>
+</table></div>
+<p>몸통 가까운 손 목표는 버린다 (p.10). 단계 안에서 움직임 지시는 보간 (p.10).</p>
+<h3 class="ps">장면 범위 (p.10, 표 5)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>변수 (m)</th><th>표준 상자</th><th>큰 상자 (바닥)</th></tr></thead>
+  <tbody>
+    <tr><td>크기 x / y / z</td><td>[0.16, 0.25] 각각</td><td>[1.1, 1.3] / [0.6, 1.0] / [0.9, 1.3]</td></tr>
+    <tr><td>앞 거리</td><td>[0.3, 0.4]</td><td>[0.8, 0.9]</td></tr>
+    <tr><td>옆 오프셋</td><td>[−0.1, 0.1]</td><td>[−0.1, 0.1]</td></tr>
+    <tr><td>처음 탁자 높이 − 기저 높이</td><td>[−0.35, 0.10]</td><td>—</td></tr>
+    <tr><td>놓을 탁자 높이 − 기저 높이</td><td>[−0.10, 0.10]</td><td>—</td></tr>
+  </tbody>
+</table></div>
+<p>탁자 높이를 명령 기저 높이에 묶어 뽑으므로 결과 탁자 높이는 0.01–1.15 m. 즉 상자는 늘 지금 자세에서 팔이 닿는 높이에 놓인다 (p.10).</p>
+
+<h2 class="ps">5. 학습 설정 (알고리즘 · 망 · 무작위화)</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>값</th></tr></thead>
+  <tbody>
+    <tr><td>알고리즘</td><td>PPO (p.4)</td></tr>
+    <tr><td>시뮬레이터 · 로봇</td><td>MuJoCo, Digit V3 (p.4)</td></tr>
+    <tr><td>actor</td><td>2층 LSTM, 층당 은닉 64 + 선형 디코더 (p.4)</td></tr>
+    <tr><td>critic</td><td>논문에 없음</td></tr>
+    <tr><td>PPO 하이퍼파라미터 (lr, γ, λ, clip, 엔트로피, 배치)</td><td>논문에 없음</td></tr>
+    <tr><td>병렬 환경 수 · 반복 수 · 학습 시간 · GPU</td><td>논문에 없음</td></tr>
+    <tr><td>기준선 TaskSp</td><td>같은 동결 MHC + 같은 망 구조로 과제마다 따로 학습, 물체 상태 전부 관측 (p.7)</td></tr>
+  </tbody>
+</table></div>
+<h3 class="ps">도메인 무작위화 (에피소드 시작 시, p.5)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>대상</th><th>범위</th></tr></thead>
+  <tbody>
+    <tr><td>물체 질량</td><td>U(0.1, 3.0) kg</td></tr>
+    <tr><td>물체 마찰 μ</td><td>U(0.5, 1.5)</td></tr>
+    <tr><td>상자 크기</td><td>축마다 U(0.16, 0.25) m (큰 상자는 표 5)</td></tr>
+    <tr><td>물체 상태 갱신율</td><td>f ∼ U(7, 15) Hz, 갱신 사이 o 유지 (외부 추적 지연 흉내)</td></tr>
+    <tr><td>로봇 동역학</td><td>MHC 학습 범위를 따름 (값은 이 논문에 없음, Dugar 2025b 참조)</td></tr>
+  </tbody>
+</table></div>
+
+<h2 class="ps">6. teacher → student / 증류</h2>
+<p>해당 없음 — 증류 단계가 없다. 학습과 실기 모두 같은 물체 상태 입력을 쓰고(실기는 외부 카메라 + ArUco), 시각 입력은 향후 과제로만 언급 (p.8).</p>
+
+<h2 class="ps">7. 결과</h2>
+<h3 class="ps">평가 방식 (p.6)</h3>
+<ul>
+  <li>MuJoCo Digit V3, 학습에 안 쓴 새 시드 · 장면 · 지시. 과제당 5,000 회 평균.</li>
+  <li><b>성공</b>: 마지막 물체 위치가 마지막 명령 목표에서 5 cm 이내(정지 과제), 15 cm 이내(이동 결합 과제).</li>
+  <li><b>Obj<sub>err</sub></b>: 상호작용 구간 동안 몸통 기준 실제 · 명령 물체 위치 거리의 평균 (cm).</li>
+  <li><b>기준선</b>: MHC<sub>NoObj</sub> = 물체 상태 없이 손끝 지시로만 움직인 하위. TaskSp = 과제별 전용 정책 (p.7).</li>
+</ul>
+<h3 class="ps">표 1 — 성공률(%) · 물체 위치 오차(cm) (p.6)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>과제</th><th>지표</th><th>NoObj</th><th>OIL</th><th>TaskSp</th></tr></thead>
+  <tbody>
+    <tr><td rowspan="2">Uni Slide</td><td>성공</td><td>58.1</td><td>89.1</td><td><b>90.0</b></td></tr>
+    <tr><td>오차</td><td>3.83</td><td><b>2.35</b></td><td>3.53</td></tr>
+    <tr><td rowspan="2">Bi Slide</td><td>성공</td><td>99.4</td><td><b>100.0</b></td><td>99.0</td></tr>
+    <tr><td>오차</td><td>2.46</td><td><b>1.30</b></td><td>2.30</td></tr>
+    <tr><td rowspan="2">Pick &amp; Place</td><td>성공</td><td>63.6</td><td>94.3</td><td><b>94.5</b></td></tr>
+    <tr><td>오차</td><td>3.21</td><td><b>2.23</b></td><td>3.09</td></tr>
+    <tr><td rowspan="2">Loco-manip.</td><td>성공</td><td>15.8</td><td><b>84.1</b></td><td>81.4</td></tr>
+    <tr><td>오차</td><td>4.08</td><td><b>2.53</b></td><td>3.15</td></tr>
+    <tr><td rowspan="2">Large-Box Push</td><td>성공</td><td>18.3</td><td><b>84.6</b></td><td>76.9</td></tr>
+    <tr><td>오차</td><td>5.96</td><td>3.01</td><td><b>1.84</b></td></tr>
+    <tr><td rowspan="2"><b>평균</b></td><td>성공</td><td>51.0</td><td><b>90.4</b></td><td>88.4</td></tr>
+    <tr><td>오차</td><td>3.93</td><td><b>2.28</b></td><td>2.76</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>물체 지시를 넣으면 평균 51.0 → 90.4 %. 가장 큰 차이는 로봇 운동만으로 물체 의도를 알 수 없는 이동 과제: 들고 걷기 15.8 → 84.1 %, 큰 상자 밀기 18.3 → 84.6 % (p.7).</li>
+  <li>두 손 밀기는 NoObj 도 99.4 %: 물체 움직임이 로봇 운동에 묶여 있는 과제 (p.7).</li>
+  <li>단일 정책이 과제별 정책과 평균 성공이 같거나 낫고(90.4 vs 88.4 %), 오차는 더 작다(2.28 vs 2.76 cm) (p.7).</li>
+</ul>
+<h3 class="ps">학습 범위 밖 물체 (그림 3, p.7)</h3>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>스윕</th><th>학습 한계</th><th>OIL</th><th>TaskSp</th></tr></thead>
+  <tbody>
+    <tr><td>두 손 밀기, 상자 폭 (그래프 0.17–0.35 m)</td><td>0.25 m</td><td>0.25 m 넘어서도 약 95 % 이상</td><td>약 85 % 로 떨어짐</td></tr>
+    <tr><td>한 손 밀기, 질량 (그래프 0–7 kg)</td><td>3.0 kg</td><td>6.5 kg 에서 약 80 % 이상</td><td>6.5 kg 에서 약 50 % 아래</td></tr>
+  </tbody>
+</table></div>
+<p>학습 범위 안에서는 둘이 비슷하다. 저자들은 여러 행동을 섞어 학습한 것이 궤적이 어긋날 때의 견고함을 준다고 해석 (p.7).</p>
+<h3 class="ps">처음 보는 행동 조합 (그림 4, p.7–8)</h3>
+<p>들기 → 들고 걷기 → 놓기 → 두 손 밀기 4 단계를 재학습 없이 지시만 이어 붙임. 10,000 회, 질량 · 크기 · 위치 · 보행 속도 · 놓을 위치는 학습 범위로 무작위.</p>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>단계</th><th>누적 성공 (그림 4)</th><th>단계 전환 낙폭 (본문)</th></tr></thead>
+  <tbody>
+    <tr><td>Pick Up</td><td>98.3 %</td><td>1.7 %p</td></tr>
+    <tr><td>Walk</td><td>83.8 %</td><td>14.5 %p (가장 큼)</td></tr>
+    <tr><td>Put Down</td><td>80.2 %</td><td>3.6 %p</td></tr>
+    <tr><td>Slide</td><td>79.8 % (그림) / 78.9 % (본문)</td><td>1.3 %p</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li>본문 낙폭을 차례로 빼면 78.9 % 가 맞고, 그림 라벨 79.8 % 는 숫자 자리가 바뀐 것으로 보인다.</li>
+  <li>들고 걷기로 넘어갈 때의 주 실패: 상자가 끼운 손 사이에서 미끄러져 빠짐. 원문은 "box mass ≤ 2.5 kg" 로 적었다(≥ 의 오기일 수 있음) (p.8).</li>
+</ul>
+<h3 class="ps">제거 실험</h3>
+<p>기준선 비교(NoObj · TaskSp) 외에는 없다. 커리큘럼 단계, 보상 항, 갱신율 무작위화, LSTM 대 MLP 의 효과는 따로 재지 않았다.</p>
+
+<h2 class="ps">8. 실기 · sim2real</h2>
+<div class="tbl-wrap"><table>
+  <thead><tr><th>항목</th><th>내용 (p.8)</th></tr></thead>
+  <tbody>
+    <tr><td>로봇 · 방식</td><td>Digit V3, 영점(zero-shot), 정책 수정 없음</td></tr>
+    <tr><td>주기</td><td>정책 50 Hz, 물체 상태 10 Hz</td></tr>
+    <tr><td>물체 · 몸통 자세</td><td>천장 RealSense D455 + ArUco 표식 → 공통 세계 좌표 → 몸통 좌표로 바꿔 OIL 에 입력</td></tr>
+    <tr><td>가림 · 떨림 대응</td><td>안전 하네스가 표식을 가리고 표식이 떨려서, 50 스텝 이력을 가진 칼만 필터로 가림이 풀릴 때 다시 초기화. 갱신 사이는 마지막 값 유지(학습의 0 차 유지와 같음)</td></tr>
+    <tr><td>지시 생성</td><td>조작자가 손으로, 또는 지시 수준에서만 도는 FSM(관절 궤적 · 접촉력은 만들지 않음)</td></tr>
+    <tr><td>보여 준 행동</td><td>한 손 · 두 손 밀기, 옮겨 놓기, 들고 걷기. 큰 상자 밀기는 실기 언급 없음</td></tr>
+    <tr><td>정량 결과</td><td>없음. 영상만 (부록 E, <a href="https://drive.google.com/file/d/1RI56LUpW_dM1pZJrmNrjPz3uODhO5HKy/view" target="_blank" rel="noopener">Google Drive</a>, p.10)</td></tr>
+  </tbody>
+</table></div>
+<p>저자들은 학습 중 도메인 무작위화로 sim2real 격차가 메워졌다고 결론짓지만, 성공률 · 시도 횟수 같은 실기 수치는 내지 않았다.</p>
+
+<h2 class="ps">9. 코드에서 확인한 것</h2>
+<p>해당 없음 — 로컬 code/ 없음(코드 미공개; 논문은 장면 · 지시 생성기를 공개하겠다고만 함, p.5).</p>
+
+<h2 class="ps">10. 한계</h2>
+<h3 class="ps">논문이 밝힌 것 (p.8)</h3>
+<ul>
+  <li><b>한 손 밀기</b>: 손이 중심에서 벗어나 닿으면 물체가 밀리지 않고 돈다. 물체 상태로 일부 보정하지만, 큰 어긋남은 팔 조정으로 못 고치고 열린 루프 지시라 다시 접근할 수 없다.</li>
+  <li><b>두 손 들기</b>: 양 옆면 접촉에 의존하는데 위로 받치는 접선력이 모자라면 미끄러져 빠진다(무겁거나 매끄러운 물체).</li>
+  <li><b>회복 없음</b>: 접촉 품질이 한계를 넘어 나빠지면 되살릴 장치가 없다. 접촉 · 저해상도 힘 센서를 관측에 넣는 것을 다음 과제로 꼽음.</li>
+  <li><b>향후</b>: 물체 SE(3) 자세 전체, 다른 파지 방식, 힘 · 접촉 목표, 닫힌 루프 지시 재계획, 시각 입력.</li>
+</ul>
+<h3 class="ps">읽으며 본 것</h3>
+<ul>
+  <li>실기 정량 결과 없음. 주 결과표는 학습 분포 안 평가.</li>
+  <li>PPO 설정 · 환경 수 · 학습 시간 · critic · 보상 커널 상수 전부 미공개 → 그대로 재현 불가.</li>
+  <li>기저(높이 · 속도)는 학습하지 않는다. 탁자 높이를 기저 높이에 맞춰 뽑아(−0.35 – +0.10 m) 높이 선택 문제를 장면 생성에서 없앴다.</li>
+  <li>물체 목표가 위치 + yaw 뿐, 기울기 없음. 물체 크기 0.16–0.25 m 는 우리 상자(0.29–0.405 m)보다 작다.</li>
+  <li>논문 안 불일치: 그림 4 마지막 79.8 % 대 본문 78.9 %; 표 6 손 추적 "per coordinate" 대 식의 손별 노름; 지시 정의 ô ∈ R<sup>3</sup> 대 보상의 두 점 목표; 미끄러짐 조건 "≤ 2.5 kg".</li>
+</ul>
+
+<h2 class="ps">11. 우리에게 가져올 것</h2>
+<div class="take"><ol>
+  <li><b>손별 접촉 일치 보상 + 지지력 게이트</b>: 들기 · 유지 단계에서 목표 c<sup>L</sup> = c<sup>R</sup> = 1, 측정 ĉ<sup>h</sup> = 𝟙[f<sup>h</sup> &gt; f<sub>min</sub>] · 𝟙[f<sup>h,↑</sup> ≥ α m g], 보상 0.2 × Σ<sub>h</sub> 𝟙[ĉ<sup>h</sup> = c<sup>h</sup>] (p.6; 표 6). 손바닥 접촉력은 teacher 특권 정보로 충분. v2 의 "한 손으로 밀기" 국소 최적은 반쪽 보상만 받고 위로 받치는 게이트를 못 넘는다. α · f<sub>min</sub> 은 논문에 없으니, 두 손이 무게를 나누므로 손당 α 는 0.5 보다 작게 잡아 시작(우리 제안).</li>
+  <li><b>물체 점 추적 보상</b>: 중심 + 국소 x 축 점 두 개의 제곱 오차(가중치 0.2) + 중심 근접 보너스(0.2) (p.6). 우리는 조인 상자가 기울기 쉬우므로 논문이 말한 대로 비공선 세 점으로 늘려 기울기까지 잡는다.</li>
+  <li><b>2 단계 커리큘럼</b>: Stage 1 = 상자 없이 손바닥 목표 추종(8 s 에피소드, 2–4 s 마다 목표 교체), Stage 2 = 상자(12 s, 상호작용 창 7–10 s) + 창의 20 % 는 손 목표 전용으로 섞어 도달 능력 유지 (p.5). Stage 1 이 dev12 골반 높이 0.335 m · pitch 45° 에서 손이 바닥 상자 옆면 높이까지 닿는지(v2 의 바닥 도달 한계)를 상자 학습 전에 드러낸다.</li>
+  <li><b>단계 지시 생성기를 보조 목표로</b>: 정렬 → 접근(접촉 전 위치) → 접촉 → 들기 → 유지 단계마다 손바닥 목표를 생성해 손 추적 보상(지수 커널 0.1 + 근접 보너스 1.0)을 준다 (p.5–6; p.10, 표 3·4). 우리는 손 목표 = 상자 옆면 중심 ± 접근 여유.</li>
+  <li><b>특권 상자 상태 갱신율 무작위</b>: teacher 가 보는 상자 자세를 U(7, 15) Hz 로 끊어 갱신 사이 값 유지 (p.5). teacher 가 순간 정밀 상태에 덜 기대게 돼 깊이 student 와의 정보 차이를 줄인다.</li>
+  <li><b>종료 조건</b>: 몸통 roll · pitch 60° 초과(우리 pitch 명령 최대 45° 위에 여유), 상자 속도 3.5 m/s 초과(튀어 나가는 물리 오류 차단) (p.5).</li>
+  <li><b>상자 무작위화 · 범위 밖 평가</b>: 마찰 μ U(0.5, 1.5) 그대로, 질량은 우리 0.5–2 kg 로 학습하고 평가는 dev12 하중 범위 5 kg 까지 스윕해 여유를 잰다(그림 3 방식).</li>
+  <li><b>평가 지표</b>: 성공 = 마지막 상자 위치가 목표 5 cm 이내 + 오차(cm) 평균을 함께 기록, 새 시드로 과제당 수천 회 (p.6). 이웃 체크포인트를 같은 고정 평가셋으로 비교.</li>
+  <li><b>actor 에서 기저 선속도 제외</b>는 그대로(K1 에도 추정기 없음, 이미 critic 전용) — 같은 이유를 논문이 확인 (p.3).</li>
+</ol></div>
+<h3 class="ps">가져오지 말 것</h3>
+<ul>
+  <li><b>골반 명령을 생성기에 맡기기</b>: OIL 은 탁자 높이를 기저 높이에 묶어 뽑아 높이 선택이 필요 없다. 우리 상자는 0–0.3 m 로 주어지고 쪼그림 · 숙임이 과제 핵심이라 골반 높이 · pitch 는 teacher 가 내야 한다(스크립트 기본값 + 학습 보정이 최소한).</li>
+  <li><b>시간 기반 단계 전이 · 열린 루프 지시</b>: 논문 스스로 다시 접근 · 회복 불가의 원인으로 꼽았다. 실기 집기는 놓치면 다시 잡아야 한다.</li>
+  <li><b>접촉 없는 관측을 그대로 믿기</b>: OIL 의 주 실패(미끄러지면 회복 불가)와 우리 v2 student 격차의 원인(접촉 정보)이 같다. teacher 는 손별 접촉력 특권 관측, student 는 팔 관절 PD 오차 · 토크 같은 대리 신호를 검토.</li>
+  <li><b>외부 천장 카메라 + ArUco + 칼만</b>: 우리 실기 지각은 머리 D436 깊이 student 다.</li>
+  <li><b>보상 가중치 숫자만 복사</b>: 커널 상수 · ε · f<sub>min</sub> · α 가 없어 같은 효과가 안 난다. 손 근접 보너스 1.0 이 가장 커서 흔들림으로 보너스를 따먹을 위험(dev9 교훈)도 있다.</li>
+  <li><b>행동 자르기 처리</b>: 논문은 상위 출력 범위 · 자르기를 말하지 않는다. 우리는 dev12 학습 범위(vx ±0.8, vy ±0.4, ωz ±1.0, 높이 0.335–0.77 m, pitch ±45°, roll ±10°)로 자르되, 환경 안 자르기만 하면 PPO 표준편차가 발산했으므로 원 행동의 범위 밖 부분에 L2 벌점을 같이 둔다.</li>
+  <li><b>상자 크기 · 폭 OOD 결론</b>: 학습 크기 0.16–0.25 m 는 우리 상자보다 작고, 폭 0.35 m 까지 95 % 는 두 손 밀기 결과라 들기에 옮겨 쓸 수 없다.</li>
+</ul>
+
+<p class="src">출처 표기: (p.N), (표 N), (그림 N), (식 N), 코드는 파일 경로. 논문에 없는 값은 "논문에 없음".</p>
+</main>
+</body>
+</html>
